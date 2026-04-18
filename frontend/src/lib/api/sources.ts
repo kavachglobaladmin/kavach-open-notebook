@@ -119,6 +119,11 @@ export const sourcesApi = {
     return response.data
   },
 
+  getWordCloud: async (sourceId: string) => {
+    const response = await apiClient.get<{ words: { text: string; value: number }[]; source_id: string }>(`/sources/${encodeURIComponent(sourceId)}/word-cloud`)
+    return response.data
+  },
+
   downloadFile: async (id: string): Promise<AxiosResponse<Blob>> => {
     return apiClient.get(`/sources/${id}/download`, {
       responseType: 'blob',

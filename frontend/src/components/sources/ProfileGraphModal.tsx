@@ -7,7 +7,7 @@ import { ProfileGraphData } from '@/lib/types/api'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { User, Users, UserCheck, RefreshCw, X } from 'lucide-react'
+import { User, Users, UserCheck, RefreshCw, X, Cloud } from 'lucide-react'
 import { useModels, useModelDefaults } from '@/lib/hooks/use-models'
 import { PersonalMindMap, nodeImageStore as personalNodeImageStore } from './PersonalMindMap'
 
@@ -317,6 +317,113 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
   )
 }
 
+// ── Word Cloud Component ──────────────────────────────────────────────────────
+function WordCloudView({ sourceId }: { sourceId: string }) {
+  const [words, setWords] = useState<{ text: string; value: number }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ w: 800, h: 560 })
+
+  useEffect(() => {
+    setLoading(true)
+    sourcesApi.getWordCloud(sourceId)
+      .then((d) => { setWords(d.words); setLoading(false) })
+      .catch((e) => { setError(e?.message || 'Failed'); setLoading(false) })
+  }, [sourceId])
+
+  useEffect(() => {
+    const el = containerRef.current; if (!el) return
+    const obs = new ResizeObserver((e) => {
+      const r = e[0].contentRect
+      setSize({ w: Math.max(600, r.width), h: Math.max(400, r.height) })
+    })
+    obs.observe(el); return () => obs.disconnect()
+  }, [])
+
+  const positioned = useMemo(() => {
+    if (!words.length) return []
+    const maxVal = Math.max(...words.map((w) => w.value))
+    const minVal = Math.min(...words.map((w) => w.value))
+    const range = maxVal - minVal || 1
+
+    // Color palette
+    const colors = [
+      '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981',
+      '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+    ]
+
+    // Place words in a spiral pattern
+    const placed: { text: string; value: number; x: number; y: number; size: number; color: string; weight: string }[] = []
+    const cx = size.w / 2
+    const cy = size.h / 2
+
+    let angle = 0
+    let radius = 0
+    const step = 0.4
+
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i]
+      const normalized = (w.value - minVal) / range
+      const fontSize = Math.round(12 + normalized * 36) // 12px to 48px
+      const weight = normalized > 0.6 ? 'bold' : normalized > 0.3 ? '600' : 'normal'
+      const color = colors[i % colors.length]
+
+      // Spiral placement
+      const x = cx + radius * Math.cos(angle)
+      const y = cy + radius * Math.sin(angle) * 0.6 // flatten vertically
+
+      placed.push({ text: w.text, value: w.value, x, y, size: fontSize, color, weight })
+
+      angle += step + (1 / (radius + 1)) * 2
+      radius += 2.5
+    }
+
+    return placed
+  }, [words, size])
+
+  if (loading) return (
+    <div className="flex h-full items-center justify-center gap-3">
+      <RefreshCw className="h-5 w-5 animate-spin text-blue-500" />
+      <span className="text-slate-500">Generating word cloud…</span>
+    </div>
+  )
+
+  if (error) return (
+    <div className="flex h-full items-center justify-center">
+      <div className="text-sm text-red-500">{error}</div>
+    </div>
+  )
+
+  return (
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden"
+      style={{ background: 'radial-gradient(ellipse at center, #f0f7ff 0%, #f8fafc 100%)' }}>
+      <svg width={size.w} height={size.h} className="absolute inset-0">
+        {positioned.map((w, i) => (
+          <g key={i}>
+            <text
+              x={w.x}
+              y={w.y}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={w.size}
+              fontWeight={w.weight}
+              fill={w.color}
+              opacity={0.85}
+              style={{ cursor: 'default', userSelect: 'none' }}
+            >
+              {w.text}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="absolute bottom-3 right-3 text-xs text-slate-400 bg-white/70 rounded-lg px-2 py-1">
+        {words.length} unique words · size = frequency
+      </div>
+    </div>
+  )
+}
+
 export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, sourceImageUrl }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -432,6 +539,9 @@ export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, s
                 <TabsTrigger value="associates" className="flex items-center gap-1.5" disabled={data.associates.length === 0}>
                   <User className="h-4 w-4" /> Friends & Associates ({data.associates.length})
                 </TabsTrigger>
+                <TabsTrigger value="wordcloud" className="flex items-center gap-1.5">
+                  <Cloud className="h-4 w-4" /> Word Cloud
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="personal" className="flex-1 min-h-0 overflow-hidden">
@@ -448,6 +558,10 @@ export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, s
                 {data.associates.length > 0
                   ? <AvatarGraph nodes={associatesGraph.nodes} links={associatesGraph.links} />
                   : <div className="flex h-40 items-center justify-center text-slate-400 text-sm">No friends or associates found.</div>}
+              </TabsContent>
+
+              <TabsContent value="wordcloud" className="flex-1 min-h-0 overflow-hidden">
+                <WordCloudView sourceId={sourceId} />
               </TabsContent>
             </Tabs>
           ) : null}

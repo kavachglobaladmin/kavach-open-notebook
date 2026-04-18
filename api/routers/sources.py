@@ -1609,6 +1609,126 @@ async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Que
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/sources/{source_id}/word-cloud")
+async def get_source_word_cloud(source_id: str):
+    """Extract word frequency data for word cloud visualization."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        text = source.full_text or source.title or ''
+        words = _extract_word_cloud_data(text)
+        return {'words': words, 'source_id': source_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting word cloud: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _extract_word_cloud_data(text: str) -> list:
+    """Extract word frequencies for word cloud, filtering stopwords."""
+    import re as _re
+    from collections import Counter
+
+    # Comprehensive stopwords
+    stopwords = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'be', 'been',
+        'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+        'could', 'should', 'may', 'might', 'shall', 'can', 'not', 'no', 'nor',
+        'so', 'yet', 'both', 'either', 'neither', 'each', 'few', 'more', 'most',
+        'other', 'some', 'such', 'than', 'too', 'very', 'just', 'also', 'as',
+        'if', 'then', 'that', 'this', 'these', 'those', 'it', 'its', 'he', 'she',
+        'they', 'we', 'you', 'i', 'me', 'him', 'her', 'them', 'us', 'his', 'their',
+        'our', 'your', 'my', 'who', 'which', 'what', 'when', 'where', 'how', 'why',
+        'all', 'any', 'both', 'each', 'every', 'into', 'through', 'during', 'before',
+        'after', 'above', 'below', 'between', 'out', 'off', 'over', 'under', 'again',
+        'further', 'then', 'once', 'here', 'there', 'about', 'against', 'along',
+        'around', 'because', 'while', 'although', 'however', 'therefore', 'thus',
+        'hence', 'since', 'until', 'unless', 'whether', 'though', 'even', 'only',
+        'also', 'back', 'up', 'down', 'said', 'told', 'asked', 'went', 'came',
+        'got', 'get', 'go', 'come', 'take', 'make', 'know', 'see', 'look', 'use',
+        'find', 'give', 'think', 'tell', 'become', 'show', 'leave', 'feel', 'put',
+        'bring', 'begin', 'keep', 'hold', 'write', 'stand', 'hear', 'let', 'mean',
+        'set', 'meet', 'run', 'pay', 'sit', 'speak', 'lie', 'lead', 'read', 'grow',
+        'lose', 'fall', 'send', 'build', 'stay', 'reach', 'kill', 'remain', 'suggest',
+        'raise', 'pass', 'sell', 'require', 'report', 'decide', 'pull', 'nil', 'na',
+        'not', 'applicable', 'available', 'pending', 'trial', 'investigation', 'case',
+        'status', 'accused', 'bailed', 'court', 'yet', 'arrested', 'police', 'station',
+    }
+
+    # Clean text
+    cleaned = _re.sub(r'[^a-zA-Z\s]', ' ', text.lower())
+    words = cleaned.split()
+
+    # Filter: length > 3, not stopword, not purely numeric
+    filtered = [
+        w for w in words
+        if len(w) > 3
+        and w not in stopwords
+        and not w.isnumeric()
+        and not all(c in 'ivxlcdm' for c in w)  # skip roman numerals
+    ]
+
+    # Count frequencies
+    counter = Counter(filtered)
+
+    # Return top 80 words with frequency
+    result = [
+        {'text': word, 'value': count}
+        for word, count in counter.most_common(80)
+        if count >= 2  # only words appearing 2+ times
+    ]
+
+    return result
+
+
+async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Query(None)):
+    """Extract personal details, family, and associates from a source document."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        # Try to read docx directly for best accuracy
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
+            try:
+                result = _extract_profile_from_docx(file_path)
+                result['source_id'] = source_id
+                result['source_title'] = source.title or 'Unknown'
+                logger.info(f"[ProfileGraph] DOCX: {len(result.get('personal',{}))} personal, {len(result.get('family',[]))} family, {len(result.get('associates',[]))} associates")
+                print(f"[ProfileGraph] DOCX extraction result: {result}")
+                return result
+            except Exception as e:
+                logger.warning(f"[ProfileGraph] DOCX extraction failed: {e}, falling back to text")
+
+        text = source.full_text or source.title or ''
+        logger.info(f"[ProfileGraph] Text extraction, length: {len(text)}")
+
+        # Try LLM if model available
+        if model_id:
+            try:
+                result = await _extract_profile_graph_llm(text, model_id)
+                result['source_id'] = source_id
+                result['source_title'] = source.title or 'Unknown'
+                return result
+            except Exception as e:
+                logger.warning(f"LLM profile extraction failed: {e}, falling back to regex")
+
+        result = _extract_profile_graph(text)
+        result['source_id'] = source_id
+        result['source_title'] = source.title or 'Unknown'
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting profile graph: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _extract_profile_from_docx(file_path: str) -> dict:
     """
     Extract profile data directly from docx tables.
