@@ -119,6 +119,21 @@ export const sourcesApi = {
     return response.data
   },
 
+  getWordCloud: async (sourceId: string) => {
+    const response = await apiClient.get<{ words: { text: string; value: number }[]; source_id: string }>(`/sources/${encodeURIComponent(sourceId)}/word-cloud`)
+    return response.data
+  },
+
+  getPartIV: async (sourceId: string) => {
+    const response = await apiClient.get<{
+      sections: Record<string, string>
+      raw: string
+      source_id: string
+      found: boolean
+    }>(`/sources/${encodeURIComponent(sourceId)}/part-iv`)
+    return response.data
+  },
+
   downloadFile: async (id: string): Promise<AxiosResponse<Blob>> => {
     return apiClient.get(`/sources/${id}/download`, {
       responseType: 'blob',

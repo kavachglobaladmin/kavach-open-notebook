@@ -515,7 +515,10 @@ export function SourceCard({
           onOpenChange={setProfileGraphOpen}
           sourceId={source.id}
           sourceTitle={source.title || undefined}
-          sourceImageUrl={source.asset?.url || undefined}
+          sourceImageUrl={
+            source.asset?.url ||
+            (source.asset?.file_path ? `/api/sources/${source.id}/download` : undefined)
+          }
         />
       </div>
     </Card>

@@ -7,9 +7,13 @@ import { ProfileGraphData } from '@/lib/types/api'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { User, Users, UserCheck, RefreshCw, X } from 'lucide-react'
+import { User, Users, UserCheck, RefreshCw, X, Cloud, BookOpen } from 'lucide-react'
 import { useModels, useModelDefaults } from '@/lib/hooks/use-models'
-import { PersonalMindMap, nodeImageStore as personalNodeImageStore } from './PersonalMindMap'
+import { PersonalMindMap } from './PersonalMindMap'
+import { FamilyGraph } from './FamilyGraph'
+import { WordCloudView } from './WordCloudView'
+import { FriendsAssociates } from './FriendsAssociates'
+import { PartIVView } from './PartIVView'
 
 // ── Image store ───────────────────────────────────────────────────────────────
 const nodeImageStore = new Map<string, string>()
@@ -96,7 +100,7 @@ type PNode = {
 type PLink = { source: string | PNode; target: string | PNode; label?: string }
 function gid(n: string | PNode): string { return typeof n === 'string' ? n : n.id }
 
-// ── Avatar Graph ──────────────────────────────────────────────────────────────
+// ── Avatar Graph (Kept for internal use if needed) ─────────────────────────────
 function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
   const graphRef = useRef<ForceGraphMethods | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -108,7 +112,6 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
   const [nodeImgs, setNodeImgs] = useState<Map<string, HTMLImageElement | null>>(new Map())
   const [, forceUpdate] = useState(0)
 
-  // Load stored images on mount
   useEffect(() => {
     const toLoad: { id: string; url: string }[] = []
     nodes.forEach((n) => { const u = nodeImageStore.get(n.id); if (u) toLoad.push({ id: n.id, url: u }) })
@@ -139,7 +142,6 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
     return ids
   }, [links, hoverNode])
 
-  // Upload image for a node
   const handleUpload = useCallback((nodeId: string, file: File) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -186,7 +188,6 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
     ctx.globalAlpha = 1
   }, [hoverNode])
 
-  // Convert canvas coords to container-relative screen coords
   const canvasToScreen = useCallback((cx: number, cy: number) => {
     const fg = graphRef.current as any
     if (!fg) return null
@@ -208,7 +209,6 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
       setSelectedNode(null); setSelectedPos(null); return
     }
     setSelectedNode(n)
-    // Try to get screen position
     const pos = canvasToScreen(n.x ?? 0, n.y ?? 0)
     setSelectedPos(pos)
   }, [selectedNode, canvasToScreen])
@@ -226,7 +226,6 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
           e.target.value = ''
         }}
       />
-
       <div ref={containerRef} className="flex-1 min-h-0 rounded-xl overflow-hidden" style={{ background: '#f1f5f9' }}>
         <ForceGraph2D
           ref={graphRef}
@@ -250,8 +249,6 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
           cooldownTicks={120}
         />
       </div>
-
-      {/* Detail popup — positioned near node or bottom-center */}
       {selectedNode && (
         <div
           className="absolute z-20 w-72 rounded-2xl bg-white shadow-2xl border border-slate-100 overflow-hidden"
@@ -264,9 +261,7 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
               : { bottom: 12, left: '50%', transform: 'translateX(-50%)' }
           }
         >
-          {/* Header with photo */}
           <div className={`flex items-center gap-3 p-4 ${selectedNode.gender === 'female' ? 'bg-pink-50' : 'bg-blue-50'}`}>
-            {/* Clickable avatar — click to upload */}
             <button
               className="relative flex-shrink-0 group"
               title="Click to upload photo"
@@ -281,31 +276,25 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
                   </div>
                 )}
               </div>
-              {/* Upload overlay on hover */}
               <div className="absolute inset-0 rounded-full bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                 <span className="text-white text-xs font-medium">📷</span>
               </div>
             </button>
-
             <div className="flex-1 min-w-0">
               <p className="font-bold text-slate-900 text-sm leading-tight">{selectedNode.label}</p>
               {selectedNode.sublabel && (
                 <Badge variant="outline" className="mt-1 text-xs capitalize border-slate-300">{selectedNode.sublabel}</Badge>
               )}
             </div>
-
             <button onClick={() => { setSelectedNode(null); setSelectedPos(null) }} className="text-slate-400 hover:text-slate-600 flex-shrink-0">
               <X className="h-4 w-4" />
             </button>
           </div>
-
-          {/* Details */}
           {selectedNode.details && (
             <div className="px-4 py-3 text-sm text-slate-600 border-t border-slate-100 leading-relaxed">
               {selectedNode.details}
             </div>
           )}
-
           {!selectedNode.details && (
             <div className="px-4 py-2 text-xs text-slate-400 border-t border-slate-100">
               No additional details available.
@@ -317,6 +306,7 @@ function AvatarGraph({ nodes, links }: { nodes: PNode[]; links: PLink[] }) {
   )
 }
 
+// ── Profile Graph Modal ────────────────────────────────────────────────────────
 export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, sourceImageUrl }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -346,44 +336,6 @@ export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, s
   useEffect(() => {
     if (!open) { setData(null); setActiveTab('personal') }
   }, [open])
-
-  const centerGender = useMemo((): 'male' | 'female' =>
-    (data?.personal?.gender || data?.personal?.Gender || '').toLowerCase().includes('female') ? 'female' : 'male',
-    [data]
-  )
-
-  const centerNode = useMemo((): PNode => ({
-    id: `center_${sourceId}`,
-    label: data?.main_person || sourceTitle || 'Main',
-    sublabel: data?.personal?.role || data?.personal?.Role || '',
-    gender: centerGender,
-    isCenter: true,
-    details: '',
-  }), [data, sourceId, sourceTitle, centerGender])
-
-  const familyGraph = useMemo(() => {
-    if (!data) return { nodes: [], links: [] }
-    const nodes: PNode[] = [centerNode]
-    const links: PLink[] = []
-    data.family.forEach((p, i) => {
-      const nid = `fam_${sourceId}_${i}`
-      nodes.push({ id: nid, label: p.name, sublabel: p.relation, gender: p.gender as 'male' | 'female', isCenter: false, details: p.details })
-      links.push({ source: centerNode.id, target: nid, label: p.relation })
-    })
-    return { nodes, links }
-  }, [data, centerNode, sourceId])
-
-  const associatesGraph = useMemo(() => {
-    if (!data) return { nodes: [], links: [] }
-    const nodes: PNode[] = [centerNode]
-    const links: PLink[] = []
-    data.associates.forEach((p, i) => {
-      const nid = `assoc_${sourceId}_${i}`
-      nodes.push({ id: nid, label: p.name, sublabel: p.relation, gender: p.gender as 'male' | 'female', isCenter: false, details: p.details })
-      links.push({ source: centerNode.id, target: nid, label: p.relation })
-    })
-    return { nodes, links }
-  }, [data, centerNode, sourceId])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -422,32 +374,46 @@ export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, s
             </div>
           ) : data ? (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <TabsList className="mx-6 mt-3 flex-shrink-0 bg-white border">
-                <TabsTrigger value="personal" className="flex items-center gap-1.5">
-                  <UserCheck className="h-4 w-4" /> Personal Details
-                </TabsTrigger>
-                <TabsTrigger value="family" className="flex items-center gap-1.5" disabled={data.family.length === 0}>
-                  <Users className="h-4 w-4" /> Family ({data.family.length})
-                </TabsTrigger>
-                <TabsTrigger value="associates" className="flex items-center gap-1.5" disabled={data.associates.length === 0}>
-                  <User className="h-4 w-4" /> Friends & Associates ({data.associates.length})
-                </TabsTrigger>
-              </TabsList>
+              <div className="mx-6 mt-3 flex-shrink-0 overflow-x-auto">
+                <TabsList className="inline-flex w-max bg-white border h-10">
+                  <TabsTrigger value="personal" className="flex items-center gap-1.5 whitespace-nowrap px-3">
+                    <UserCheck className="h-4 w-4 flex-shrink-0" /> Personal Details
+                  </TabsTrigger>
+                  <TabsTrigger value="family" className="flex items-center gap-1.5 whitespace-nowrap px-3" disabled={data.family.length === 0}>
+                    <Users className="h-4 w-4 flex-shrink-0" /> Family ({data.family.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="associates" className="flex items-center gap-1.5 whitespace-nowrap px-3" disabled={data.associates.length === 0}>
+                    <User className="h-4 w-4 flex-shrink-0" /> Friends & Associates ({data.associates.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="wordcloud" className="flex items-center gap-1.5 whitespace-nowrap px-3">
+                    <Cloud className="h-4 w-4 flex-shrink-0" /> Word Cloud
+                  </TabsTrigger>
+                  <TabsTrigger value="partiv" className="flex items-center gap-1.5 whitespace-nowrap px-3">
+                    <BookOpen className="h-4 w-4 flex-shrink-0" /> Part IV
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="personal" className="flex-1 min-h-0 overflow-hidden">
                 <PersonalMindMap data={data.personal} mainPerson={data.main_person} sourceId={sourceId} sourceImageUrl={sourceImageUrl} />
               </TabsContent>
 
               <TabsContent value="family" className="flex-1 min-h-0 p-4 overflow-hidden">
-                {data.family.length > 0
-                  ? <AvatarGraph nodes={familyGraph.nodes} links={familyGraph.links} />
-                  : <div className="flex h-40 items-center justify-center text-slate-400 text-sm">No family members found.</div>}
+                <FamilyGraph data={data.family} mainPerson={data.main_person} />
               </TabsContent>
 
               <TabsContent value="associates" className="flex-1 min-h-0 p-4 overflow-hidden">
                 {data.associates.length > 0
-                  ? <AvatarGraph nodes={associatesGraph.nodes} links={associatesGraph.links} />
+                  ? <FriendsAssociates data={data.associates} mainPerson={data.main_person} />
                   : <div className="flex h-40 items-center justify-center text-slate-400 text-sm">No friends or associates found.</div>}
+              </TabsContent>
+
+              <TabsContent value="wordcloud" className="flex-1 min-h-0 overflow-hidden">
+                <WordCloudView sourceId={sourceId} />
+              </TabsContent>
+
+              <TabsContent value="partiv" className="flex-1 min-h-0 overflow-hidden">
+                <PartIVView sourceId={sourceId} />
               </TabsContent>
             </Tabs>
           ) : null}

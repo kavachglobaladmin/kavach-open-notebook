@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { User, MapPin, Facebook, AlertCircle, Fingerprint } from 'lucide-react'
+import { User, MapPin, Facebook, AlertCircle, Fingerprint, Users, Crosshair, Banknote, ShieldAlert } from 'lucide-react'
 
 const nodeImageStore = new Map<string, string>()
 
@@ -132,74 +132,85 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
   const cy = h / 2
   const centerR = 85
 
-  // Calculate Base Layout Positions with STRICT Deduplication
+  // Calculate Base Layout Positions (With Strict Deduplication)
   const layoutNodes = useMemo(() => {
     const nodes: any[] = []
     const processedKeys = new Set<string>()
 
-    // Always exclude Name and Alias from appearing as standalone pills
     processedKeys.add('name')
+    processedKeys.add('code name')
     processedKeys.add('alias')
 
-    // 1. Top-Left Parentage Pill
-    if (data['Parentage'] && data['Parentage'] !== 'N.A.') {
-      processedKeys.add('parentage')
+    // 1. Top-Left Parentage Pill (Dynamic fetch)
+    const parentageKey = Object.keys(data).find(k => k.toLowerCase().includes('parentage') || k.toLowerCase().includes('father'));
+    if (parentageKey && data[parentageKey] && data[parentageKey] !== 'N.A.') {
+      processedKeys.add(parentageKey.toLowerCase())
       nodes.push({
         id: 'top_parentage',
         type: 'parentage_pill',
-        label: 'Parentage',
-        value: data['Parentage'],
+        label: parentageKey,
+        value: data[parentageKey],
         x: cx - 220,
         y: cy - 140,
       })
     }
 
-    // 2. Left Summary Card
-    const summaryKeys = ['Parentage', 'Date of Birth', 'Age', 'Complexion']
-    const summaryData = summaryKeys.reduce((acc, key) => {
-      if (data[key] && data[key] !== 'N.A.') {
-        acc[key] = data[key]
-        processedKeys.add(key.toLowerCase())
+    // 2. Left Summary Card (Dynamically grouped by demographic intent)
+    const summaryData: Record<string, string> = {};
+    Object.entries(data).forEach(([key, val]) => {
+      const kLow = key.toLowerCase();
+      const isDemographic = ['birth', 'dob', 'age', 'nationality', 'religion', 'caste', 'marital', 'descriptive', 'complexion'].some(term => kLow.includes(term));
+      
+      if (isDemographic && val && val !== 'N.A.' && val !== 'N.A') {
+        summaryData[key] = val;
+        processedKeys.add(kLow);
       }
-      return acc
-    }, {} as Record<string, string>)
+    });
 
     if (Object.keys(summaryData).length > 0) {
       nodes.push({
         id: 'summary_card',
         type: 'summary',
-        x: cx - 280,
+        x: cx - 300,
         y: cy + 10,
         data: summaryData,
         title: mainPerson || data['Name']?.split('@')[0].trim() || 'Target Profile',
       })
     }
 
-    // 3. Bottom-Left Facebook ID
-    const facebookKey = Object.keys(data).find(k => k.toLowerCase().includes('facebook'))
-    if (facebookKey && data[facebookKey] !== 'N.A.') {
-      processedKeys.add(facebookKey.toLowerCase())
+    // 3. Bottom-Left Facebook / Email ID
+    const socialKey = Object.keys(data).find(k => k.toLowerCase().includes('facebook') || k.toLowerCase().includes('mail') || k.toLowerCase().includes('id'));
+    if (socialKey && data[socialKey] !== 'N.A.') {
+      processedKeys.add(socialKey.toLowerCase())
       nodes.push({
         id: 'Facebook',
         type: 'social',
-        label: 'Facebook ID',
-        value: data[facebookKey],
-        x: cx - 320,
-        y: cy + 180,
+        label: socialKey,
+        value: data[socialKey],
+        x: cx - 340,
+        y: cy + 190,
       })
     }
 
-    // 4. Bottom Address & Alert Card
-    if (data['Address'] && data['Address'] !== 'N.A.') {
-      processedKeys.add('address')
-      processedKeys.add('occupation') // Grouped into the criminal alert
+    // 4. Bottom Address & Alert Card (Smart matching)
+    const addressKey = Object.keys(data).find(k => k.toLowerCase().includes('present address') || k.toLowerCase() === 'address');
+    if (addressKey && data[addressKey] !== 'N.A.') {
+      processedKeys.add(addressKey.toLowerCase())
+      processedKeys.add('permanent address') 
+      processedKeys.add('residential address during his/her studies') 
+      processedKeys.add('place of birth')
+      processedKeys.add('occupation')
+      processedKeys.add('social status')
+      
+      const isCriminal = data['Occupation']?.toLowerCase().includes('crime') || data['Social Status']?.toLowerCase().includes('criminal') || data['Social Status']?.toLowerCase().includes('gangster');
+
       nodes.push({
         id: 'Address',
         type: 'address',
-        value: data['Address'],
+        value: data[addressKey],
         x: cx - 20,
         y: cy + 240,
-        hasAlert: data['Occupation']?.toLowerCase().includes('crime'),
+        hasAlert: isCriminal,
       })
     }
 
@@ -213,47 +224,63 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
         label: 'Mark of Identification',
         value: data[markKey],
         x: cx + 240,
-        y: cy + 220,
+        y: cy + 240,
       })
     }
 
-    // 6. Right Side DYNAMIC Vertical Stack
+    // 6. Right Side DYNAMIC Vertical Stack (Enhanced for Intelligence Data)
     const rightSideEntries = Object.entries(data).filter(([k, v]) => {
       const kLow = k.toLowerCase()
-      // Strict Check: If it's already rendered anywhere above, block it here
       if (processedKeys.has(kLow)) return false
-      if (!v || v === 'N.A.') return false
+      if (!v || v === 'N.A.' || v === 'N.A') return false
       return true
     })
 
     const rightNodesConfig = rightSideEntries.map(([key, value]) => {
       const valStr = String(value);
-      const isDetail = valStr.length > 30 || key.toLowerCase().includes('record') || key.toLowerCase().includes('police');
+      const kLow = key.toLowerCase();
+      
+      // Dynamic semantic checking for detail views instead of static lists
+      const isDetail = valStr.length > 35 || 
+        ['record', 'police', 'friend', 'financer', 'qualification', 'arrest', 'network', 'hide out', 'modus', 'expertise'].some(term => kLow.includes(term));
       
       let allocatedHeight = 65; 
-      if (isDetail) allocatedHeight = 110 + Math.ceil(valStr.length / 40) * 20;
+      if (isDetail) {
+        // Precise dynamic height allocation based on character length
+        const estimatedLines = Math.ceil(valStr.length / 38);
+        allocatedHeight = 80 + (estimatedLines * 18);
+      }
       
       return { key, value: valStr, type: isDetail ? 'detail_card' : 'standard', height: allocatedHeight };
     });
 
-    const totalRightHeight = rightNodesConfig.reduce((sum, node) => sum + node.height, 0);
-    let currentY = cy - (totalRightHeight / 2) + 10; 
+    // Splitting into columns if the right side gets too long to prevent off-screen overflow
+    let currentRightY = cy - (rightNodesConfig.reduce((sum, node) => sum + node.height, 0) / 2) + 20; 
+    let currentFarRightY = currentRightY;
 
-    rightNodesConfig.forEach((nodeConfig) => {
-      const distFromCenter = Math.abs(currentY - cy);
-      const curveOffset = Math.pow(distFromCenter, 2) / 3000; 
-      const nodeX = cx + 300 + curveOffset;
-
+    rightNodesConfig.forEach((nodeConfig, index) => {
+      // Create a slight arc or second column if too many items exist
+      const isEven = index % 2 === 0;
+      const xOffset = isEven ? 320 : 610; 
+      
+      let targetY = isEven ? currentRightY : currentFarRightY;
+      const distFromCenter = Math.abs(targetY - cy);
+      const curveOffset = Math.pow(distFromCenter, 2) / 5000; 
+      
       nodes.push({
         id: `right_${nodeConfig.key}`,
         type: nodeConfig.type,
         label: nodeConfig.key,
         value: nodeConfig.value,
-        x: nodeX,
-        y: currentY,
+        x: cx + xOffset + curveOffset,
+        y: targetY,
       });
 
-      currentY += nodeConfig.height;
+      if (isEven) {
+        currentRightY += nodeConfig.height;
+      } else {
+        currentFarRightY += nodeConfig.height;
+      }
     });
 
     return nodes
@@ -268,6 +295,16 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
       y: manualPos ? manualPos.y : node.y
     }
   })
+
+  // Dynamic Icon Selector for Intelligence Cards
+  const getDetailIcon = (label: string) => {
+    const l = label.toLowerCase();
+    if (l.includes('friend') || l.includes('network') || l.includes('harbourer')) return <Users className="w-3.5 h-3.5 text-blue-600" />;
+    if (l.includes('financer') || l.includes('economic')) return <Banknote className="w-3.5 h-3.5 text-blue-600" />;
+    if (l.includes('modus') || l.includes('expertise')) return <Crosshair className="w-3.5 h-3.5 text-blue-600" />;
+    if (l.includes('arrest') || l.includes('record')) return <ShieldAlert className="w-3.5 h-3.5 text-red-600" />;
+    return <Fingerprint className="w-3.5 h-3.5 text-blue-600" />;
+  };
 
   return (
     <div
@@ -318,7 +355,7 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
               lineEndX = node.x - (node.type === 'detail_card' ? 130 : 110)
               if (node.type === 'address') lineEndY = node.y - 45
             } else {
-              if (node.type === 'summary') lineEndX = node.x + 125
+              if (node.type === 'summary') lineEndX = node.x + 135
               else if (node.type === 'social') lineEndX = node.x + 130
               else if (node.type === 'parentage_pill') lineEndX = node.x + 100
               else lineEndX = node.x + 100
@@ -394,7 +431,7 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
                     <User className="w-3.5 h-3.5 text-blue-500" />
                   </div>
                   <div className="flex flex-col pointer-events-none">
-                    <span className="text-[13px] font-bold text-slate-800 leading-tight">{node.label}</span>
+                    <span className="text-[13px] font-bold text-slate-800 leading-tight capitalize">{node.label}</span>
                     <span className="text-[12px] text-slate-600 leading-tight">{node.value}</span>
                   </div>
                 </div>
@@ -402,14 +439,14 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
 
               {/* 2. Left Summary Card */}
               {node.type === 'summary' && (
-                <div className="bg-white rounded-[14px] shadow-sm border border-slate-200 p-4 w-[250px]"
+                <div className="bg-white rounded-[14px] shadow-sm border border-slate-200 p-4 w-[270px]"
                      onClick={() => setSelectedKey(isSelected ? null : node.id)}>
                   <h3 className="text-[16px] font-bold text-slate-800 mb-2">{node.data?.title || node.title}</h3>
                   <div className="w-full h-px bg-slate-100 mb-2.5"></div>
                   <div className="space-y-1.5">
                     {node.data && Object.entries(node.data).map(([k, v]) => (
                       <div key={k} className="flex flex-row items-baseline text-[13px] pointer-events-none">
-                        <span className="text-slate-500 font-medium w-24 shrink-0">{k}:</span>
+                        <span className="text-slate-500 font-medium w-28 shrink-0 capitalize">{k.replace(/_/g, ' ')}:</span>
                         <span className="text-slate-800 font-semibold">{String(v)}</span>
                       </div>
                     ))}
@@ -440,7 +477,7 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
                 </div>
               )}
 
-              {/* 4. Bottom-Left Facebook ID Card */}
+              {/* 4. Bottom-Left Social ID Card */}
               {node.type === 'social' && (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 flex flex-col w-[260px]"
                      onClick={() => setSelectedKey(isSelected ? null : node.id)}>
@@ -448,7 +485,7 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
                     <div className="bg-[#1877F2] p-1 rounded-full">
                       <Facebook className="w-3.5 h-3.5 text-white" fill="currentColor" stroke="none" />
                     </div>
-                    <span className="text-[13px] font-bold text-slate-800">{node.label}</span>
+                    <span className="text-[13px] font-bold text-slate-800 capitalize">{node.label}</span>
                   </div>
                   <a href={node.value.startsWith('http') ? node.value : `https://${node.value}`} target="_blank" rel="noreferrer" 
                      className="text-[12px] text-blue-600 font-medium hover:underline truncate"
@@ -458,15 +495,15 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
                 </div>
               )}
 
-              {/* 5. Detail Card (Mark of ID, Police Station, etc.) */}
+              {/* 5. Detail Card (For High-Value Intelligence Data) */}
               {node.type === 'detail_card' && (
                 <div className={`bg-white rounded-xl shadow-sm border p-3 flex flex-col w-[260px] transition-colors ${isSelected ? 'border-blue-400 shadow-md' : 'border-slate-200'}`}
                      onClick={() => setSelectedKey(isSelected ? null : node.id)}>
                   <div className="flex items-center gap-2 mb-2 border-b border-slate-50 pb-1.5 pointer-events-none">
                     <div className="bg-blue-50 p-1 rounded-full shrink-0">
-                      <Fingerprint className="w-3.5 h-3.5 text-blue-600" />
+                      {getDetailIcon(node.label)}
                     </div>
-                    <span className="text-[12px] font-bold text-slate-700 leading-tight">{node.label}</span>
+                    <span className="text-[12px] font-bold text-slate-700 leading-tight capitalize">{node.label}</span>
                   </div>
                   <span className="text-[12px] text-slate-700 font-medium leading-relaxed whitespace-pre-wrap break-words pointer-events-none">
                     {node.value}
@@ -482,7 +519,7 @@ export function PersonalMindMap({ data, mainPerson, sourceId, sourceImageUrl }: 
                   }`}
                   onClick={() => setSelectedKey(isSelected ? null : node.id)}
                 >
-                  <span className="text-[13px] text-slate-500 font-medium pointer-events-none">{node.label}:</span>
+                  <span className="text-[13px] text-slate-500 font-medium pointer-events-none capitalize">{node.label}:</span>
                   <span className="text-[13px] text-slate-800 font-medium truncate pointer-events-none">
                     {node.value}
                   </span>
