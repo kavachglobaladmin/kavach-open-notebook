@@ -119,6 +119,15 @@ export const sourcesApi = {
     return response.data
   },
 
+  getProfileImage: async (sourceId: string): Promise<string | null> => {
+    try {
+      const response = await apiClient.get(`/sources/${encodeURIComponent(sourceId)}/profile-image`, { responseType: 'blob' })
+      return URL.createObjectURL(response.data)
+    } catch {
+      return null
+    }
+  },
+
   getWordCloud: async (sourceId: string) => {
     const response = await apiClient.get<{ words: { text: string; value: number }[]; source_id: string }>(`/sources/${encodeURIComponent(sourceId)}/word-cloud`)
     return response.data

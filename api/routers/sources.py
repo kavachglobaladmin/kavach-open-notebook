@@ -828,6 +828,7 @@ def _build_associates_graph(source_idx, source_title, persons, relations, activi
 async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
     """
     Comprehensive graph: persons + activities + relationships.
+    Uses docx tables directly when available for accurate person extraction.
     BERT semantic matching finds cross-doc connections.
     """
     import re as _re
@@ -838,9 +839,81 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
     all_sentences = []
 
     for source in sources:
+        # Try docx extraction first for accurate names
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
+            try:
+                profile = _extract_profile_from_docx(file_path)
+                # Build persons dict from docx profile with full details
+                persons = {}
+                main_name = profile.get('main_person', '')
+                personal = profile.get('personal', {})
+
+                # Build detail string for main person
+                detail_parts = []
+                for k in ['Parentage', 'Date Of Birth', 'Age', 'Address', 'Occupation', 'Social Status', 'Nationality']:
+                    if personal.get(k):
+                        detail_parts.append(f"{k}: {personal[k]}")
+
+                # Add main person as a person node (they ARE the subject of the document)
+                if main_name:
+                    persons[main_name.lower()] = {
+                        'label': main_name,
+                        'role': 'main',
+                        'details': ' | '.join(detail_parts),
+                        'source_title': source.title or '',
+                    }
+                for fam in profile.get('family', []):
+                    n = fam['name']
+                    if n and len(n) > 2:
+                        persons[n.lower()] = {
+                            'label': n,
+                            'role': fam['relation'],
+                            'details': fam.get('details', ''),
+                            'source_title': source.title or '',
+                        }
+                for assoc in profile.get('associates', []):
+                    n = assoc['name']
+                    if n and len(n) > 2:
+                        persons[n.lower()] = {
+                            'label': n,
+                            'role': assoc['relation'],
+                            'details': assoc.get('details', ''),
+                            'source_title': source.title or '',
+                        }
+                all_persons.append(persons)
+                # Still extract activities from text
+                text = source.full_text or ''
+                _, activities, relations = _extract_all_entities(text)
+                all_activities.append(activities)
+                all_relations.append(relations)
+                all_sentences.append(_get_sentences(text))
+                logger.info(f"[CommonGraph] DOCX '{source.title}': {len(persons)} persons, {len(activities)} activities")
+                continue
+            except Exception as e:
+                logger.warning(f"[CommonGraph] DOCX failed for '{source.title}': {e}, using text")
+
         text = source.full_text or source.title or ''
         persons, activities, relations = _extract_all_entities(text)
-        all_persons.append(persons)
+        # Filter persons — only keep entries that look like actual names
+        import re as _re
+        valid_persons = {}
+        for norm, info in persons.items():
+            label = info['label']
+            # Must be 2-5 words, each starting with capital or @
+            words = label.split()
+            if not (2 <= len(words) <= 6):
+                continue
+            if not all(w[0].isupper() or w == '@' for w in words if w.isalpha()):
+                continue
+            # Must not contain lowercase sentence words
+            if any(w[0].islower() and len(w) > 2 for w in words):
+                continue
+            # Must not be too long (sentences are long)
+            if len(label) > 50:
+                continue
+            valid_persons[norm] = info
+        all_persons.append(valid_persons)
         all_activities.append(activities)
         all_relations.append(relations)
         all_sentences.append(_get_sentences(text))
@@ -877,13 +950,73 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
         except Exception as e:
             logger.warning(f"[CommonGraph] BERT matching failed: {e}")
 
-    # ── Build unified maps ────────────────────────────────────────────────
+    # ── Build unified maps with fuzzy name matching ───────────────────────
     person_map = {}
+
+    def _normalize_name(s: str) -> str:
+        """Normalize name for fuzzy matching — lowercase, strip spaces, remove special chars."""
+        import re as _re
+        s = s.lower().strip()
+        # Remove common suffixes/prefixes that vary between docs
+        s = _re.sub(r'\s+', ' ', s)
+        # Normalize @ aliases
+        s = _re.sub(r'\s*@\s*', '@', s)
+        return s
+
+    def _names_match(n1: str, n2: str) -> bool:
+        """Check if two names refer to the same person (fuzzy match)."""
+        a, b = _normalize_name(n1), _normalize_name(n2)
+        if a == b:
+            return True
+        # One is a substring of the other
+        if len(a) > 4 and (a in b or b in a):
+            return True
+        # Split by @ and check if any part matches
+        a_parts = [p.strip() for p in a.split('@')]
+        b_parts = [p.strip() for p in b.split('@')]
+        for ap in a_parts:
+            for bp in b_parts:
+                if len(ap) > 4 and len(bp) > 4 and (ap == bp or ap in bp or bp in ap):
+                    return True
+        # First word matches (first name)
+        a_words = a.split()
+        b_words = b.split()
+        if a_words and b_words:
+            a_first = a_words[0]
+            b_first = b_words[0]
+            if len(a_first) > 4 and a_first == b_first:
+                return True
+        return False
+
     for doc_idx, persons in enumerate(all_persons):
         for norm, info in persons.items():
-            if norm not in person_map:
-                person_map[norm] = {'label': info['label'], 'role': info['role'], 'doc_indices': set()}
-            person_map[norm]['doc_indices'].add(doc_idx)
+            # Check if this person already exists under a different spelling
+            matched_key = None
+            for existing_key in person_map:
+                if _names_match(norm, existing_key):
+                    matched_key = existing_key
+                    break
+
+            if matched_key:
+                person_map[matched_key]['doc_indices'].add(doc_idx)
+                # Keep the longer/more complete name
+                if len(info['label']) > len(person_map[matched_key]['label']):
+                    person_map[matched_key]['label'] = info['label']
+                # Merge details
+                if info.get('details') and not person_map[matched_key].get('details'):
+                    person_map[matched_key]['details'] = info.get('details', '')
+            else:
+                person_map[norm] = {
+                    'label': info['label'],
+                    'role': info['role'],
+                    'details': info.get('details', ''),
+                    'source_title': info.get('source_title', ''),
+                    'doc_indices': set(),
+                }
+                person_map[norm]['doc_indices'].add(doc_idx)
+
+    logger.info(f"[CommonGraph] Person map: {len(person_map)} unique persons")
+    logger.info(f"[CommonGraph] Common persons: {[v['label'] for v in person_map.values() if len(v['doc_indices']) >= 2]}")
 
     activity_map = {}
     for doc_idx, activities in enumerate(all_activities):
@@ -927,6 +1060,8 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
             'label': ent['label'],
             'type': 'person',
             'role': ent['role'],
+            'details': ent.get('details', ''),
+            'source_title': ent.get('source_title', ''),
             'weight': len(ent['doc_indices']),
             'common': is_common,
         })
@@ -938,7 +1073,7 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
                 'weight': 1,
             })
 
-    # Activity nodes
+    # Activity nodes — kept for activity graph tab
     sorted_acts = sorted(
         activity_map.values(),
         key=lambda x: (-len(x['doc_indices']), x['label'])
@@ -1565,7 +1700,45 @@ def _is_source_file_available(source: Source) -> Optional[bool]:
     return os.path.exists(resolved_path)
 
 
-@router.get("/sources/{source_id}/profile-graph")
+@router.get("/sources/{source_id}/profile-image")
+async def get_source_profile_image(source_id: str):
+    """Extract the first embedded image from a docx source file."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        file_path = source.asset.file_path if source.asset else None
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="No file available")
+
+        if not file_path.lower().endswith(('.docx', '.doc')):
+            raise HTTPException(status_code=404, detail="Not a docx file")
+
+        try:
+            from docx import Document as DocxDocument
+            doc = DocxDocument(file_path)
+            for rel in doc.part.rels.values():
+                if 'image' in rel.reltype:
+                    img_data = rel.target_part.blob
+                    # Detect content type
+                    content_type = 'image/jpeg'
+                    if img_data[:4] == b'\x89PNG':
+                        content_type = 'image/png'
+                    elif img_data[:4] == b'GIF8':
+                        content_type = 'image/gif'
+                    return Response(content=img_data, media_type=content_type)
+        except Exception as e:
+            logger.warning(f"Could not extract image from docx: {e}")
+
+        raise HTTPException(status_code=404, detail="No image found in document")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Query(None)):
     """Extract personal details, family, and associates from a source document."""
     try:
@@ -2217,6 +2390,49 @@ def _extract_profile_from_docx(file_path: str) -> dict:
         f"[ProfileGraph] DOCX extracted: {len(personal)} personal, "
         f"{len(family)} family, {len(associates)} associates"
     )
+
+    # ── Also extract PART-III names from paragraphs ───────────────────────
+    # These are gang/associate names listed as plain text after "Associates/Groups"
+    import re as _re
+    in_associates_section = False
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        tl = text.lower()
+        # Detect section headers
+        if 'part-iii' in tl or 'associates/groups' in tl or 'gangster' in tl:
+            in_associates_section = True
+            continue
+        if 'part' in tl and ('iv' in tl or '4' in tl):
+            in_associates_section = False
+            continue
+        if in_associates_section:
+            # Skip lines that are clearly not names
+            if any(x in tl for x in ['anti gang', 'places', 'location', 'nil', 'n/a', 'besides']):
+                continue
+            # Must be short (names are short), start with capital, no sentence structure
+            if len(text) > 60:
+                continue
+            # Must look like a name: 1-4 words, each starting with capital or @
+            words = text.split()
+            if not words or len(words) > 5:
+                continue
+            # All words must start with capital or be '@'
+            if not all(w[0].isupper() or w == '@' for w in words if w.isalpha()):
+                continue
+            name = _clean(text)
+            if name and len(name) > 2:
+                # Check not already in associates
+                if not any(a['name'].lower() == name.lower() for a in associates):
+                    associates.append({
+                        'name': name,
+                        'relation': 'gang associate',
+                        'gender': _guess_gender(name, 'associate'),
+                        'details': '',
+                    })
+
+    logger.info(f"[ProfileGraph] After PART-III: {len(associates)} associates total")
 
     return {
         'personal': personal,

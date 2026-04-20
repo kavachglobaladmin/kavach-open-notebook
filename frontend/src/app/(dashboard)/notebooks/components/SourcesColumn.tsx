@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, FileText, Link2, ChevronDown, Loader2, GitFork } from 'lucide-react'
+import { Plus, FileText, Link2, ChevronDown, Loader2 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
@@ -185,7 +185,13 @@ export function SourcesColumn({
                     onClick={handleCreateCommonGraph}
                     title="Create common graph"
                   >
-                    <GitFork className="h-4 w-4" />
+                    {/* Org-chart / hierarchy icon */}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="2" width="6" height="5" rx="1"/>
+                      <rect x="2" y="17" width="6" height="5" rx="1"/>
+                      <rect x="16" y="17" width="6" height="5" rx="1"/>
+                      <path d="M12 7v4M12 11H6v3M12 11h6v3"/>
+                    </svg>
                   </Button>
                   <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                     <DropdownMenuTrigger asChild>
