@@ -355,33 +355,9 @@ export function SourceCard({
               />
             )}
 
-            {/* Mind Map button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-muted-foreground hover:text-pink-600 hover:bg-pink-50 transition-colors"
-              title="Generate Mind Map"
-              onClick={(e) => {
-                e.stopPropagation()
-                setMindMapOpen(true)
-              }}
-            >
-              <GitBranch className="h-4 w-4" />
-            </Button>
+            {/* Mind Map button - removed */}
 
-            {/* Infographic button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-muted-foreground hover:text-purple-600 hover:bg-purple-50 transition-colors"
-              title="Generate Infographic"
-              onClick={(e) => {
-                e.stopPropagation()
-                setInfographicOpen(true)
-              }}
-            >
-              <Newspaper className="h-4 w-4" />
-            </Button>
+            {/* Infographic button - removed */}
 
             {/* Profile Graph button */}
             <Button
@@ -515,7 +491,10 @@ export function SourceCard({
           onOpenChange={setProfileGraphOpen}
           sourceId={source.id}
           sourceTitle={source.title || undefined}
-          sourceImageUrl={source.asset?.url || undefined}
+          sourceImageUrl={
+            source.asset?.url ||
+            (source.asset?.file_path ? `/api/sources/${source.id}/download` : undefined)
+          }
         />
       </div>
     </Card>

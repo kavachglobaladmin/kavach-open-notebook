@@ -828,6 +828,7 @@ def _build_associates_graph(source_idx, source_title, persons, relations, activi
 async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
     """
     Comprehensive graph: persons + activities + relationships.
+    Uses docx tables directly when available for accurate person extraction.
     BERT semantic matching finds cross-doc connections.
     """
     import re as _re
@@ -838,9 +839,81 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
     all_sentences = []
 
     for source in sources:
+        # Try docx extraction first for accurate names
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
+            try:
+                profile = _extract_profile_from_docx(file_path)
+                # Build persons dict from docx profile with full details
+                persons = {}
+                main_name = profile.get('main_person', '')
+                personal = profile.get('personal', {})
+
+                # Build detail string for main person
+                detail_parts = []
+                for k in ['Parentage', 'Date Of Birth', 'Age', 'Address', 'Occupation', 'Social Status', 'Nationality']:
+                    if personal.get(k):
+                        detail_parts.append(f"{k}: {personal[k]}")
+
+                # Add main person as a person node (they ARE the subject of the document)
+                if main_name:
+                    persons[main_name.lower()] = {
+                        'label': main_name,
+                        'role': 'main',
+                        'details': ' | '.join(detail_parts),
+                        'source_title': source.title or '',
+                    }
+                for fam in profile.get('family', []):
+                    n = fam['name']
+                    if n and len(n) > 2:
+                        persons[n.lower()] = {
+                            'label': n,
+                            'role': fam['relation'],
+                            'details': fam.get('details', ''),
+                            'source_title': source.title or '',
+                        }
+                for assoc in profile.get('associates', []):
+                    n = assoc['name']
+                    if n and len(n) > 2:
+                        persons[n.lower()] = {
+                            'label': n,
+                            'role': assoc['relation'],
+                            'details': assoc.get('details', ''),
+                            'source_title': source.title or '',
+                        }
+                all_persons.append(persons)
+                # Still extract activities from text
+                text = source.full_text or ''
+                _, activities, relations = _extract_all_entities(text)
+                all_activities.append(activities)
+                all_relations.append(relations)
+                all_sentences.append(_get_sentences(text))
+                logger.info(f"[CommonGraph] DOCX '{source.title}': {len(persons)} persons, {len(activities)} activities")
+                continue
+            except Exception as e:
+                logger.warning(f"[CommonGraph] DOCX failed for '{source.title}': {e}, using text")
+
         text = source.full_text or source.title or ''
         persons, activities, relations = _extract_all_entities(text)
-        all_persons.append(persons)
+        # Filter persons — only keep entries that look like actual names
+        import re as _re
+        valid_persons = {}
+        for norm, info in persons.items():
+            label = info['label']
+            # Must be 2-5 words, each starting with capital or @
+            words = label.split()
+            if not (2 <= len(words) <= 6):
+                continue
+            if not all(w[0].isupper() or w == '@' for w in words if w.isalpha()):
+                continue
+            # Must not contain lowercase sentence words
+            if any(w[0].islower() and len(w) > 2 for w in words):
+                continue
+            # Must not be too long (sentences are long)
+            if len(label) > 50:
+                continue
+            valid_persons[norm] = info
+        all_persons.append(valid_persons)
         all_activities.append(activities)
         all_relations.append(relations)
         all_sentences.append(_get_sentences(text))
@@ -877,13 +950,73 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
         except Exception as e:
             logger.warning(f"[CommonGraph] BERT matching failed: {e}")
 
-    # ── Build unified maps ────────────────────────────────────────────────
+    # ── Build unified maps with fuzzy name matching ───────────────────────
     person_map = {}
+
+    def _normalize_name(s: str) -> str:
+        """Normalize name for fuzzy matching — lowercase, strip spaces, remove special chars."""
+        import re as _re
+        s = s.lower().strip()
+        # Remove common suffixes/prefixes that vary between docs
+        s = _re.sub(r'\s+', ' ', s)
+        # Normalize @ aliases
+        s = _re.sub(r'\s*@\s*', '@', s)
+        return s
+
+    def _names_match(n1: str, n2: str) -> bool:
+        """Check if two names refer to the same person (fuzzy match)."""
+        a, b = _normalize_name(n1), _normalize_name(n2)
+        if a == b:
+            return True
+        # One is a substring of the other
+        if len(a) > 4 and (a in b or b in a):
+            return True
+        # Split by @ and check if any part matches
+        a_parts = [p.strip() for p in a.split('@')]
+        b_parts = [p.strip() for p in b.split('@')]
+        for ap in a_parts:
+            for bp in b_parts:
+                if len(ap) > 4 and len(bp) > 4 and (ap == bp or ap in bp or bp in ap):
+                    return True
+        # First word matches (first name)
+        a_words = a.split()
+        b_words = b.split()
+        if a_words and b_words:
+            a_first = a_words[0]
+            b_first = b_words[0]
+            if len(a_first) > 4 and a_first == b_first:
+                return True
+        return False
+
     for doc_idx, persons in enumerate(all_persons):
         for norm, info in persons.items():
-            if norm not in person_map:
-                person_map[norm] = {'label': info['label'], 'role': info['role'], 'doc_indices': set()}
-            person_map[norm]['doc_indices'].add(doc_idx)
+            # Check if this person already exists under a different spelling
+            matched_key = None
+            for existing_key in person_map:
+                if _names_match(norm, existing_key):
+                    matched_key = existing_key
+                    break
+
+            if matched_key:
+                person_map[matched_key]['doc_indices'].add(doc_idx)
+                # Keep the longer/more complete name
+                if len(info['label']) > len(person_map[matched_key]['label']):
+                    person_map[matched_key]['label'] = info['label']
+                # Merge details
+                if info.get('details') and not person_map[matched_key].get('details'):
+                    person_map[matched_key]['details'] = info.get('details', '')
+            else:
+                person_map[norm] = {
+                    'label': info['label'],
+                    'role': info['role'],
+                    'details': info.get('details', ''),
+                    'source_title': info.get('source_title', ''),
+                    'doc_indices': set(),
+                }
+                person_map[norm]['doc_indices'].add(doc_idx)
+
+    logger.info(f"[CommonGraph] Person map: {len(person_map)} unique persons")
+    logger.info(f"[CommonGraph] Common persons: {[v['label'] for v in person_map.values() if len(v['doc_indices']) >= 2]}")
 
     activity_map = {}
     for doc_idx, activities in enumerate(all_activities):
@@ -927,6 +1060,8 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
             'label': ent['label'],
             'type': 'person',
             'role': ent['role'],
+            'details': ent.get('details', ''),
+            'source_title': ent.get('source_title', ''),
             'weight': len(ent['doc_indices']),
             'common': is_common,
         })
@@ -938,7 +1073,7 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
                 'weight': 1,
             })
 
-    # Activity nodes
+    # Activity nodes — kept for activity graph tab
     sorted_acts = sorted(
         activity_map.values(),
         key=lambda x: (-len(x['doc_indices']), x['label'])
@@ -1565,17 +1700,69 @@ def _is_source_file_available(source: Source) -> Optional[bool]:
     return os.path.exists(resolved_path)
 
 
-@router.get("/sources/{source_id}/profile-graph")
-async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Query(None)):
-    """Dynamically extract personal details, family, and associates using LLM."""
+@router.get("/sources/{source_id}/profile-image")
+async def get_source_profile_image(source_id: str):
+    """Extract the first embedded image from a docx source file."""
     try:
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        text = source.full_text or source.title or ''
+        file_path = source.asset.file_path if source.asset else None
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="No file available")
 
-        # Try LLM extraction first if model available
+        if not file_path.lower().endswith(('.docx', '.doc')):
+            raise HTTPException(status_code=404, detail="Not a docx file")
+
+        try:
+            from docx import Document as DocxDocument
+            doc = DocxDocument(file_path)
+            for rel in doc.part.rels.values():
+                if 'image' in rel.reltype:
+                    img_data = rel.target_part.blob
+                    # Detect content type
+                    content_type = 'image/jpeg'
+                    if img_data[:4] == b'\x89PNG':
+                        content_type = 'image/png'
+                    elif img_data[:4] == b'GIF8':
+                        content_type = 'image/gif'
+                    return Response(content=img_data, media_type=content_type)
+        except Exception as e:
+            logger.warning(f"Could not extract image from docx: {e}")
+
+        raise HTTPException(status_code=404, detail="No image found in document")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Query(None)):
+    """Extract personal details, family, and associates from a source document."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        # Try to read docx directly for best accuracy
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
+            try:
+                result = _extract_profile_from_docx(file_path)
+                result['source_id'] = source_id
+                result['source_title'] = source.title or 'Unknown'
+                logger.info(f"[ProfileGraph] DOCX: {len(result.get('personal',{}))} personal, {len(result.get('family',[]))} family, {len(result.get('associates',[]))} associates")
+                print(result)
+                return result
+            except Exception as e:
+                logger.warning(f"[ProfileGraph] DOCX extraction failed: {e}, falling back to text")
+
+        text = source.full_text or source.title or ''
+        logger.info(f"[ProfileGraph] Text extraction, length: {len(text)}")
+
+        # Try LLM if model available
         if model_id:
             try:
                 result = await _extract_profile_graph_llm(text, model_id)
@@ -1585,7 +1772,6 @@ async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Que
             except Exception as e:
                 logger.warning(f"LLM profile extraction failed: {e}, falling back to regex")
 
-        # Fallback to regex
         result = _extract_profile_graph(text)
         result['source_id'] = source_id
         result['source_title'] = source.title or 'Unknown'
@@ -1595,6 +1781,667 @@ async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Que
     except Exception as e:
         logger.error(f"Error extracting profile graph: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def extract_part_iv_structured(text: str) -> dict:
+    """
+    Fallback: extract PART IV sections from plain text using regex.
+    Used only when no DOCX file is available.
+    """
+    text = re.sub(r'[–—]', '-', text)
+    pattern = r'PART\s*-\s*IV(.*?)(?=PART\s*-\s*[VIX]+|\Z)'
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return {}
+    content = match.group(1).strip()
+    content = re.sub(r'^POINTS?\s+FOR\s+FOLLOW\s*[-–]?\s*UP\s*:[-\s]*', '', content, flags=re.IGNORECASE).strip()
+    sections = {}
+    parts = re.split(r'(?:^|\n)\s*([A-Za-z][A-Za-z\s\-/()]{2,50}:-)', content, flags=re.MULTILINE)
+    current_key = None
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if part.endswith(":-"):
+            current_key = part.replace(":-", "").strip()
+            sections[current_key] = ""
+        elif current_key:
+            sections[current_key] += part + "\n"
+    return {k: v.strip() for k, v in sections.items() if v.strip()}
+
+
+def _extract_part_iv_from_docx(file_path: str) -> dict:
+    """
+    Primary extractor: reads the DOCX directly with python-docx.
+
+    Strategy:
+    - Find the paragraph whose text matches PART IV (any dash variant).
+    - Collect all following paragraphs until the next PART heading or end.
+    - Detect sub-section headings by bold runs (e.g. "Education:-", "How he got involved in crime:-").
+    - Handles both:
+        a) Standalone heading paragraphs  ("How he got involved in crime:-")
+        b) Inline heading + content on same line  ("Education:- 12th passed from...")
+    - Strip the "Points for follow-up:" header paragraph.
+    - Return {'sections': {heading: body_text}, 'raw': full_narrative, 'found': True}
+    """
+    try:
+        from docx import Document as DocxDocument
+    except ImportError:
+        raise ImportError("python-docx not installed. Run: pip install python-docx")
+
+    doc = DocxDocument(file_path)
+    paragraphs = doc.paragraphs
+
+    # ── Step 1: locate PART IV paragraph ─────────────────────────────────
+    part4_idx = None
+    for i, para in enumerate(paragraphs):
+        if re.search(r'PART\s*[–—\-]\s*IV\b', para.text, re.IGNORECASE):
+            part4_idx = i
+            break
+
+    if part4_idx is None:
+        return {'sections': {}, 'raw': '', 'found': False}
+
+    # ── Step 2: collect paragraphs until next PART heading ────────────────
+    body_paras = []
+    for para in paragraphs[part4_idx + 1:]:
+        txt = para.text.strip()
+        if not txt:
+            continue
+        if re.match(r'^PART\s*[–—\-]\s*[VIX\d]', txt, re.IGNORECASE):
+            break
+        body_paras.append(para)
+
+    if not body_paras:
+        return {'sections': {}, 'raw': '', 'found': True}
+
+    # ── Step 3: helpers ───────────────────────────────────────────────────
+    def _para_text(para) -> str:
+        return re.sub(r'\s+', ' ', para.text).strip()
+
+    def _split_inline_heading(para):
+        """
+        If a paragraph starts with bold runs that end with ':-',
+        split it into (heading_label, remaining_content).
+        Returns (None, full_text) if no inline heading found.
+        """
+        runs = para.runs
+        heading_parts = []
+        content_start = 0
+        for idx, run in enumerate(runs):
+            if run.bold:
+                heading_parts.append(run.text)
+                content_start = idx + 1
+            else:
+                break  # first non-bold run ends the heading
+
+        heading_raw = ''.join(heading_parts).strip()
+        # Must end with :- to be a heading
+        if heading_raw.endswith(':-') or heading_raw.endswith(': -'):
+            label = re.sub(r'\s*:[-\s]*$', '', heading_raw).strip()
+            # Remaining content = all runs after the bold heading runs
+            remaining = ''.join(r.text for r in runs[content_start:]).strip()
+            remaining = re.sub(r'\s+', ' ', remaining).strip()
+            return label, remaining
+        return None, _para_text(para)
+
+    def _is_pure_heading(para) -> bool:
+        """True if the entire paragraph is a heading (all bold, ends with :-)."""
+        txt = para.text.strip()
+        if not txt:
+            return False
+        non_empty = [r for r in para.runs if r.text.strip()]
+        if not non_empty:
+            return False
+        all_bold = all(r.bold for r in non_empty)
+        ends_with_colon = txt.endswith(':-') or txt.endswith(': -')
+        # Pure heading: all bold AND ends with :- AND no sentence content after
+        if all_bold and ends_with_colon:
+            return True
+        # Or: all bold, short, no sentence punctuation (e.g. "POINTS FOR FOLLOW-UP:")
+        if all_bold and len(txt) < 80 and not re.search(r'[.!?]\s+[A-Z]', txt):
+            return True
+        return False
+
+    # ── Step 4: build sections dict and raw narrative ─────────────────────
+    sections: dict = {}
+    current_key: str | None = None
+    raw_lines: list[str] = []
+
+    # Skip the "POINTS FOR FOLLOW-UP:" header paragraph
+    start_idx = 0
+    if body_paras and re.match(r'^POINTS?\s+FOR\s+FOLLOW', body_paras[0].text, re.IGNORECASE):
+        start_idx = 1
+
+    for para in body_paras[start_idx:]:
+        txt = _para_text(para)
+        if not txt:
+            continue
+
+        if _is_pure_heading(para):
+            # Standalone heading paragraph
+            label = re.sub(r'\s*:[-\s]*$', '', txt).strip()
+            current_key = label
+            if current_key not in sections:
+                sections[current_key] = ''
+        else:
+            # Check for inline heading (bold prefix + content on same line)
+            label, content = _split_inline_heading(para)
+            if label:
+                current_key = label
+                if current_key not in sections:
+                    sections[current_key] = ''
+                if content:
+                    sections[current_key] = (sections[current_key] + '\n' + content).strip()
+                    raw_lines.append(content)
+            else:
+                # Pure content paragraph
+                raw_lines.append(txt)
+                if current_key is not None:
+                    sections[current_key] = (sections[current_key] + '\n' + txt).strip()
+
+    # Clean up section values
+    sections = {k: v.strip() for k, v in sections.items() if v.strip()}
+
+    # Raw = all non-heading content paragraphs joined with blank lines
+    raw = '\n\n'.join(raw_lines)
+
+    return {'sections': sections, 'raw': raw, 'found': True}
+
+
+@router.get("/sources/{source_id}/part-iv")
+async def get_source_part_iv(source_id: str):
+    """Extract and return structured PART IV content from a source document."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        # ── Primary path: read DOCX directly (most accurate) ─────────────
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
+            try:
+                result = _extract_part_iv_from_docx(file_path)
+                result['source_id'] = source_id
+                logger.info(
+                    f"[PartIV] DOCX extraction: found={result['found']}, "
+                    f"sections={list(result.get('sections', {}).keys())}, "
+                    f"raw_len={len(result.get('raw', ''))}"
+                )
+                return result
+            except Exception as e:
+                logger.warning(f"[PartIV] DOCX extraction failed: {e}, falling back to text")
+
+        # ── Fallback: regex on full_text ──────────────────────────────────
+        text = source.full_text or ''
+        if not text.strip():
+            return {'sections': {}, 'raw': '', 'source_id': source_id, 'found': False}
+
+        sections = extract_part_iv_structured(text)
+
+        normalized = re.sub(r'[–—]', '-', text)
+        pattern = r'PART\s*-\s*IV(.*?)(?=PART\s*-\s*[VIX]+|\Z)'
+        match = re.search(pattern, normalized, re.IGNORECASE | re.DOTALL)
+        raw_content = match.group(1).strip() if match else ''
+        raw_content = re.sub(
+            r'^POINTS?\s+FOR\s+FOLLOW\s*[-–]?\s*UP\s*:[-\s]*', '',
+            raw_content, flags=re.IGNORECASE
+        ).strip()
+
+        return {
+            'sections': sections,
+            'raw': raw_content,
+            'source_id': source_id,
+            'found': bool(match),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting Part IV for source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sources/{source_id}/word-cloud")
+async def get_source_word_cloud(source_id: str):
+    """Extract word frequency data for word cloud visualization."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        text = source.full_text or source.title or ''
+        words = _extract_word_cloud_data(text)
+        return {'words': words, 'source_id': source_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting word cloud: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# def _extract_word_cloud_data(text: str) -> list:
+#     """Extract word frequencies for word cloud, filtering stopwords."""
+#     import re as _re
+#     from collections import Counter
+
+#     # Comprehensive stopwords
+#     stopwords = {
+#         'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+#         'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'be', 'been',
+#         'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+#         'could', 'should', 'may', 'might', 'shall', 'can', 'not', 'no', 'nor',
+#         'so', 'yet', 'both', 'either', 'neither', 'each', 'few', 'more', 'most',
+#         'other', 'some', 'such', 'than', 'too', 'very', 'just', 'also', 'as',
+#         'if', 'then', 'that', 'this', 'these', 'those', 'it', 'its', 'he', 'she',
+#         'they', 'we', 'you', 'i', 'me', 'him', 'her', 'them', 'us', 'his', 'their',
+#         'our', 'your', 'my', 'who', 'which', 'what', 'when', 'where', 'how', 'why',
+#         'all', 'any', 'both', 'each', 'every', 'into', 'through', 'during', 'before',
+#         'after', 'above', 'below', 'between', 'out', 'off', 'over', 'under', 'again',
+#         'further', 'then', 'once', 'here', 'there', 'about', 'against', 'along',
+#         'around', 'because', 'while', 'although', 'however', 'therefore', 'thus',
+#         'hence', 'since', 'until', 'unless', 'whether', 'though', 'even', 'only',
+#         'also', 'back', 'up', 'down', 'said', 'told', 'asked', 'went', 'came',
+#         'got', 'get', 'go', 'come', 'take', 'make', 'know', 'see', 'look', 'use',
+#         'find', 'give', 'think', 'tell', 'become', 'show', 'leave', 'feel', 'put',
+#         'bring', 'begin', 'keep', 'hold', 'write', 'stand', 'hear', 'let', 'mean',
+#         'set', 'meet', 'run', 'pay', 'sit', 'speak', 'lie', 'lead', 'read', 'grow',
+#         'lose', 'fall', 'send', 'build', 'stay', 'reach', 'kill', 'remain', 'suggest',
+#         'raise', 'pass', 'sell', 'require', 'report', 'decide', 'pull', 'nil', 'na',
+#         'not', 'applicable', 'available', 'pending', 'trial', 'investigation', 'case',
+#         'status', 'accused', 'bailed', 'court', 'yet', 'arrested', 'police', 'station',
+#     }
+
+#     # Clean text
+#     cleaned = _re.sub(r'[^a-zA-Z\s]', ' ', text.lower())
+#     words = cleaned.split()
+
+#     # Filter: length > 3, not stopword, not purely numeric
+#     filtered = [
+#         w for w in words
+#         if len(w) > 3
+#         and w not in stopwords
+#         and not w.isnumeric()
+#         and not all(c in 'ivxlcdm' for c in w)  # skip roman numerals
+#     ]
+
+#     # Count frequencies
+#     counter = Counter(filtered)
+
+#     # Return top 80 words with frequency
+#     result = [
+#         {'text': word, 'value': count}
+#         for word, count in counter.most_common(80)
+#         if count >= 2  # only words appearing 2+ times
+#     ]
+
+#     return result
+
+def _extract_word_cloud_data(text: str) -> list:
+    """Extract word frequencies for word cloud using advanced NLP (spaCy with phrases + entities)."""
+    import re as _re
+    from collections import Counter
+    import spacy
+
+    # Load spaCy model
+    nlp = spacy.load("en_core_web_sm")
+
+    # Clean text (preserve your logic)
+    cleaned = _re.sub(r'\s+', ' ', text)
+
+    doc = nlp(cleaned)
+
+    tokens = []
+
+    # 1️⃣ Single meaningful words (same as before but improved)
+    for token in doc:
+        if (
+            token.is_alpha
+            and not token.is_stop
+            and not token.is_punct
+            and len(token.text) > 3
+            and token.pos_ in {"NOUN", "PROPN", "ADJ"}
+        ):
+            tokens.append(token.lemma_.lower())
+
+    # 2️⃣ Noun phrases (KEY improvement)
+    for chunk in doc.noun_chunks:
+        phrase = chunk.text.lower().strip()
+
+        # filter small/irrelevant chunks
+        if len(phrase) > 4 and not any(t.is_stop for t in chunk):
+            tokens.append(phrase)
+
+    # 3️⃣ Named entities (boost important real-world info)
+    for ent in doc.ents:
+        if ent.label_ in {"PERSON", "ORG", "GPE", "LOC", "LAW"}:
+            entity = ent.text.lower().strip()
+            if len(entity) > 3:
+                tokens.append(entity)
+
+    # Count frequencies
+    counter = Counter(tokens)
+
+    # Return top 80 with frequency threshold
+    result = [
+        {'text': word, 'value': count}
+        for word, count in counter.most_common(80)
+        if count >= 2
+    ]
+    print(result)
+    return result
+
+
+async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Query(None)):
+    """Extract personal details, family, and associates from a source document."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        # Try to read docx directly for best accuracy
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
+            try:
+                result = _extract_profile_from_docx(file_path)
+                result['source_id'] = source_id
+                result['source_title'] = source.title or 'Unknown'
+                logger.info(f"[ProfileGraph] DOCX: {len(result.get('personal',{}))} personal, {len(result.get('family',[]))} family, {len(result.get('associates',[]))} associates")
+                print(f"[ProfileGraph] DOCX extraction result: {result}")
+                return result
+            except Exception as e:
+                logger.warning(f"[ProfileGraph] DOCX extraction failed: {e}, falling back to text")
+
+        text = source.full_text or source.title or ''
+        logger.info(f"[ProfileGraph] Text extraction, length: {len(text)}")
+
+        # Try LLM if model available
+        if model_id:
+            try:
+                result = await _extract_profile_graph_llm(text, model_id)
+                result['source_id'] = source_id
+                result['source_title'] = source.title or 'Unknown'
+                return result
+            except Exception as e:
+                logger.warning(f"LLM profile extraction failed: {e}, falling back to regex")
+
+        result = _extract_profile_graph(text)
+        result['source_id'] = source_id
+        result['source_title'] = source.title or 'Unknown'
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting profile graph: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _extract_profile_from_docx(file_path: str) -> dict:
+    """
+    Extract profile data directly from docx tables using python-docx.
+
+    Table layout in IR documents:
+      Table 0  : Cover / interrogation report (skip)
+      Table 1  : Personal details — first cell is 'name'
+      Tables 2+ with first_cell == 'relation' : Family members
+      Tables with first_cell == 'nationality' : Associates / gang members
+
+    All tables are processed regardless of index so documents with varying
+    numbers of family/associate tables are handled correctly.
+    """
+    try:
+        from docx import Document as DocxDocument
+    except ImportError:
+        raise ImportError("python-docx not installed. Run: pip install python-docx")
+
+    doc = DocxDocument(file_path)
+    personal: dict = {}
+    family: list = []
+    associates: list = []
+    main_person: str = ''
+
+    # ── helpers ───────────────────────────────────────────────────────────
+    def _clean(s: str) -> str:
+        import re as _re
+        s = _re.sub(r'\s+', ' ', s.strip())
+        return s.rstrip('.,;:()[]').strip()
+
+    def _guess_gender(name: str, relation: str) -> str:
+        female_rel = {
+            'mother', 'wife', 'sister', 'daughter', 'aunt', 'niece',
+            'girlfriend', 'bua', 'mausi', 'nani', 'dadi', 'bhabhi',
+        }
+        male_rel = {
+            'father', 'husband', 'brother', 'son', 'uncle', 'nephew',
+            'chacha', 'mama', 'nana', 'dada', 'jija', 'sala',
+        }
+        rl = relation.lower()
+        if any(r in rl for r in female_rel):
+            return 'female'
+        if any(r in rl for r in male_rel):
+            return 'male'
+        female_sfx = ('a', 'i', 'devi', 'bai', 'kumari', 'rani', 'priya', 'lata', 'vati', 'wati')
+        if any(name.lower().endswith(s) for s in female_sfx):
+            return 'female'
+        return 'male'
+
+    # Values that mean "no data"
+    _EMPTY_VALS = {'nil', 'n/a', 'na', 'not applicable', 'not available',
+                   '-', '', 'none', 'n.a.', 'n.a', 'not known', 'unknown'}
+
+    def _is_empty(val: str) -> bool:
+        return val.lower().strip() in _EMPTY_VALS
+
+    # Fields to skip from personal details
+    _SKIP_KEYS = {
+        'previous involvements', 'fir no', 'police station', 'status of case',
+        'status of accused', 'action taken', 'source country', 'route of smuggling',
+        'carrier', 'recipient', 'repayment', 'visit to india', 'circumstances',
+        'case registered', 'tattoo image', 'deformity image', 'interrogation report',
+        'network details', 'details of hide outs',
+    }
+
+    def _should_skip_personal(key: str, val: str) -> bool:
+        kl = key.lower().strip()
+        if any(s in kl for s in _SKIP_KEYS):
+            return True
+        return _is_empty(val)
+
+    # Relations that belong to family (not associates)
+    _FAMILY_RELATIONS = {
+        'father', 'mother', 'brother', 'sister', 'son', 'daughter',
+        'wife', 'husband', 'spouse', 'uncle', 'aunt', 'bua', 'mausi',
+        'chacha', 'chachi', 'mama', 'mami', 'nana', 'nani', 'dada', 'dadi',
+        'jija', 'sala', 'sali', 'bhabhi', 'devar', 'nanad',
+    }
+
+    def _is_family_relation(relation: str) -> bool:
+        rl = relation.lower().strip()
+        return any(fr in rl for fr in _FAMILY_RELATIONS)
+
+    def _row_to_dict(table) -> dict:
+        """Convert a table's rows into a {field_lower: value} dict."""
+        d: dict = {}
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            if len(cells) < 2:
+                continue
+            key = cells[0].strip()
+            # Take last non-empty cell value (tables repeat across columns)
+            val = next((c for c in reversed(cells[1:]) if c.strip()), '')
+            val = _clean(val)
+            if key and val and not _is_empty(val):
+                d[key.lower().strip()] = val
+        return d
+
+    # ── Process each table ────────────────────────────────────────────────
+    for table in doc.tables:
+        rows = table.rows
+        if not rows:
+            continue
+
+        first_cell = rows[0].cells[0].text.strip().lower() if rows[0].cells else ''
+
+        # ── Personal details table (first cell == 'name') ─────────────────
+        if first_cell == 'name':
+            for row in rows:
+                cells = [c.text.strip() for c in row.cells]
+                if len(cells) < 2:
+                    continue
+                key = cells[0].strip()
+                val = next((c for c in reversed(cells[1:]) if c.strip()), '')
+                val = _clean(val)
+                if not key or not val or _should_skip_personal(key, val):
+                    continue
+                key_title = key.title().strip()
+                if key_title not in personal:
+                    personal[key_title] = val
+                if key.lower() in ('name', 'full name') and not main_person:
+                    main_person = val
+            continue
+
+        # ── Family / relative tables (first cell == 'relation') ───────────
+        if first_cell == 'relation':
+            d = _row_to_dict(table)
+            if not d:
+                continue
+
+            relation = d.get('relation', 'relative')
+            # Name & Age field (common IR format: "Anar Singh, age 48 years")
+            name_age = d.get('name & age', d.get('name', ''))
+            name = name_age.split(',')[0].strip() if name_age else ''
+            age_raw = name_age.split(',')[1].strip() if ',' in name_age else ''
+
+            if not name or len(name) < 2:
+                continue
+
+            # Build details string
+            details_parts: list[str] = []
+            if age_raw:
+                details_parts.append(f"Age: {age_raw}")
+            if d.get('parentage'):
+                details_parts.append(f"Parentage: {d['parentage']}")
+            if d.get('address'):
+                details_parts.append(f"Address: {d['address']}")
+            if d.get('occupation'):
+                details_parts.append(f"Occupation: {d['occupation']}")
+            if d.get('contact no.') or d.get('contact'):
+                details_parts.append(f"Contact: {d.get('contact no.') or d.get('contact', '')}")
+            if d.get('education'):
+                details_parts.append(f"Education: {d['education']}")
+
+            entry = {
+                'name': name,
+                'relation': relation.lower().strip(),
+                'gender': _guess_gender(name, relation),
+                'details': ' | '.join(details_parts),
+            }
+
+            if _is_family_relation(relation):
+                family.append(entry)
+            else:
+                associates.append(entry)
+            continue
+
+        # ── Associate tables (first cell == 'nationality') ────────────────
+        if first_cell == 'nationality':
+            d = _row_to_dict(table)
+            if not d:
+                continue
+
+            name_age = d.get('name & age', d.get('name', ''))
+            name = name_age.split(',')[0].strip() if name_age else ''
+            age_raw = name_age.split(',')[1].strip() if ',' in name_age else ''
+
+            if not name or len(name) < 2:
+                continue
+
+            relation = d.get('description', d.get('relation', 'associate'))
+            if not relation or _is_empty(relation):
+                relation = 'associate'
+
+            # Build rich details string
+            details_parts = []
+            if age_raw:
+                details_parts.append(f"Age: {age_raw}")
+            if d.get('parentage'):
+                details_parts.append(f"S/O {d['parentage']}")
+            if d.get('address'):
+                details_parts.append(f"Address: {d['address']}")
+            if d.get('occupation'):
+                details_parts.append(f"Occupation: {d['occupation']}")
+            if d.get('nationality') and not _is_empty(d['nationality']):
+                details_parts.append(f"Nationality: {d['nationality']}")
+            if d.get('fir no') and not _is_empty(d['fir no']):
+                details_parts.append(f"FIR: {d['fir no']}")
+            if d.get('police station') and not _is_empty(d['police station']):
+                details_parts.append(f"PS: {d['police station']}")
+            if d.get('status of accused') and not _is_empty(d['status of accused']):
+                details_parts.append(f"Status: {d['status of accused']}")
+
+            associates.append({
+                'name': name,
+                'relation': relation.lower().strip(),
+                'gender': _guess_gender(name, relation),
+                'details': ' | '.join(details_parts),
+            })
+            continue
+
+    logger.info(
+        f"[ProfileGraph] DOCX extracted: {len(personal)} personal, "
+        f"{len(family)} family, {len(associates)} associates"
+    )
+
+    # ── Also extract PART-III names from paragraphs ───────────────────────
+    # These are gang/associate names listed as plain text after "Associates/Groups"
+    import re as _re
+    in_associates_section = False
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        tl = text.lower()
+        # Detect section headers
+        if 'part-iii' in tl or 'associates/groups' in tl or 'gangster' in tl:
+            in_associates_section = True
+            continue
+        if 'part' in tl and ('iv' in tl or '4' in tl):
+            in_associates_section = False
+            continue
+        if in_associates_section:
+            # Skip lines that are clearly not names
+            if any(x in tl for x in ['anti gang', 'places', 'location', 'nil', 'n/a', 'besides']):
+                continue
+            # Must be short (names are short), start with capital, no sentence structure
+            if len(text) > 60:
+                continue
+            # Must look like a name: 1-4 words, each starting with capital or @
+            words = text.split()
+            if not words or len(words) > 5:
+                continue
+            # All words must start with capital or be '@'
+            if not all(w[0].isupper() or w == '@' for w in words if w.isalpha()):
+                continue
+            name = _clean(text)
+            if name and len(name) > 2:
+                # Check not already in associates
+                if not any(a['name'].lower() == name.lower() for a in associates):
+                    associates.append({
+                        'name': name,
+                        'relation': 'gang associate',
+                        'gender': _guess_gender(name, 'associate'),
+                        'details': '',
+                    })
+
+    logger.info(f"[ProfileGraph] After PART-III: {len(associates)} associates total")
+
+    return {
+        'personal': personal,
+        'family': family,
+        'associates': associates,
+        'main_person': main_person or personal.get('Name', ''),
+    }
+
+
 
 
 async def _extract_profile_graph_llm(text: str, model_id: str) -> dict:
@@ -1735,8 +2582,8 @@ IMPORTANT:
 
 def _extract_profile_graph(text: str) -> dict:
     """
-    Comprehensive regex extraction from IR documents.
-    Extracts ALL fields present — not just predefined ones.
+    Comprehensive extraction from IR documents (table-based docx format).
+    Handles: Field | Value table rows, section-based content, narrative text.
     """
     import re as _re
 
@@ -1747,7 +2594,7 @@ def _extract_profile_graph(text: str) -> dict:
 
     def _guess_gender(name: str, relation: str) -> str:
         female_rel = {'mother', 'wife', 'sister', 'daughter', 'aunt', 'niece', 'girlfriend', 'smt', 'km', 'beti', 'behen', 'mata'}
-        male_rel = {'father', 'husband', 'brother', 'son', 'uncle', 'nephew', 'boyfriend', 'sh', 'shri', 'beta', 'bhai', 'pita'}
+        male_rel = {'father', 'husband', 'brother', 'son', 'uncle', 'nephew', 'boyfriend', 'sh', 'shri', 'beta', 'bhai', 'pita', 'parentage'}
         rl = relation.lower()
         if any(r in rl for r in female_rel): return 'female'
         if any(r in rl for r in male_rel): return 'male'
@@ -1762,7 +2609,7 @@ def _extract_profile_graph(text: str) -> dict:
     def _take_name(raw: str) -> str:
         words = raw.strip().split()[:5]
         clean = []
-        bl = {'unknown', 'nil', 'n/a', 'na', 'not', 'available', 'mentioned', 'none', '-'}
+        bl = {'unknown', 'nil', 'n/a', 'na', 'not', 'available', 'mentioned', 'none', '-', 'r/o', 's/o', 'd/o', 'w/o'}
         for w in words:
             alpha = _re.sub(r'[^a-zA-Z@]', '', w)
             if not alpha or alpha.lower() in bl: break
@@ -1771,134 +2618,199 @@ def _extract_profile_graph(text: str) -> dict:
         while clean and clean[-1] == '@': clean.pop()
         return ' '.join(clean).strip()
 
-    # ── Step 1: Extract ALL "Field: Value" pairs dynamically ──────────────
-    # This catches ANY field in the document, not just predefined ones
-    field_value_pattern = _re.compile(
-        r'^([A-Za-z][A-Za-z\s/\(\)]{1,40}?)\s*[:\-]\s*(.+)$',
-        _re.MULTILINE
-    )
+    def _add_family(name: str, relation: str):
+        n = _take_name(name)
+        if n and n.lower() not in seen and len(n) > 2:
+            seen.add(n.lower())
+            family.append({'name': n, 'relation': relation, 'gender': _guess_gender(n, relation), 'details': ''})
 
-    # Fields to skip (they are not personal details)
+    def _add_associate(name: str, relation: str, details: str = ''):
+        n = _take_name(name)
+        if n and n.lower() not in seen and len(n) > 2:
+            seen.add(n.lower())
+            associates.append({'name': n, 'relation': relation, 'gender': _guess_gender(n, relation), 'details': details})
+
+    # ── Step 1: Parse table rows (Field | Value format from docx) ─────────
+    # The docx tables get extracted as "Field | Value | Value | Value" lines
+    # or as "Field\nValue" pairs
+    lines = text.split('\n')
+    current_section = ''
+
+    # Fields to skip (non-personal)
     skip_fields = {
-        'note', 'remarks', 'description', 'summary', 'details', 'information',
-        'subject', 'report', 'date', 'time', 'place', 'location', 'source',
-        'reference', 'sr no', 'serial', 'sl no', 'page', 'section',
+        'note', 'remarks', 'description', 'summary', 'information',
+        'subject', 'report', 'reference', 'sr no', 'serial', 'sl no', 'page',
+        'previous involvements', 'status of case', 'status of accused',
+        'fir no', 'police station', 'action taken', 'source country',
+        'route of smuggling', 'carrier', 'recipient', 'repayment',
+        'visit to india', 'circumstances', 'case registered',
+        'interrogation report', 'tattoo image', 'deformity image',
     }
 
-    # Multi-line field accumulator (for address etc.)
-    lines = text.split('\n')
-    current_field = None
-    current_value_parts = []
-    current_person_name = None
+    # Family field names
+    family_fields = {
+        'parentage': 'father', 'father': 'father', 'mother': 'mother',
+        'wife': 'wife', 'husband': 'husband', 'brother': 'brother',
+        'sister': 'sister', 'son': 'son', 'daughter': 'daughter',
+        'spouse': 'spouse',
+    }
 
-    def _flush_field():
-        nonlocal current_field, current_value_parts
-        if current_field and current_value_parts:
-            val = _clean(' '.join(current_value_parts))
-            if val and val.lower() not in ('nil', 'n/a', 'na', 'unknown', '-', 'none', ''):
-                personal[current_field] = val
-                if current_field.lower() in ('name', 'full name') and not current_person_name:
-                    pass  # handled below
-        current_field = None
-        current_value_parts = []
+    # Associate/friend field names
+    associate_fields = {
+        'details of close friends during studies': 'friend',
+        'close friends': 'friend',
+        'friends': 'friend',
+        'associates': 'associate',
+        'known associates': 'associate',
+        'gang members': 'gang member',
+    }
 
     for line in lines:
         line_stripped = line.strip()
         if not line_stripped:
-            _flush_field()
             continue
 
-        # Check if this line is a "Field: Value" pattern
-        m = _re.match(r'^([A-Za-z][A-Za-z\s/\(\)\.]{1,40}?)\s*[:\-]\s*(.+)$', line_stripped, _re.IGNORECASE)
+        # Detect section headers
+        line_lower = line_stripped.lower()
+        if 'part-ii' in line_lower or 'family member' in line_lower:
+            current_section = 'family'
+            continue
+        elif 'part-iii' in line_lower or 'associates/groups' in line_lower or 'gangster' in line_lower:
+            current_section = 'associates'
+            continue
+        elif 'part-iv' in line_lower or 'points for follow' in line_lower:
+            current_section = 'narrative'
+            continue
+        elif 'part-1' in line_lower or 'personal details' in line_lower:
+            current_section = 'personal'
+            continue
+        elif 'friends/associates' in line_lower:
+            current_section = 'friends'
+            continue
+
+        # In associates section — each line is a name
+        if current_section == 'associates':
+            if line_stripped and not line_stripped.startswith('Anti') and not line_stripped.startswith('Places'):
+                _add_associate(line_stripped, 'associate')
+            continue
+
+        if current_section == 'friends':
+            if line_stripped:
+                _add_associate(line_stripped, 'friend')
+            continue
+
+        # Parse "Field: Value" or "Field | Value" patterns
+        # Handle pipe-separated table rows
+        if '|' in line_stripped:
+            parts = [p.strip() for p in line_stripped.split('|')]
+            if len(parts) >= 2:
+                field_raw = parts[0]
+                # Take the last non-empty value (tables repeat values across columns)
+                value_raw = next((p for p in reversed(parts[1:]) if p.strip()), '')
+                if field_raw and value_raw:
+                    field_lower = field_raw.lower().strip()
+                    # Skip unwanted fields
+                    if any(s in field_lower for s in skip_fields):
+                        continue
+                    val = _clean(value_raw)
+                    if val and val.lower() not in ('nil', 'n/a', 'na', 'unknown', '-', 'none', ''):
+                        field_name = _re.sub(r'\s+', ' ', field_raw).title()
+                        # Check if it's a family field
+                        for fk, rel in family_fields.items():
+                            if fk in field_lower:
+                                _add_family(val, rel)
+                                break
+                        # Check if it's an associate field
+                        for ak, rel in associate_fields.items():
+                            if ak in field_lower:
+                                # Multiple names separated by newlines
+                                for name_line in val.split('\n'):
+                                    name_line = name_line.strip()
+                                    if name_line:
+                                        _add_associate(name_line, rel)
+                                break
+                        else:
+                            # Regular personal field
+                            if field_name not in personal:
+                                personal[field_name] = val
+            continue
+
+        # Parse "Field: Value" lines
+        m = _re.match(r'^([A-Za-z][A-Za-z\s/\(\)\.]{1,50}?)\s*[:\-]\s*(.+)$', line_stripped, _re.IGNORECASE)
         if m:
             field_raw = m.group(1).strip()
             value_raw = m.group(2).strip()
             field_lower = field_raw.lower().strip()
 
-            # Skip non-personal fields
             if any(s in field_lower for s in skip_fields):
-                _flush_field()
                 continue
 
-            # Flush previous field
-            _flush_field()
+            val = _clean(value_raw)
+            if not val or val.lower() in ('nil', 'n/a', 'na', 'unknown', '-', 'none', ''):
+                continue
 
-            # Normalize field name
             field_name = _re.sub(r'\s+', ' ', field_raw).title()
 
-            val = _clean(value_raw)
-            if val and val.lower() not in ('nil', 'n/a', 'na', 'unknown', '-', 'none', ''):
-                current_field = field_name
-                current_value_parts = [val]
+            # Family fields
+            for fk, rel in family_fields.items():
+                if fk in field_lower:
+                    _add_family(val, rel)
+                    break
+            # Associate fields
+            for ak, rel in associate_fields.items():
+                if ak in field_lower:
+                    for name_line in val.split('\n'):
+                        if name_line.strip():
+                            _add_associate(name_line.strip(), rel)
+                    break
+            else:
+                if field_name not in personal:
+                    personal[field_name] = val
 
-                # Track main person name
-                if field_lower in ('name', 'full name', 'accused', 'victim', 'complainant') and not current_person_name:
-                    current_person_name = _take_name(val)
+    # ── Step 2: Extract from narrative (PART-IV) ──────────────────────────
+    # Find names mentioned with S/O, R/O patterns in narrative
+    narrative_start = text.find('PART – IV')
+    if narrative_start == -1:
+        narrative_start = text.find('PART-IV')
+    if narrative_start == -1:
+        narrative_start = text.find('Points for follow')
 
-        elif current_field and line_stripped and not line_stripped.startswith('#'):
-            # Continuation of previous field value (e.g. multi-line address)
-            current_value_parts.append(line_stripped)
+    if narrative_start != -1:
+        narrative = text[narrative_start:]
+        # Extract S/O patterns (family)
+        for m in _re.finditer(r'([A-Z][a-zA-Z\s@]{2,30})\s+S/O\s+([A-Z][a-zA-Z\s]{2,30})', narrative):
+            person = _take_name(m.group(1))
+            parent = _take_name(m.group(2))
+            if person and parent and person.lower() not in seen:
+                _add_associate(person, 'associate')
+            if parent and parent.lower() not in seen:
+                _add_family(parent, 'father')
 
-    _flush_field()
+        # Extract R/O patterns (associates with location)
+        for m in _re.finditer(r'([A-Z][a-zA-Z\s@]{2,30})\s+R/[Oo]\s+([A-Z][a-zA-Z\s,]{2,60})', narrative):
+            person = _take_name(m.group(1))
+            if person and person.lower() not in seen:
+                location = m.group(2).strip()[:50]
+                _add_associate(person, 'associate', f'R/O {location}')
 
-    # ── Step 2: Extract family relationships ──────────────────────────────
-    for line in lines:
-        line = line.strip()
-        if not line: continue
+    # ── Step 3: Get main person name ──────────────────────────────────────
+    main_person = (
+        personal.get('Name', '') or
+        personal.get('Accused', '') or
+        personal.get('Victim', '') or
+        personal.get('Complainant', '')
+    )
 
-        for pat, relation in [
-            (r'\bS/O\s+([A-Z][a-zA-Z\s@]{2,40})', 'father'),
-            (r'\bD/O\s+([A-Z][a-zA-Z\s@]{2,40})', 'father'),
-            (r'\bW/O\s+([A-Z][a-zA-Z\s@]{2,40})', 'husband'),
-            (r'\bSon\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'father'),
-            (r'\bDaughter\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'father'),
-            (r'\bWife\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'husband'),
-            (r'\bBrother\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'brother'),
-            (r'\bSister\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'sister'),
-            (r'\bMother\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'mother'),
-            (r'\bFather\s+of\s+([A-Z][a-zA-Z\s@]{2,40})', 'father'),
-            (r'^(?:Father|Papa|Pita)\s*[:\-]\s*(.+)', 'father'),
-            (r'^(?:Mother|Maa|Mata)\s*[:\-]\s*(.+)', 'mother'),
-            (r'^(?:Wife|Patni|Spouse)\s*[:\-]\s*(.+)', 'wife'),
-            (r'^(?:Husband|Pati)\s*[:\-]\s*(.+)', 'husband'),
-            (r'^(?:Brother|Bhai)\s*[:\-]\s*(.+)', 'brother'),
-            (r'^(?:Sister|Behen)\s*[:\-]\s*(.+)', 'sister'),
-            (r'^(?:Son|Beta)\s*[:\-]\s*(.+)', 'son'),
-            (r'^(?:Daughter|Beti)\s*[:\-]\s*(.+)', 'daughter'),
-            (r'^(?:Parentage)\s*[:\-]\s*(.+)', 'father'),
-        ]:
-            for m in _re.finditer(pat, line, _re.IGNORECASE):
-                name = _take_name(m.group(1))
-                if name and name.lower() not in seen:
-                    seen.add(name.lower())
-                    family.append({'name': name, 'relation': relation, 'gender': _guess_gender(name, relation), 'details': ''})
-
-    # ── Step 3: Extract associates ────────────────────────────────────────
-    for line in lines:
-        line = line.strip()
-        if not line: continue
-
-        for pat, relation in [
-            (r'\b(?:associate|associates)\s+(?:of\s+)?([A-Z][a-zA-Z\s@]{2,40})', 'associate'),
-            (r'\b(?:gang\s+member|gang\s+associate)\s+([A-Z][a-zA-Z\s@]{2,40})', 'gang member'),
-            (r'\b(?:friend|close\s+friend)\s+(?:of\s+)?([A-Z][a-zA-Z\s@]{2,40})', 'friend'),
-            (r'\b(?:co-accused|co\s+accused)\s+([A-Z][a-zA-Z\s@]{2,40})', 'co-accused'),
-            (r'\b(?:partner|accomplice)\s+(?:of\s+)?([A-Z][a-zA-Z\s@]{2,40})', 'accomplice'),
-        ]:
-            for m in _re.finditer(pat, line, _re.IGNORECASE):
-                name = _take_name(m.group(1))
-                if name and name.lower() not in seen:
-                    seen.add(name.lower())
-                    associates.append({'name': name, 'relation': relation, 'gender': _guess_gender(name, relation), 'details': ''})
-
-    logger.info(f"[ProfileGraph] Regex extracted: {len(personal)} personal fields, {len(family)} family, {len(associates)} associates")
-    logger.info(f"[ProfileGraph] Personal fields: {list(personal.keys())}")
+    logger.info(f"[ProfileGraph] Extracted: {len(personal)} personal, {len(family)} family, {len(associates)} associates")
+    logger.info(f"[ProfileGraph] Personal keys: {list(personal.keys())[:10]}")
+    logger.info(f"[ProfileGraph] Family: {[f['name'] for f in family]}")
+    logger.info(f"[ProfileGraph] Associates: {[a['name'] for a in associates[:5]]}")
 
     return {
         'personal': personal,
         'family': family,
         'associates': associates,
-        'main_person': current_person_name or personal.get('Name', personal.get('Accused', personal.get('Victim', ''))),
+        'main_person': main_person,
     }
 
 @router.get("/sources/{source_id}", response_model=SourceResponse)

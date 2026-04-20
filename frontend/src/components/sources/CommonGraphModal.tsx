@@ -59,6 +59,46 @@ const ACTIVITY_TYPE_COLORS: Record<string, string> = {
   event: '#8b5cf6',
 }
 
+// Draw male silhouette
+function drawMaleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) {
+  ctx.fillStyle = color
+  // Head
+  ctx.beginPath(); ctx.arc(x, y - r * 0.22, r * 0.32, 0, 2 * Math.PI); ctx.fill()
+  // Body (shirt shape)
+  ctx.beginPath()
+  ctx.moveTo(x - r * 0.35, y + r * 0.1)
+  ctx.lineTo(x - r * 0.42, y + r * 0.55)
+  ctx.lineTo(x + r * 0.42, y + r * 0.55)
+  ctx.lineTo(x + r * 0.35, y + r * 0.1)
+  ctx.quadraticCurveTo(x, y + r * 0.0, x - r * 0.35, y + r * 0.1)
+  ctx.fill()
+}
+
+// Draw female silhouette
+function drawFemaleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string) {
+  ctx.fillStyle = color
+  // Head
+  ctx.beginPath(); ctx.arc(x, y - r * 0.22, r * 0.3, 0, 2 * Math.PI); ctx.fill()
+  // Dress (triangle shape)
+  ctx.beginPath()
+  ctx.moveTo(x - r * 0.18, y + r * 0.05)
+  ctx.lineTo(x - r * 0.45, y + r * 0.58)
+  ctx.lineTo(x + r * 0.45, y + r * 0.58)
+  ctx.lineTo(x + r * 0.18, y + r * 0.05)
+  ctx.quadraticCurveTo(x, y - r * 0.02, x - r * 0.18, y + r * 0.05)
+  ctx.fill()
+}
+
+function guessGender(role: string, label: string): 'male' | 'female' {
+  const femaleRoles = ['mother', 'wife', 'sister', 'daughter', 'aunt', 'niece', 'girlfriend', 'female', 'victim']
+  const femaleNames = ['devi', 'bai', 'kumari', 'rani', 'priya', 'lata', 'poonam', 'nikita', 'anuradha', 'smt', 'km']
+  const rl = (role || '').toLowerCase()
+  const ll = (label || '').toLowerCase()
+  if (femaleRoles.some((r) => rl.includes(r))) return 'female'
+  if (femaleNames.some((n) => ll.includes(n))) return 'female'
+  return 'male'
+}
+
 type GraphNode = {
   id: string
   label: string
@@ -67,6 +107,9 @@ type GraphNode = {
   weight?: number
   role?: string
   activity_type?: string
+  details?: string
+  source_title?: string
+  source_id?: string
   x?: number
   y?: number
 }
@@ -84,12 +127,43 @@ function getNodeId(n: string | GraphNode): string {
   return typeof n === 'string' ? n : n.id
 }
 
-function NetworkGraphViewer({ graph }: { graph: GraphData }) {
+function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mode?: 'persons' | 'activities' }) {
   const graphRef = useRef<ForceGraphMethods | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
+  const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null)
+  const nodeImageStore = useRef<Map<string, string>>(new Map())
+  const [uploadedImages, setUploadedImages] = useState<Map<string, string>>(new Map())
+  const [nodeImages, setNodeImages] = useState<Map<string, HTMLImageElement>>(new Map())
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Load images for main person nodes from their source files
+  useEffect(() => {
+    const mainPersons = graph.nodes.filter((n) => n.type === 'person' && n.role === 'main')
+    mainPersons.forEach((p) => {
+      if (nodeImages.has(p.id)) return
+      // Find source index for this person
+      const link = graph.links.find((l) => {
+        const s = getNodeId(l.source), t = getNodeId(l.target)
+        return (t === p.id && s.startsWith('source:')) || (s === p.id && t.startsWith('source:'))
+      })
+      if (!link) return
+      const srcId = getNodeId(link.source).startsWith('source:') ? getNodeId(link.source) : getNodeId(link.target)
+      const srcNode = graph.nodes.find((n) => n.id === srcId)
+      if (!srcNode?.source_id) return
+
+      sourcesApi.getProfileImage(srcNode.source_id).then((url) => {
+        if (!url) return
+        const img = new Image()
+        img.onload = () => {
+          setNodeImages((prev) => new Map(prev).set(p.id, img))
+        }
+        img.src = url
+      }).catch(() => {})
+    })
+  }, [graph])
 
   const connectedNodeIds = useMemo(() => {
     if (!hoverNode) return new Set<string>()
@@ -116,47 +190,238 @@ function NetworkGraphViewer({ graph }: { graph: GraphData }) {
   useEffect(() => {
     const fg = graphRef.current
     if (!fg) return
-    fg.d3Force('charge')?.strength(-500)
-    fg.d3Force('link')?.distance(180)
+    // Very strong repulsion + large link distance to prevent overlap
+    fg.d3Force('charge')?.strength(-2000)
+    fg.d3Force('link')?.distance(250)
+    // Add collision force via d3
+    try {
+      const sim = (fg as any).d3Force('collision')
+      if (!sim) {
+        // Try to add collision force
+        const fgAny = fg as any
+        if (fgAny.d3Force) {
+          // Use the internal simulation
+          const charge = fgAny.d3Force('charge')
+          if (charge) {
+            // Increase min distance
+            charge.distanceMin?.(30)
+          }
+        }
+      }
+    } catch {}
   }, [dimensions])
+
+  // Convert canvas node position to screen position
+  const nodeToScreen = useCallback((node: GraphNode) => {
+    const fg = graphRef.current as any
+    const el = containerRef.current
+    if (!fg || !el || !node.x || !node.y) return null
+    try {
+      const { x: cx, y: cy } = fg.graph2ScreenCoords(node.x, node.y)
+      return { x: cx, y: cy }
+    } catch { return null }
+  }, [])
+
+  const handleNodeClick = useCallback((node: any) => {
+    const n = node as GraphNode
+    if (selectedNode?.id === n.id) {
+      setSelectedNode(null); setPopupPos(null); return
+    }
+    setSelectedNode(n)
+    const pos = nodeToScreen(n)
+    setPopupPos(pos)
+  }, [selectedNode, nodeToScreen])
+
+  const handleUploadImage = useCallback((nodeId: string, file: File) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const url = e.target?.result as string
+      nodeImageStore.current.set(nodeId, url)
+      setUploadedImages((prev) => new Map(prev).set(nodeId, url))
+    }
+    reader.readAsDataURL(file)
+  }, [])
 
   const getSourceIdx = useCallback((nodeId: string) => {
     const m = nodeId.match(/^source:(\d+)$/)
-    return m ? parseInt(m[1]) : 0
-  }, [])
+    if (m) return parseInt(m[1])
+    // For person nodes, find which source they connect to in the original graph
+    const link = graph.links.find((l) => {
+      const s = getNodeId(l.source), t = getNodeId(l.target)
+      return (t === nodeId && s.startsWith('source:')) || (s === nodeId && t.startsWith('source:'))
+    })
+    if (link) {
+      const srcId = getNodeId(link.source).startsWith('source:') ? getNodeId(link.source) : getNodeId(link.target)
+      const m2 = srcId.match(/^source:(\d+)$/)
+      if (m2) return parseInt(m2[1])
+    }
+    return 0
+  }, [graph])
+
+  // Filter graph based on mode
+  const filteredGraph = useMemo((): GraphData => {
+    if (mode === 'persons') {
+      // Show ALL persons from both files (source + person + relative)
+      const allowedTypes = new Set(['source', 'person', 'relative'])
+      const filteredNodes = graph.nodes.filter((n) => allowedTypes.has(n.type))
+      const allowedIds = new Set(filteredNodes.map((n) => n.id))
+      const filteredLinks = graph.links.filter((l) => {
+        const s = getNodeId(l.source), t = getNodeId(l.target)
+        return allowedIds.has(s) && allowedIds.has(t)
+      })
+      // Add cross-source links for common persons
+      const extraLinks: GraphLink[] = []
+      const commonPersons = filteredNodes.filter((n) => n.type === 'person' && n.common)
+      // Connect common persons to both source nodes
+      const sourceNodes = filteredNodes.filter((n) => n.type === 'source')
+      if (sourceNodes.length >= 2) {
+        commonPersons.forEach((p) => {
+          // Check if already connected to both sources
+          const connectedSources = filteredLinks
+            .filter((l) => getNodeId(l.target) === p.id || getNodeId(l.source) === p.id)
+            .map((l) => getNodeId(l.source) === p.id ? getNodeId(l.target) : getNodeId(l.source))
+            .filter((id) => id.startsWith('source:'))
+          // If only connected to one source, add link to the other
+          sourceNodes.forEach((src) => {
+            if (!connectedSources.includes(src.id)) {
+              extraLinks.push({ source: src.id, target: p.id, type: 'common_link', weight: 1 })
+            }
+          })
+        })
+      }
+      return { nodes: filteredNodes, links: [...filteredLinks, ...extraLinks] }
+    } else {
+      // Only source + activity nodes
+      const allowedTypes = new Set(['source', 'activity'])
+      const filteredNodes = graph.nodes.filter((n) => allowedTypes.has(n.type))
+      const allowedIds = new Set(filteredNodes.map((n) => n.id))
+      const filteredLinks = graph.links.filter((l) => {
+        const s = getNodeId(l.source), t = getNodeId(l.target)
+        return allowedIds.has(s) && allowedIds.has(t)
+      })
+      return { nodes: filteredNodes, links: filteredLinks }
+    }
+  }, [graph, mode])
 
   const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D) => {
+    if (!isFinite(node.x) || !isFinite(node.y)) return
     const isHovered = hoverNode?.id === node.id
     const isConnected = connectedNodeIds.has(node.id)
-    const dimmed = hoverNode && !isHovered && !isConnected
+    const dimmed = !!(hoverNode && !isHovered && !isConnected)
     const isSource = node.type === 'source'
-    const isPerson = node.type === 'person'
-    const isRelative = node.type === 'relative'
+    const isPerson = node.type === 'person' || node.type === 'relative'
     const isActivity = node.type === 'activity'
-    const radius = isSource ? 36 : isPerson ? (node.common ? 22 : 18) : isRelative ? 14 : isActivity ? (node.common ? 18 : 14) : 16
+    const isCommon = node.common === true
+    const radius = isSource ? 36 : isPerson ? (isCommon ? 28 : 22) : isActivity ? (isCommon ? 18 : 14) : 16
 
-    ctx.globalAlpha = dimmed ? 0.08 : 1
-    const nodeColor = isActivity
-      ? (ACTIVITY_TYPE_COLORS[node.activity_type || ''] || '#f59e0b')
-      : (NODE_TYPE_COLORS[node.type] || '#94a3b8')
-    if (isHovered) { ctx.shadowColor = nodeColor; ctx.shadowBlur = 28 }
+    ctx.globalAlpha = dimmed ? 0.2 : 1
 
-    ctx.beginPath()
-    ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI)
-    if (isSource) ctx.fillStyle = SOURCE_LINK_COLORS[getSourceIdx(node.id) % SOURCE_LINK_COLORS.length].glow
-    else if (isPerson) ctx.fillStyle = node.common ? '#0ea5e9' : 'rgba(14,165,233,0.7)'
-    else if (isRelative) ctx.fillStyle = 'rgba(34,197,94,0.85)'
-    else if (isActivity) ctx.fillStyle = ACTIVITY_TYPE_COLORS[node.activity_type || ''] || '#f59e0b'
-    else ctx.fillStyle = node.common ? 'rgba(148,163,184,0.95)' : 'rgba(100,116,139,0.7)'
-    ctx.fill()
-    ctx.strokeStyle = isHovered ? '#fff' : 'rgba(255,255,255,0.25)'
-    ctx.lineWidth = isHovered ? 2.5 : (node.common ? 1.5 : 0.8)
-    ctx.stroke()
-    ctx.shadowBlur = 0
+    if (isPerson) {
+      const gender = guessGender(node.role || '', node.label || '')
+      const hash = node.id.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)
 
-    const label = node.label || ''
-    if (isSource) {
-      const words = label.replace(/\.docx?$/i, '').split(/[\s_-]+/)
+      // Avatar color palette
+      const bgColors = gender === 'female'
+        ? ['#fce7f3', '#fdf2f8', '#ffe4e6', '#fef3c7', '#f0fdf4', '#eff6ff', '#f5f3ff']
+        : ['#dbeafe', '#e0f2fe', '#dcfce7', '#f0fdf4', '#eff6ff', '#f5f3ff', '#fef9c3']
+      const shirtColors = gender === 'female'
+        ? ['#ec4899', '#f43f5e', '#a855f7', '#8b5cf6', '#06b6d4', '#10b981', '#f97316']
+        : ['#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#0891b2', '#059669', '#dc2626']
+      const skinColors = ['#fdbcb4', '#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#d4956a']
+      const hairColors = gender === 'female'
+        ? ['#1a1a1a', '#8B4513', '#D2691E', '#FFD700', '#C0C0C0', '#800000', '#4a3728']
+        : ['#1a1a1a', '#4a3728', '#8B4513', '#C0C0C0', '#2c2c2c', '#6b4226', '#3d2b1f']
+
+      const bgColor = bgColors[hash % bgColors.length]
+      const shirtColor = shirtColors[(hash + 2) % shirtColors.length]
+      const skinColor = skinColors[(hash + 1) % skinColors.length]
+      const hairColor = hairColors[(hash + 3) % hairColors.length]
+
+      // Ring: gold for common, source-color for unique
+      if (isCommon) {
+        ctx.shadowColor = '#f59e0b'; ctx.shadowBlur = 14
+        ctx.beginPath(); ctx.arc(node.x, node.y, radius + 4, 0, 2 * Math.PI)
+        ctx.fillStyle = '#f59e0b'; ctx.fill()
+        ctx.beginPath(); ctx.arc(node.x, node.y, radius + 2, 0, 2 * Math.PI)
+        ctx.fillStyle = '#fff'; ctx.fill()
+      } else {
+        const srcIdx = getSourceIdx(node.id)
+        const ringColor = SOURCE_LINK_COLORS[srcIdx % SOURCE_LINK_COLORS.length].glow
+        ctx.beginPath(); ctx.arc(node.x, node.y, radius + 2, 0, 2 * Math.PI)
+        ctx.fillStyle = ringColor; ctx.fill()
+        ctx.beginPath(); ctx.arc(node.x, node.y, radius + 0.5, 0, 2 * Math.PI)
+        ctx.fillStyle = '#fff'; ctx.fill()
+      }
+      ctx.shadowBlur = 0
+
+      // Clip and draw avatar
+      ctx.save()
+      ctx.beginPath(); ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI); ctx.clip()
+
+      // Use loaded photo if available
+      const loadedImg = nodeImages.get(node.id) || (uploadedImages.get(node.id) ? null : null)
+      const uploadedUrl = uploadedImages.get(node.id)
+
+      if (loadedImg) {
+        ctx.drawImage(loadedImg, node.x - radius, node.y - radius, radius * 2, radius * 2)
+      } else {
+        // Draw avatar illustration
+        ctx.fillStyle = bgColor; ctx.fillRect(node.x - radius, node.y - radius, radius * 2, radius * 2)
+      ctx.fillStyle = shirtColor
+      ctx.beginPath()
+      ctx.ellipse(node.x, node.y + radius * 0.9, radius * 0.7, radius * 0.6, 0, 0, 2 * Math.PI)
+      ctx.fill()
+
+      // Neck
+      ctx.fillStyle = skinColor
+      ctx.beginPath()
+      ctx.ellipse(node.x, node.y + radius * 0.3, radius * 0.16, radius * 0.2, 0, 0, 2 * Math.PI)
+      ctx.fill()
+
+      // Head
+      ctx.fillStyle = skinColor
+      ctx.beginPath()
+      ctx.ellipse(node.x, node.y - radius * 0.1, radius * 0.36, radius * 0.4, 0, 0, 2 * Math.PI)
+      ctx.fill()
+
+      // Hair
+      ctx.fillStyle = hairColor
+      if (gender === 'female') {
+        ctx.beginPath()
+        ctx.ellipse(node.x, node.y - radius * 0.2, radius * 0.4, radius * 0.26, 0, Math.PI, 2 * Math.PI)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(node.x - radius * 0.33, node.y - radius * 0.02, radius * 0.1, radius * 0.3, -0.2, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(node.x + radius * 0.33, node.y - radius * 0.02, radius * 0.1, radius * 0.3, 0.2, 0, 2 * Math.PI)
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.ellipse(node.x, node.y - radius * 0.2, radius * 0.4, radius * 0.26, 0, Math.PI, 2 * Math.PI)
+        ctx.fill()
+      }
+
+      // Eyes
+      ctx.fillStyle = '#2d2d2d'
+      ctx.beginPath(); ctx.arc(node.x - radius * 0.12, node.y - radius * 0.08, radius * 0.045, 0, 2 * Math.PI); ctx.fill()
+      ctx.beginPath(); ctx.arc(node.x + radius * 0.12, node.y - radius * 0.08, radius * 0.045, 0, 2 * Math.PI); ctx.fill()
+      } // end else (avatar drawing)
+
+      ctx.restore()
+
+      // Name label
+      const disp = node.label.length > 14 ? node.label.slice(0, 12) + '…' : node.label
+      ctx.fillStyle = isCommon ? '#92400e' : '#334155'
+      ctx.font = `${isCommon ? 'bold ' : ''}${isCommon ? 11 : 10}px Sans-Serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText(disp, node.x, node.y + radius + 4)
+
+    } else if (isSource) {
+      ctx.beginPath(); ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI)
+      ctx.fillStyle = SOURCE_LINK_COLORS[getSourceIdx(node.id) % SOURCE_LINK_COLORS.length].glow
+      ctx.fill()
+      const words = node.label.replace(/\.docx?$/i, '').split(/[\s_-]+/)
       ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Sans-Serif'
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       const half = Math.ceil(words.length / 2)
@@ -164,14 +429,19 @@ function NetworkGraphViewer({ graph }: { graph: GraphData }) {
       const l2 = words.slice(half).join(' ').slice(0, 14)
       if (l2) { ctx.fillText(l1, node.x, node.y - 7); ctx.fillText(l2, node.x, node.y + 7) }
       else ctx.fillText(l1, node.x, node.y)
+
     } else {
-      const disp = label.length > 18 ? label.slice(0, 16) + '…' : label
-      ctx.fillStyle = 'rgba(226,232,240,0.95)'
-      ctx.font = `${isPerson ? 'bold ' : ''}10px Sans-Serif`
+      ctx.beginPath(); ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI)
+      ctx.fillStyle = ACTIVITY_TYPE_COLORS[node.activity_type || ''] || '#f59e0b'
+      ctx.fill()
+      const disp = node.label.length > 14 ? node.label.slice(0, 12) + '…' : node.label
+      ctx.fillStyle = '#1e293b'; ctx.font = '9px Sans-Serif'
       ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(disp, node.x, node.y + radius + 3)    }
+      ctx.fillText(disp, node.x, node.y + radius + 3)
+    }
+
     ctx.globalAlpha = 1
-  }, [hoverNode, connectedNodeIds, getSourceIdx])
+  }, [hoverNode, connectedNodeIds, getSourceIdx, nodeImages, uploadedImages])
 
   const linkCanvasObject = useCallback((link: any, ctx: CanvasRenderingContext2D) => {
     const s = link.source, t = link.target
@@ -184,12 +454,12 @@ function NetworkGraphViewer({ graph }: { graph: GraphData }) {
     ctx.globalAlpha = dimmed ? 0.03 : (isHighlighted ? 0.95 : 0.5)
 
     if (isRelationLink) {
-      ctx.strokeStyle = isHighlighted ? '#22c55e' : 'rgba(34,197,94,0.6)'
+      ctx.strokeStyle = isHighlighted ? '#16a34a' : 'rgba(34,197,94,0.5)'
       ctx.lineWidth = isHighlighted ? 2 : 1.2
       ctx.setLineDash([5, 3])
     } else {
       const col = SOURCE_LINK_COLORS[getSourceIdx(srcNodeId) % SOURCE_LINK_COLORS.length]
-      ctx.strokeStyle = isHighlighted ? col.glow : col.line
+      ctx.strokeStyle = isHighlighted ? col.glow : col.line.replace('0.6', '0.4')
       ctx.lineWidth = isHighlighted ? 2 : 1
       ctx.setLineDash([])
     }
@@ -218,12 +488,12 @@ function NetworkGraphViewer({ graph }: { graph: GraphData }) {
 
   return (
     <div className="flex flex-col h-full gap-2">
-      <div ref={containerRef} className="flex-1 min-h-0 rounded-lg overflow-hidden" style={{ background: '#0a0f1e' }}>
+      <div ref={containerRef} className="flex-1 min-h-0 rounded-lg overflow-hidden relative" style={{ background: '#ffffff' }}>
         <ForceGraph2D
           ref={graphRef}
           width={dimensions.width}
           height={dimensions.height}
-          graphData={graph}
+          graphData={filteredGraph}
           nodeLabel={(n: any) => n.label}
           nodeCanvasObject={nodeCanvasObject}
           nodeCanvasObjectMode={() => 'replace'}
@@ -236,12 +506,124 @@ function NetworkGraphViewer({ graph }: { graph: GraphData }) {
           linkCanvasObject={linkCanvasObject}
           linkCanvasObjectMode={() => 'replace'}
           onNodeHover={(n) => setHoverNode(n ? (n as GraphNode) : null)}
-          onNodeClick={(n) => setSelectedNode(selectedNode?.id === (n as GraphNode).id ? null : (n as GraphNode))}
+          onNodeClick={handleNodeClick}
           onEngineStop={() => graphRef.current?.zoomToFit(500, 60)}
-          backgroundColor="#0a0f1e"
+          backgroundColor="#ffffff"
           cooldownTicks={150}
         />
+
+        {/* Person detail popup — positioned near clicked node */}
+        {selectedNode && selectedNode.type === 'person' && (
+          <div
+            className="absolute z-20 flex items-start gap-0 pointer-events-auto"
+            style={{
+              left: popupPos
+                ? Math.min(Math.max(popupPos.x - 30, 8), dimensions.width - 340)
+                : dimensions.width / 2 - 160,
+              top: popupPos
+                ? Math.min(Math.max(popupPos.y + 40, 8), dimensions.height - 180)
+                : dimensions.height - 180,
+            }}
+          >
+            {/* Photo circle */}
+            <div className="relative flex-shrink-0 -mr-3 z-10">
+              <div
+                className="rounded-full overflow-hidden border-4 shadow-xl cursor-pointer group"
+                style={{
+                  width: 80, height: 80,
+                  borderColor: selectedNode.common ? '#3b82f6' : '#94a3b8',
+                  background: '#f1f5f9',
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploadedImages.get(selectedNode.id) ? (
+                  <img src={uploadedImages.get(selectedNode.id)} alt={selectedNode.label} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-blue-50">
+                    <div className="text-blue-300 text-3xl font-bold">{selectedNode.label.charAt(0).toUpperCase()}</div>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-full">
+                  <span className="text-white text-lg">📷</span>
+                </div>
+              </div>
+              {/* Name below photo */}
+              <div className="text-center mt-1" style={{ width: 80 }}>
+                <p className="text-xs font-bold text-slate-700 leading-tight text-center truncate">{selectedNode.label.split(' ')[0]}</p>
+                {selectedNode.role && <p className="text-xs text-slate-400 capitalize">{selectedNode.role}</p>}
+              </div>
+            </div>
+
+            {/* Detail card */}
+            <div
+              className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden"
+              style={{ minWidth: 200, maxWidth: 280 }}
+            >
+              <div className="px-4 pt-3 pb-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm leading-tight">{selectedNode.label}</p>
+                    {selectedNode.common && (
+                      <span className="text-xs text-blue-500 font-medium">● Common in both files</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { setSelectedNode(null); setPopupPos(null) }}
+                    className="text-slate-300 hover:text-slate-500 ml-2 flex-shrink-0 mt-0.5"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              {selectedNode.details ? (
+                <div className="px-4 pb-3 space-y-1 border-t border-slate-50 pt-2">
+                  {selectedNode.details.split(' | ').filter(Boolean).map((detail, i) => {
+                    const colonIdx = detail.indexOf(': ')
+                    if (colonIdx === -1) return <p key={i} className="text-xs text-slate-600">{detail}</p>
+                    const key = detail.slice(0, colonIdx)
+                    const val = detail.slice(colonIdx + 2)
+                    return (
+                      <div key={i}>
+                        <p className="text-xs text-slate-400 font-medium leading-tight">{key}</p>
+                        <p className="text-xs text-slate-700 font-semibold leading-tight">{val}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="px-4 pb-3 pt-2 border-t border-slate-50">
+                  <p className="text-xs text-slate-400">No details available.</p>
+                </div>
+              )}
+
+              {/* Upload photo button */}
+              <div className="px-4 pb-3">
+                <button
+                  className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  📷 {uploadedImages.get(selectedNode.id) ? 'Change photo' : 'Add photo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden file input for photo upload */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file && selectedNode) handleUploadImage(selectedNode.id, file)
+            e.target.value = ''
+          }}
+        />
       </div>
+
       <div className="flex items-center justify-between gap-3 px-1 text-xs flex-shrink-0">
         <div className="flex flex-wrap gap-3">
           {sourceNodes.map((n, i) => (
@@ -255,17 +637,14 @@ function NetworkGraphViewer({ graph }: { graph: GraphData }) {
             Persons ({entityNodes.filter((n: any) => n.common).length} common / {entityNodes.filter((n: any) => !n.common).length} unique)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-full bg-green-500" />
-            Relatives ({relativeNodes.length})
-          </span>
-          <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-full bg-amber-400" />
-            Activities ({activityNodes.filter((n: any) => n.common).length} common / {activityNodes.filter((n: any) => !n.common).length} unique)
+            Activities ({activityNodes.filter((n: any) => n.common).length} common)
           </span>
-          <span className="flex items-center gap-1.5 text-green-400">- - relation</span>
         </div>
         <div className="flex items-center gap-2">
-          {selectedNode && <span className="rounded border border-slate-600 bg-slate-800 text-white px-2 py-0.5 font-medium">{selectedNode.label}</span>}
+          {selectedNode && selectedNode.type !== 'person' && (
+            <span className="rounded border border-slate-600 bg-slate-800 text-white px-2 py-0.5 font-medium text-xs">{selectedNode.label}</span>
+          )}
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => graphRef.current?.zoomToFit(400, 60)}>Fit</Button>
         </div>
       </div>
@@ -287,6 +666,7 @@ export function CommonGraphModal({ open, onOpenChange, sourceIds }: CommonGraphM
   const [buildError, setBuildError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [savedTransformationId, setSavedTransformationId] = useState<string | null>(null)
+  const [graphMode, setGraphMode] = useState<'persons' | 'activities'>('persons')
 
   const { data: models = [] } = useModels()
   const { data: defaults } = useModelDefaults()
@@ -323,6 +703,38 @@ export function CommonGraphModal({ open, onOpenChange, sourceIds }: CommonGraphM
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedModelId])
+
+  // Load images for main persons from each source
+  useEffect(() => {
+    if (!buildResult || !graphData) return
+    // Find main person nodes and load their images
+    const mainPersons = graphData.nodes.filter((n: any) => n.type === 'person' && n.role === 'main')
+    mainPersons.forEach((p: any) => {
+      // Find which source this person belongs to
+      const link = graphData.links.find((l: any) => {
+        const s = typeof l.source === 'string' ? l.source : l.source.id
+        const t = typeof l.target === 'string' ? l.target : l.target.id
+        return (t === p.id && s.startsWith('source:')) || (s === p.id && t.startsWith('source:'))
+      })
+      if (link) {
+        const srcId = (typeof link.source === 'string' ? link.source : link.source.id).startsWith('source:')
+          ? (typeof link.source === 'string' ? link.source : link.source.id)
+          : (typeof link.target === 'string' ? link.target : link.target.id)
+        const srcIdx = parseInt(srcId.replace('source:', ''))
+        if (srcIdx >= 0 && srcIdx < sourceIds.length) {
+          const sourceId = sourceIds[srcIdx]
+          sourcesApi.getProfileImage(sourceId).then((url) => {
+            if (url) {
+              // Store image for this person node
+              const store = new Map<string, string>()
+              store.set(p.id, url)
+              // Trigger re-render somehow
+            }
+          })
+        }
+      }
+    })
+  }, [buildResult, sourceIds])
 
   // Reset when closed
   useEffect(() => {
@@ -464,7 +876,26 @@ export function CommonGraphModal({ open, onOpenChange, sourceIds }: CommonGraphM
                 </div>
               </div>
             ) : graphHasContent ? (
-              <NetworkGraphViewer graph={graphData as GraphData} />
+              <div className="flex-1 flex flex-col min-h-0">
+                {/* Person / Activity toggle */}
+                <div className="flex gap-2 mb-2 flex-shrink-0">
+                  <button
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${graphMode === 'persons' ? 'bg-sky-500 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    onClick={() => setGraphMode('persons')}
+                  >
+                    👤 Common Persons
+                  </button>
+                  <button
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${graphMode === 'activities' ? 'bg-amber-500 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    onClick={() => setGraphMode('activities')}
+                  >
+                    ⚡ Activity Graph
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <NetworkGraphViewer graph={graphData as GraphData} mode={graphMode} />
+                </div>
+              </div>
             ) : (
               <div className="flex-1 flex items-center justify-center" style={{ background: '#0a0f1e', borderRadius: 8 }}>
                 <p className="text-slate-500 text-sm">Select at least 2 sources and click Rebuild.</p>
