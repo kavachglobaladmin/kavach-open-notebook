@@ -171,7 +171,26 @@ export function useSourceChat(sourceId: string) {
           if (!jsonStr) continue
           try {
             const data = JSON.parse(jsonStr)
-            if (data.type === 'ai_message') {
+            if (data.type === 'token') {
+              // Live token streaming — append to current AI message
+              if (!aiMessage) {
+                aiMessage = {
+                  id: `ai-${Date.now()}`,
+                  type: 'ai',
+                  content: data.content || '',
+                  timestamp: new Date().toISOString()
+                }
+                setMessages(prev => [...prev, aiMessage!])
+              } else {
+                aiMessage.content += data.content || ''
+                setMessages(prev =>
+                  prev.map(msg => msg.id === aiMessage!.id
+                    ? { ...msg, content: aiMessage!.content }
+                    : msg
+                  )
+                )
+              }
+            } else if (data.type === 'ai_message') {
               if (!aiMessage) {
                 aiMessage = {
                   id: `ai-${Date.now()}`,

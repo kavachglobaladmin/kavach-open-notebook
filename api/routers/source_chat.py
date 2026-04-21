@@ -15,6 +15,13 @@ from open_notebook.exceptions import (
     NotFoundError,
 )
 from open_notebook.graphs.source_chat import source_chat_graph as source_chat_graph
+from open_notebook.graphs.source_chat import (
+    _answer_from_context_only,
+    _format_source_context,
+    stream_source_chat_tokens,
+)
+from open_notebook.utils.context_builder import ContextBuilder
+from ai_prompter import Prompter
 from open_notebook.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
@@ -466,99 +473,570 @@ async def delete_source_chat_session(
         )
 
 
+# async def stream_source_chat_response(
+#     session_id: str, source_id: str, message: str, model_override: Optional[str] = None
+# ) -> AsyncGenerator[str, None]:
+#     """Stream the source chat response as Server-Sent Events with real token streaming."""
+#     from open_notebook.graphs.source_chat import (
+#         _answer_from_context_only,
+#         _format_source_context,
+#         stream_source_chat_tokens,
+#     )
+#     from open_notebook.ai.provision import provision_langchain_model
+#     from langchain_core.messages import SystemMessage, HumanMessage as HMsg
+
+#     try:
+#         # Send user message event immediately
+#         user_event = {"type": "user_message", "content": message, "timestamp": None}
+#         yield f"data: {json.dumps(user_event)}\n\n"
+
+#         # ── Build context ──────────────────────────────────────────────────
+#         import re as _re
+#         year_match = _re.search(r'\b(19\d{2}|20\d{2})\b', message or '')
+#         target_year = year_match.group(1) if year_match else None
+
+#         cb = ContextBuilder(
+#             source_id=source_id,
+#             include_insights=True,
+#             include_notes=False,
+#             max_tokens=6000  # ~6000 tokens context + ~50 system + ~500 history + ~1500 response = ~8K total
+#         )
+#         context_data = await cb.build()
+
+#         # Prioritize year-relevant chunks — prepend them but keep full text
+#         if target_year and context_data.get('sources'):
+#             for src in context_data['sources']:
+#                 if isinstance(src, dict) and src.get('full_text'):
+#                     text = src['full_text']
+#                     paragraphs = text.split('\n\n')
+#                     relevant = [p for p in paragraphs if target_year in p]
+#                     if relevant:
+#                         # Prepend relevant paragraphs, then keep rest of text
+#                         src['full_text'] = '\n\n'.join(relevant[:8]) + '\n\n---\n\n' + text
+
+#         # Pass insights from context_data so they appear in formatted context
+#         raw_insights = context_data.get('insights', [])
+#         formatted_context = _format_source_context(context_data, raw_insights)
+
+#         # Pre-flight check
+#         preflight = _answer_from_context_only(message, formatted_context)
+#         if preflight:
+#             ai_event = {"type": "ai_message", "content": preflight, "timestamp": None}
+#             yield f"data: {json.dumps(ai_event)}\n\n"
+#             return
+
+#         # ── Build prompt ───────────────────────────────────────────────────
+#         # Keep system prompt SHORT — pass context as a separate message to save tokens
+#         system_prompt = "You are an expert investigative analyst. Answer questions using ONLY the SOURCE CONTEXT provided. Never use external knowledge. Give COMPREHENSIVE, DETAILED answers with ALL relevant facts — dates, names, locations, amounts, events, relationships. Never give short answers. If not found in source, say 'Not found in source.'"
+
+#         # Get conversation history from graph state
+#         current_state = await asyncio.to_thread(
+#             source_chat_graph.get_state,
+#             config=RunnableConfig(configurable={"thread_id": session_id}),
+#         )
+#         state_values = current_state.values if current_state else {}
+#         history = state_values.get("messages", [])[-4:]  # last 2 turns to save context space
+
+#         # Build context message — pass as first human message so it's in the conversation
+#         context_message = f"SOURCE CONTEXT:\n\n{formatted_context}\n\n---\nAnswer the following question using ONLY the above source context:"
+        
+#         payload = [SystemMessage(content=system_prompt)] + history + [
+#             HMsg(content=context_message),
+#             HMsg(content=message)
+#         ]
+
+#         # Always allow generous response tokens — short answers are the main complaint
+#         dynamic_max_tokens = 2048  # Fixed: always give model enough room to answer fully
+
+#         # ── Stream tokens ──────────────────────────────────────────────────
+#         full_response = []
+#         token_event_started = False
+
+#         async for token in stream_source_chat_tokens(
+#             source_id=source_id,
+#             message=message,
+#             model_id=model_override,
+#             context=formatted_context,
+#             system_prompt=system_prompt,
+#             payload=payload,
+#             dynamic_max_tokens=dynamic_max_tokens,
+#         ):
+#             full_response.append(token)
+#             # Send each token as a streaming event
+#             token_event = {"type": "token", "content": token}
+#             yield f"data: {json.dumps(token_event)}\n\n"
+#             token_event_started = True
+
+#         # Send final complete message
+#         complete_content = "".join(full_response)
+#         ai_event = {"type": "ai_message", "content": complete_content, "timestamp": None}
+#         yield f"data: {json.dumps(ai_event)}\n\n"
+
+#         # ── Save to graph state ────────────────────────────────────────────
+#         try:
+#             from langchain_core.messages import AIMessage as AiMsg
+#             state_values["messages"] = list(history) + [HMsg(content=message), AiMsg(content=complete_content)]
+#             state_values["source_id"] = source_id
+#             state_values["model_override"] = model_override
+#             await asyncio.to_thread(
+#                 source_chat_graph.update_state,
+#                 config=RunnableConfig(configurable={"thread_id": session_id}),
+#                 values=state_values,
+#             )
+#         except Exception as e:
+#             logger.warning(f"[SourceChat] Could not save state: {e}")
+
+#         # ── Context indicators ─────────────────────────────────────────────
+#         context_event = {"type": "context_indicators", "data": {"sources": [source_id], "insights": [], "notes": []}}
+#         yield f"data: {json.dumps(context_event)}\n\n"
+
+#         # ── Suggested questions ────────────────────────────────────────────
+#         try:
+#             import json as json_lib
+#             import re as re_lib
+#             from langchain_core.messages import SystemMessage as SysMsg
+#             source_obj = await Source.get(source_id)
+#             source_full_text = ""
+#             source_title = ""
+#             source_insights_text = ""
+#             if source_obj and source_obj.id:
+#                 source_full_text = (getattr(source_obj, "full_text", "") or "")
+#                 source_title = getattr(source_obj, "title", "") or ""
+#                 try:
+#                     insights = await source_obj.get_insights()
+#                     source_insights_text = "\n".join(
+#                         f"[{i.insight_type}]: {i.content[:800]}" for i in insights[:5]
+#                     )
+#                 except Exception as ins_err:
+#                     logger.warning(f"[SOURCE-CHAT-SUGGEST] Could not load insights: {ins_err}")
+
+#             # Use full_text first 4000 chars + insights as context
+#             # If full_text is empty, use insights as primary context
+#             if source_full_text:
+#                 source_context = (source_full_text[:4000] + "\n\n" + source_insights_text).strip()
+#             else:
+#                 source_context = source_insights_text.strip()
+
+#             if not source_context:
+#                 logger.warning(f"[SOURCE-CHAT-SUGGEST] No source content available for {source_id}")
+#                 questions_list = []
+#             else:
+#                 logger.info(f"[SOURCE-CHAT-SUGGEST] Generating questions from {len(source_context)} chars of source: {source_title}")
+
+#                 prompt_text = f"""You are analyzing a specific source document. Read it carefully and generate 3 follow-up questions.
+
+# SOURCE DOCUMENT TITLE: {source_title}
+
+# SOURCE DOCUMENT CONTENT:
+# {source_context}
+
+# TASK: Generate exactly 3 short questions that:
+# 1. Are DIRECTLY based on specific facts, names, events, or details in the document above
+# 2. Are 5-8 words maximum each
+# 3. Start with: Who/When/Where/How/Which/Why/What
+# 4. Reference actual names, dates, places, or events from the document
+# 5. Are different from what was already asked
+
+# ALREADY ASKED: {message}
+
+# CRITICAL: Every question MUST be answerable from the document content above. Do NOT invent or use external knowledge.
+
+# Return ONLY a valid JSON array of 3 strings. No explanation, no markdown.
+# Example format: ["Who is X?", "When did Y happen?", "Which gang did Z join?"]
+
+# JSON array:"""
+
+#                 model = await provision_langchain_model(prompt_text, model_override, "chat", max_tokens=300, temperature=0.3)
+#                 llm_response = model.invoke([SysMsg(content=prompt_text)])
+#                 response_text = llm_response.content if hasattr(llm_response, "content") else str(llm_response)
+#                 logger.info(f"[SOURCE-CHAT-SUGGEST] LLM raw response: {response_text[:300]}")
+
+#                 questions = None
+#                 # Strategy 1: direct JSON parse
+#                 try:
+#                     questions = json_lib.loads(response_text.strip())
+#                 except json_lib.JSONDecodeError:
+#                     pass
+#                 # Strategy 2: strip markdown fences
+#                 if not questions:
+#                     cleaned = re_lib.sub(r'```(?:json)?\s*', '', response_text).replace('```', '').strip()
+#                     try:
+#                         questions = json_lib.loads(cleaned)
+#                     except json_lib.JSONDecodeError:
+#                         pass
+#                 # Strategy 3: extract [...] block
+#                 if not questions:
+#                     match = re_lib.search(r'\[[\s\S]*?\]', response_text)
+#                     if match:
+#                         try:
+#                             questions = json_lib.loads(match.group())
+#                         except json_lib.JSONDecodeError:
+#                             pass
+#                 # Strategy 4: extract quoted question strings
+#                 if not questions or not isinstance(questions, list) or len(questions) < 2:
+#                     extracted = re_lib.findall(r'"([^"]{5,}[?])"', response_text)
+#                     if len(extracted) >= 2:
+#                         questions = extracted
+
+#                 questions_list: list[str] = []
+#                 if questions and isinstance(questions, list):
+#                     questions_list = [
+#                         q.strip() for q in questions
+#                         if isinstance(q, str) and q.strip() and len(q.strip()) > 4 and '?' in q
+#                     ][:3]
+
+#                 # Enforce max 10 words per question
+#                 def trim_question(q: str, max_words: int = 10) -> str:
+#                     words = q.split()
+#                     if len(words) <= max_words:
+#                         return q
+#                     return " ".join(words[:max_words]).rstrip(".,;:") + "?"
+
+#                 questions_list = [trim_question(q) for q in questions_list]
+
+#                 # Source-grounded fallback using actual names from document/insights
+#                 if len(questions_list) < 3:
+#                     # Extract from source_context (includes insights when full_text is empty)
+#                     extract_text = source_context[:3000]
+#                     names = re_lib.findall(r'\b[A-Z][a-z]+(?: [A-Z][a-z]+)+\b', extract_text)
+#                     unique_names = list(dict.fromkeys(names))
+#                     dates = re_lib.findall(r'\b(?:19|20)\d{2}\b', extract_text)
+#                     unique_dates = list(dict.fromkeys(dates))
+#                     places = re_lib.findall(r'\b(?:Rajasthan|Delhi|Punjab|Haryana|Bihar|UP|Sikar|Jaipur|Mumbai|Bikaner|Nagaur)\b', extract_text)
+#                     unique_places = list(dict.fromkeys(places))
+#                     gangs = re_lib.findall(r'\b(?:Bishnoi|Jathedi|Gogi|Banuda|Lawrence)\s+(?:Gang|Group|gang|group)?\b', extract_text)
+#                     unique_gangs = list(dict.fromkeys(gangs))
+
+#                     fallback = []
+#                     if unique_names and len(questions_list) + len(fallback) < 3:
+#                         fallback.append(f"Who is {unique_names[0]}?")
+#                     if len(unique_names) > 1 and len(questions_list) + len(fallback) < 3:
+#                         fallback.append(f"How is {unique_names[0]} linked to {unique_names[1]}?")
+#                     if unique_gangs and len(questions_list) + len(fallback) < 3:
+#                         fallback.append(f"What is the {unique_gangs[0].strip()} role?")
+#                     if unique_dates and len(questions_list) + len(fallback) < 3:
+#                         fallback.append(f"What happened in {unique_dates[0]}?")
+#                     if unique_places and len(questions_list) + len(fallback) < 3:
+#                         fallback.append(f"What activities occurred in {unique_places[0]}?")
+#                     if len(unique_names) > 2 and len(questions_list) + len(fallback) < 3:
+#                         fallback.append(f"What crimes involve {unique_names[2]}?")
+
+#                     for fb in fallback:
+#                         if len(questions_list) >= 3:
+#                             break
+#                         questions_list.append(fb)
+
+#                 questions_list = questions_list[:3]
+#                 logger.info(f"[SOURCE-CHAT-SUGGEST] Final {len(questions_list)} questions: {questions_list}")
+
+#             # Persist to session
+#             full_session_id_for_save = session_id if session_id.startswith("chat_session:") else f"chat_session:{session_id}"
+#             session_obj = await ChatSession.get(full_session_id_for_save)
+#             if session_obj and questions_list:
+#                 session_obj.suggested_questions = questions_list
+#                 await session_obj.save()
+
+#             if questions_list:
+#                 yield f"data: {json.dumps({'type': 'suggested_questions', 'questions': questions_list})}\n\n"
+
+#         except Exception as sq_err:
+#             logger.error(f"Error generating suggested questions for source chat: {str(sq_err)}")
+
+#         # Send completion signal
+#         completion_event = {"type": "complete"}
+#         yield f"data: {json.dumps(completion_event)}\n\n"
+
+#     except Exception as e:
+#         from open_notebook.utils.error_classifier import classify_error
+
+#         _, user_message = classify_error(e)
+#         logger.error(f"Error in source chat streaming: {str(e)}")
+#         error_event = {"type": "error", "message": user_message}
+#         yield f"data: {json.dumps(error_event)}\n\n"
+
+# async def stream_source_chat_response(
+#     session_id: str, source_id: str, message: str, model_override: Optional[str] = None
+# ) -> AsyncGenerator[str, None]:
+
+#     try:
+#         # Send user message event immediately
+#         user_event = {"type": "user_message", "content": message, "timestamp": None}
+#         yield f"data: {json.dumps(user_event)}\n\n"
+
+#         # ── Build context ──────────────────────────────────────────────
+#         import re as _re
+#         year_match = _re.search(r'\b(19\d{2}|20\d{2})\b', message or '')
+#         target_year = year_match.group(1) if year_match else None
+
+#         cb = ContextBuilder(
+#             source_id=source_id,
+#             include_insights=True,
+#             include_notes=False,
+#             max_tokens=4000  # FIX: reduced to leave room for response + history
+#         )
+#         context_data = await cb.build()
+
+#         # FIX: Prioritize year-relevant chunks WITHOUT duplicating full text
+#         if target_year and context_data.get('sources'):
+#             for src in context_data['sources']:
+#                 if isinstance(src, dict) and src.get('full_text'):
+#                     text = src['full_text']
+#                     paragraphs = text.split('\n\n')
+#                     relevant = [p for p in paragraphs if target_year in p]
+#                     other = [p for p in paragraphs if target_year not in p]
+#                     if relevant:
+#                         # Relevant first, then remaining — NO duplication
+#                         src['full_text'] = '\n\n'.join(relevant[:8] + other)
+
+#         raw_insights = context_data.get('insights', [])
+#         formatted_context = _format_source_context(context_data, raw_insights)
+
+#         # ── FIX: Skip preflight OR make it strict ─────────────────────
+#         # Option A — Remove preflight entirely (recommended):
+#         # preflight = None
+
+#         # Option B — Only use preflight if answer is clearly "not found":
+#         preflight = _answer_from_context_only(message, formatted_context)
+#         if preflight and preflight.strip().lower() == "not found in source.":
+#             ai_event = {"type": "ai_message", "content": preflight, "timestamp": None}
+#             yield f"data: {json.dumps(ai_event)}\n\n"
+#             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+#             return
+#         # For all other cases, fall through to full LLM streaming
+
+#         # ── Build system prompt ────────────────────────────────────────
+#         system_prompt = (
+#             "You are an expert investigative analyst. "
+#             "Answer questions using ONLY the SOURCE CONTEXT provided. "
+#             "Never use external knowledge. "
+#             "Give COMPREHENSIVE, DETAILED answers with ALL relevant facts — "
+#             "dates, names, locations, amounts, events, relationships. "
+#             "Never give short answers. "
+#             "If not found in source, say 'Not found in source.'"
+#         )
+
+#         # ── Get conversation history (last 2 turns only) ───────────────
+#         current_state = await asyncio.to_thread(
+#             source_chat_graph.get_state,
+#             config=RunnableConfig(configurable={"thread_id": session_id}),
+#         )
+#         state_values = current_state.values if current_state else {}
+#         history = state_values.get("messages", [])[-4:]  # last 2 turns
+
+#         # ── FIX: Single clean payload, no duplication ──────────────────
+#         context_message = (
+#             f"SOURCE CONTEXT:\n\n{formatted_context}\n\n"
+#             f"---\n"
+#             f"Using ONLY the above source context, answer this question "
+#             f"in full detail:\n\n{message}"
+#         )
+
+#         payload = [SystemMessage(content=system_prompt)] + list(history) + [
+#             HumanMessage(content=context_message)
+#             # FIX: message is now inside context_message, not a separate HumanMessage
+#         ]
+
+#         dynamic_max_tokens = 2048
+
+#         # ── Stream tokens ──────────────────────────────────────────────
+#         full_response = []
+
+#         async for token in stream_source_chat_tokens(
+#             source_id=source_id,
+#             message=message,
+#             model_id=model_override,
+#             context=formatted_context,
+#             system_prompt=system_prompt,
+#             payload=payload,
+#             dynamic_max_tokens=dynamic_max_tokens,
+#         ):
+#             full_response.append(token)
+#             token_event = {"type": "token", "content": token}
+#             yield f"data: {json.dumps(token_event)}\n\n"
+
+#         complete_content = "".join(full_response)
+#         ai_event = {"type": "ai_message", "content": complete_content, "timestamp": None}
+#         yield f"data: {json.dumps(ai_event)}\n\n"
+
+#         # ── Save to graph state ────────────────────────────────────────
+#         try:
+#             from langchain_core.messages import AIMessage as AiMsg
+#             from langchain_core.messages import HumanMessage as HMsg
+#             state_values["messages"] = list(history) + [
+#                 HMsg(content=message),
+#                 AiMsg(content=complete_content)
+#             ]
+#             state_values["source_id"] = source_id
+#             state_values["model_override"] = model_override
+#             await asyncio.to_thread(
+#                 source_chat_graph.update_state,
+#                 config=RunnableConfig(configurable={"thread_id": session_id}),
+#                 values=state_values,
+#             )
+#         except Exception as e:
+#             logger.warning(f"[SourceChat] Could not save state: {e}")
+
+#         # ── Context indicators ─────────────────────────────────────────
+#         context_event = {
+#             "type": "context_indicators",
+#             "data": {"sources": [source_id], "insights": [], "notes": []}
+#         }
+#         yield f"data: {json.dumps(context_event)}\n\n"
+
+#         # ── Suggested questions (unchanged) ───────────────────────────
+#         # ... your existing suggested questions code here unchanged ...
+
+#         yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+#     except Exception as e:
+#         from open_notebook.utils.error_classifier import classify_error
+#         _, user_message = classify_error(e)
+#         logger.error(f"Error in source chat streaming: {str(e)}")
+#         error_event = {"type": "error", "message": user_message}
+#         yield f"data: {json.dumps(error_event)}\n\n"
+
+
 async def stream_source_chat_response(
     session_id: str, source_id: str, message: str, model_override: Optional[str] = None
 ) -> AsyncGenerator[str, None]:
-    """Stream the source chat response as Server-Sent Events."""
+    from open_notebook.graphs.source_chat import (
+        _answer_from_context_only,
+        _format_source_context,
+        stream_source_chat_tokens,
+    )
+    from open_notebook.ai.provision import provision_langchain_model
+    from langchain_core.messages import SystemMessage, HumanMessage as HMsg, AIMessage as AiMsg
+
     try:
-        # Get current state
-        # Use sync get_state() in a thread since SqliteSaver doesn't support async
+        # Send user message event immediately
+        user_event = {"type": "user_message", "content": message, "timestamp": None}
+        yield f"data: {json.dumps(user_event)}\n\n"
+
+        # ── Build context ──────────────────────────────────────────────────
+        import re as _re
+        year_match = _re.search(r'\b(19\d{2}|20\d{2})\b', message or '')
+        target_year = year_match.group(1) if year_match else None
+
+        cb = ContextBuilder(
+            source_id=source_id,
+            include_insights=True,
+            include_notes=False,
+            max_tokens=4000  # Reduced to leave room for response + history
+        )
+        context_data = await cb.build()
+
+        # Prioritize year-relevant chunks WITHOUT duplicating full text
+        if target_year and context_data.get('sources'):
+            for src in context_data['sources']:
+                if isinstance(src, dict) and src.get('full_text'):
+                    text = src['full_text']
+                    paragraphs = text.split('\n\n')
+                    relevant = [p for p in paragraphs if target_year in p]
+                    other = [p for p in paragraphs if target_year not in p]
+                    if relevant:
+                        # Relevant first, then remaining — NO duplication
+                        src['full_text'] = '\n\n'.join(relevant[:8] + other)
+
+        raw_insights = context_data.get('insights', [])
+        formatted_context = _format_source_context(context_data, raw_insights)
+
+        # ── Preflight: ONLY short-circuit if answer is truly not found ────
+        preflight = _answer_from_context_only(message, formatted_context)
+        if preflight and preflight.strip().lower() == "not found in source.":
+            ai_event = {"type": "ai_message", "content": preflight, "timestamp": None}
+            yield f"data: {json.dumps(ai_event)}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            return
+        # All other cases → fall through to full LLM streaming
+
+        # ── Build system prompt ────────────────────────────────────────────
+        system_prompt = (
+            "You are an expert investigative analyst. "
+            "Answer questions using ONLY the SOURCE CONTEXT provided. "
+            "Never use external knowledge. "
+            "Give COMPREHENSIVE, DETAILED answers with ALL relevant facts — "
+            "dates, names, locations, amounts, events, relationships. "
+            "Never give short answers. "
+            "If not found in source, say 'Not found in source.'"
+        )
+
+        # ── Get conversation history (last 2 turns only) ───────────────────
         current_state = await asyncio.to_thread(
             source_chat_graph.get_state,
             config=RunnableConfig(configurable={"thread_id": session_id}),
         )
-
-        # Prepare state for execution
         state_values = current_state.values if current_state else {}
-        state_values["messages"] = state_values.get("messages", [])
-        state_values["source_id"] = source_id
-        state_values["model_override"] = model_override
+        history = state_values.get("messages", [])[-4:]  # last 2 turns
 
-        # Add user message to state
-        user_message = HumanMessage(content=message)
-        state_values["messages"].append(user_message)
-
-        # Send user message event
-        user_event = {"type": "user_message", "content": message, "timestamp": None}
-        yield f"data: {json.dumps(user_event)}\n\n"
-
-        # Execute source chat graph synchronously (like notebook chat does)
-        result = source_chat_graph.invoke(
-            input=state_values,  # type: ignore[arg-type]
-            config=RunnableConfig(
-                configurable={"thread_id": session_id, "model_id": model_override}
-            ),
+        # ── Single clean payload — message embedded in context, no duplication
+        context_message = (
+            f"SOURCE CONTEXT:\n\n{formatted_context}\n\n"
+            f"---\n"
+            f"Using ONLY the above source context, answer this question "
+            f"in full detail:\n\n{message}"
         )
 
-        # Stream AI response as single message (no chunking to avoid duplication)
-        if "messages" in result:
-            for msg in result["messages"]:
-                if hasattr(msg, "type") and msg.type == "ai":
-                    full_content = msg.content if hasattr(msg, "content") else str(msg)
-                    ai_event = {
-                        "type": "ai_message",
-                        "content": full_content,
-                        "timestamp": None,
-                    }
-                    yield f"data: {json.dumps(ai_event)}\n\n"
+        payload = [SystemMessage(content=system_prompt)] + list(history) + [
+            HumanMessage(content=context_message)
+            # message is now inside context_message, not a separate HumanMessage
+        ]
 
-        # Stream context indicators with full details
-        if "context_indicators" in result:
-            context_event = {
-                "type": "context_indicators",
-                "data": result["context_indicators"],
-            }
-            yield f"data: {json.dumps(context_event)}\n\n"
+        dynamic_max_tokens = 2048
 
-        # Stream source details
-        if "source" in result and result["source"]:
-            source_detail_event = {
-                "type": "source_details",
-                "data": serialize_source(result["source"]),
-            }
-            yield f"data: {json.dumps(source_detail_event)}\n\n"
+        # ── Stream tokens ──────────────────────────────────────────────────
+        full_response = []
 
-        # Stream insights details
-        if "insights" in result and result["insights"]:
-            insights_list = serialize_insights(result["insights"])
-            if insights_list:
-                insights_event = {
-                    "type": "insights_details",
-                    "data": insights_list,
-                }
-                yield f"data: {json.dumps(insights_event)}\n\n"
+        async for token in stream_source_chat_tokens(
+            source_id=source_id,
+            message=message,
+            model_id=model_override,
+            context=formatted_context,
+            system_prompt=system_prompt,
+            payload=payload,
+            dynamic_max_tokens=dynamic_max_tokens,
+        ):
+            full_response.append(token)
+            token_event = {"type": "token", "content": token} 
+            yield f"data: {json.dumps(token_event)}\n\n"
 
-        # Stream entity details (person information, etc.)
-        if "entity_details" in result and result["entity_details"]:
-            entity_details_event = {
-                "type": "entity_details",
-                "data": result["entity_details"],
-            }
-            yield f"data: {json.dumps(entity_details_event)}\n\n"
+        complete_content = "".join(full_response)
+        ai_event = {"type": "ai_message", "content": complete_content, "timestamp": None}
+        yield f"data: {json.dumps(ai_event)}\n\n"
 
-        # Generate suggested questions grounded STRICTLY in the source document content
+        # ── Save to graph state ────────────────────────────────────────────
+        try:
+            state_values["messages"] = list(history) + [
+                HMsg(content=message),
+                AiMsg(content=complete_content)
+            ]
+            state_values["source_id"] = source_id
+            state_values["model_override"] = model_override
+            await asyncio.to_thread(
+                source_chat_graph.update_state,
+                config=RunnableConfig(configurable={"thread_id": session_id}),
+                values=state_values,
+            )
+        except Exception as e:
+            logger.warning(f"[SourceChat] Could not save state: {e}")
+
+        # ── Context indicators ─────────────────────────────────────────────
+        context_event = {
+            "type": "context_indicators",
+            "data": {"sources": [source_id], "insights": [], "notes": []}
+        }
+        yield f"data: {json.dumps(context_event)}\n\n"
+
+        # ── Suggested questions ────────────────────────────────────────────
         try:
             import json as json_lib
             import re as re_lib
             from langchain_core.messages import SystemMessage as SysMsg
-            from open_notebook.ai.provision import provision_langchain_model
 
-            # Always fetch source fresh from DB to ensure valid id and full_text
             source_obj = await Source.get(source_id)
-
             source_full_text = ""
             source_title = ""
             source_insights_text = ""
+
             if source_obj and source_obj.id:
                 source_full_text = (getattr(source_obj, "full_text", "") or "")
                 source_title = getattr(source_obj, "title", "") or ""
@@ -570,8 +1048,6 @@ async def stream_source_chat_response(
                 except Exception as ins_err:
                     logger.warning(f"[SOURCE-CHAT-SUGGEST] Could not load insights: {ins_err}")
 
-            # Use full_text first 4000 chars + insights as context
-            # If full_text is empty, use insights as primary context
             if source_full_text:
                 source_context = (source_full_text[:4000] + "\n\n" + source_insights_text).strip()
             else:
@@ -581,7 +1057,7 @@ async def stream_source_chat_response(
                 logger.warning(f"[SOURCE-CHAT-SUGGEST] No source content available for {source_id}")
                 questions_list = []
             else:
-                logger.info(f"[SOURCE-CHAT-SUGGEST] Generating questions from {len(source_context)} chars of source: {source_title}")
+                logger.info(f"[SOURCE-CHAT-SUGGEST] Generating questions from {len(source_context)} chars: {source_title}")
 
                 prompt_text = f"""You are analyzing a specific source document. Read it carefully and generate 3 follow-up questions.
 
@@ -606,17 +1082,21 @@ Example format: ["Who is X?", "When did Y happen?", "Which gang did Z join?"]
 
 JSON array:"""
 
-                model = await provision_langchain_model(prompt_text, model_override, "chat", max_tokens=300, temperature=0.3)
+                model = await provision_langchain_model(
+                    prompt_text, model_override, "chat", max_tokens=300, temperature=0.3
+                )
                 llm_response = model.invoke([SysMsg(content=prompt_text)])
                 response_text = llm_response.content if hasattr(llm_response, "content") else str(llm_response)
                 logger.info(f"[SOURCE-CHAT-SUGGEST] LLM raw response: {response_text[:300]}")
 
                 questions = None
+
                 # Strategy 1: direct JSON parse
                 try:
                     questions = json_lib.loads(response_text.strip())
                 except json_lib.JSONDecodeError:
                     pass
+
                 # Strategy 2: strip markdown fences
                 if not questions:
                     cleaned = re_lib.sub(r'```(?:json)?\s*', '', response_text).replace('```', '').strip()
@@ -624,6 +1104,7 @@ JSON array:"""
                         questions = json_lib.loads(cleaned)
                     except json_lib.JSONDecodeError:
                         pass
+
                 # Strategy 3: extract [...] block
                 if not questions:
                     match = re_lib.search(r'\[[\s\S]*?\]', response_text)
@@ -632,6 +1113,7 @@ JSON array:"""
                             questions = json_lib.loads(match.group())
                         except json_lib.JSONDecodeError:
                             pass
+
                 # Strategy 4: extract quoted question strings
                 if not questions or not isinstance(questions, list) or len(questions) < 2:
                     extracted = re_lib.findall(r'"([^"]{5,}[?])"', response_text)
@@ -654,17 +1136,22 @@ JSON array:"""
 
                 questions_list = [trim_question(q) for q in questions_list]
 
-                # Source-grounded fallback using actual names from document/insights
+                # Source-grounded fallback
                 if len(questions_list) < 3:
-                    # Extract from source_context (includes insights when full_text is empty)
                     extract_text = source_context[:3000]
                     names = re_lib.findall(r'\b[A-Z][a-z]+(?: [A-Z][a-z]+)+\b', extract_text)
                     unique_names = list(dict.fromkeys(names))
                     dates = re_lib.findall(r'\b(?:19|20)\d{2}\b', extract_text)
                     unique_dates = list(dict.fromkeys(dates))
-                    places = re_lib.findall(r'\b(?:Rajasthan|Delhi|Punjab|Haryana|Bihar|UP|Sikar|Jaipur|Mumbai|Bikaner|Nagaur)\b', extract_text)
+                    places = re_lib.findall(
+                        r'\b(?:Rajasthan|Delhi|Punjab|Haryana|Bihar|UP|Sikar|Jaipur|Mumbai|Bikaner|Nagaur)\b',
+                        extract_text
+                    )
                     unique_places = list(dict.fromkeys(places))
-                    gangs = re_lib.findall(r'\b(?:Bishnoi|Jathedi|Gogi|Banuda|Lawrence)\s+(?:Gang|Group|gang|group)?\b', extract_text)
+                    gangs = re_lib.findall(
+                        r'\b(?:Bishnoi|Jathedi|Gogi|Banuda|Lawrence)\s+(?:Gang|Group|gang|group)?\b',
+                        extract_text
+                    )
                     unique_gangs = list(dict.fromkeys(gangs))
 
                     fallback = []
@@ -690,7 +1177,10 @@ JSON array:"""
                 logger.info(f"[SOURCE-CHAT-SUGGEST] Final {len(questions_list)} questions: {questions_list}")
 
             # Persist to session
-            full_session_id_for_save = session_id if session_id.startswith("chat_session:") else f"chat_session:{session_id}"
+            full_session_id_for_save = (
+                session_id if session_id.startswith("chat_session:")
+                else f"chat_session:{session_id}"
+            )
             session_obj = await ChatSession.get(full_session_id_for_save)
             if session_obj and questions_list:
                 session_obj.suggested_questions = questions_list
@@ -702,17 +1192,16 @@ JSON array:"""
         except Exception as sq_err:
             logger.error(f"Error generating suggested questions for source chat: {str(sq_err)}")
 
-        # Send completion signal
-        completion_event = {"type": "complete"}
-        yield f"data: {json.dumps(completion_event)}\n\n"
+        # ── Completion signal ──────────────────────────────────────────────
+        yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
     except Exception as e:
         from open_notebook.utils.error_classifier import classify_error
-
         _, user_message = classify_error(e)
         logger.error(f"Error in source chat streaming: {str(e)}")
         error_event = {"type": "error", "message": user_message}
         yield f"data: {json.dumps(error_event)}\n\n"
+
 
 
 @router.post("/sources/{source_id}/chat/sessions/{session_id}/messages")

@@ -174,7 +174,7 @@ class ContextBuilder:
                     ))
 
                 # Chunk full_text — use full_text key for _format_source_context compatibility
-                chunk_size = 6000
+                chunk_size = 20000  # Larger chunks = fewer splits = more coherent context
                 chunks = [
                     full_text[i:i + chunk_size]
                     for i in range(0, len(full_text), chunk_size)

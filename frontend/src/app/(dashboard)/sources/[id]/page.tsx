@@ -162,8 +162,13 @@ export default function SourceDetailPage() {
             messages={chat.messages}
             isStreaming={chat.isStreaming}
             contextIndicators={chat.contextIndicators}
-            onSendMessage={handleSendMessageWithConfig} // Use updated handler
-            // ... rest of your props
+            onSendMessage={handleSendMessageWithConfig}
+            modelOverride={chat.currentSession?.model_override}
+            onModelChange={(model) => {
+              if (chat.currentSessionId) {
+                chat.updateSession(chat.currentSessionId, { model_override: model })
+              }
+            }}
             sessions={chat.sessions}
             currentSessionId={chat.currentSessionId}
             onCreateSession={(title) => chat.createSession({ title })}

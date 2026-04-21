@@ -61,14 +61,6 @@ const getNavigation = (t: TranslationKeys) => [
     ],
   },
   {
-    title: 'Studio',
-    items: [
-      { name: 'Summary', href: null, icon: FileText, studio: 'summary' as const },
-      { name: 'Mind Map', href: null, icon: GitBranch, studio: 'mindmap' as const },
-      { name: 'Infographic', href: null, icon: Newspaper, studio: 'infographic' as const },
-    ],
-  },
-  {
     title: t.navigation.manage,
     items: [
       { name: t.navigation.models, href: '/settings/api-keys', icon: Bot, studio: null },

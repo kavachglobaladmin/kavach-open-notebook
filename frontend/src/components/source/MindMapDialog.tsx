@@ -38,6 +38,25 @@ function saveCachedNodeSummary(sourceId: string, nodeName: string, context: stri
   try { localStorage.setItem(nodeSummaryKey(sourceId, nodeName, context), summary) } catch {}
 }
 
+// ── Label cleaner — fixes fragmented/raw OCR labels from cached data ─────────
+function cleanMindMapNode(node: MindMapNode): MindMapNode {
+  const label = (node.label || '').replace(/\s+/g, ' ').trim()
+  const children = node.children?.map(cleanMindMapNode).filter(child => {
+    const l = (child.label || '').trim()
+    const hasChildren = !!child.children?.length
+    if (hasChildren) return true
+    if (l.length < 4) return false
+    // Starts lowercase = continuation fragment
+    if (l.length > 0 && l[0] === l[0].toLowerCase() && l[0] !== l[0].toUpperCase()) return false
+    // Ends with comma = cut mid-list
+    if (l.endsWith(',')) return false
+    // Pure noise labels
+    if (/^(PART\s*[:\-]\s*(I{1,3}|IV|V|\d+)|Crime|Gangster|Arrested By|of case|FIR No\.\s*&\s*U\/s|Status of case|Case registered FIR No\. Etc|Visit to India Details.*|Source Country.*)$/i.test(l)) return false
+    return true
+  })
+  return { label, ...(children && children.length > 0 ? { children } : {}) }
+}
+
 // ── Robust JSON extractor ─────────────────────────────────────────────────────
 /**
  * Extracts a valid MindMapNode JSON object from any LLM output string or object.
@@ -261,7 +280,7 @@ function LeafNode({ label, isSelected, parentLabel, onLabelClick }: {
     <div className="flex items-center">
       <div
         onClick={() => onLabelClick(label, parentLabel)}
-        className={`px-3 py-1.5 rounded-lg text-xs font-medium border whitespace-nowrap shadow-sm cursor-pointer transition-colors
+        className={`px-3 py-1.5 rounded-lg text-xs font-medium border shadow-sm cursor-pointer transition-colors max-w-[320px] break-words
           ${isSelected
             ? 'bg-teal-500 text-white border-teal-600'
             : 'bg-teal-100 text-teal-800 border-teal-200 hover:bg-teal-200'}`}
@@ -279,7 +298,7 @@ function BranchNode({ label, expanded, hasChildren, isSelected, isRoot, parentLa
 }) {
   return (
     <div
-      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium select-none shadow-sm border transition-colors
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium select-none shadow-sm border transition-colors max-w-[280px]
         ${isRoot
           ? isSelected ? 'bg-indigo-500 text-white border-indigo-600' : 'bg-indigo-100 text-indigo-800 border-indigo-200'
           : isSelected ? 'bg-blue-500 text-white border-blue-600'   : 'bg-blue-100 text-blue-800 border-blue-200'
@@ -495,7 +514,7 @@ export function MindMapDialog({ sourceId, sourceTitle, open, onOpenChange }: Min
       const cached = loadCached(sourceId)
       if (cached) {
         try {
-          const parsed = extractMindMapJson(cached)
+          const parsed = cleanMindMapNode(extractMindMapJson(cached))
           setMindMap(parsed)
           setError(null)
           setFromCache(true)
@@ -512,7 +531,7 @@ export function MindMapDialog({ sourceId, sourceTitle, open, onOpenChange }: Min
     mindmapApi.generate(sourceId)
       .then(r => {
         try {
-          const parsed = extractMindMapJson(r.mind_map)
+          const parsed = cleanMindMapNode(extractMindMapJson(r.mind_map))
           setMindMap(parsed)
           setFromCache(false)
           saveCache(sourceId, parsed)
@@ -560,7 +579,10 @@ export function MindMapDialog({ sourceId, sourceTitle, open, onOpenChange }: Min
             {!loading && mindMap && (
               <div className="flex items-center gap-2">
                 {fromCache && <span className="text-xs text-muted-foreground">Cached result</span>}
-                <Button variant="outline" size="sm" onClick={() => generate(true)} className="gap-1.5 h-7 text-xs">
+                <Button variant="outline" size="sm" onClick={() => {
+                  try { localStorage.removeItem(CACHE_PREFIX + sourceId) } catch {}
+                  generate(true)
+                }} className="gap-1.5 h-7 text-xs">
                   <RefreshCw className="h-3 w-3" /> Regenerate
                 </Button>
               </div>

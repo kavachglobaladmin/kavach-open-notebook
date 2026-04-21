@@ -133,6 +133,11 @@ export const sourcesApi = {
     return response.data
   },
 
+  getPersonContext: async (sourceId: string, name: string): Promise<{ paragraphs: string[]; name: string }> => {
+    const response = await apiClient.get(`/sources/${encodeURIComponent(sourceId)}/person-context`, { params: { name } })
+    return response.data
+  },
+
   getPartIV: async (sourceId: string) => {
     const response = await apiClient.get<{
       sections: Record<string, string>

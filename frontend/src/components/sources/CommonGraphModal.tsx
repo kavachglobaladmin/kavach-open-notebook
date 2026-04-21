@@ -127,39 +127,28 @@ function getNodeId(n: string | GraphNode): string {
   return typeof n === 'string' ? n : n.id
 }
 
-function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mode?: 'persons' | 'activities' }) {
+function NetworkGraphViewer({ graph, mode = 'persons', sourceIds = [] }: { graph: GraphData; mode?: 'persons' | 'activities' | 'associates'; sourceIds?: string[] }) {
   const graphRef = useRef<ForceGraphMethods | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
-  const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null)
+  const [contextParagraphs, setContextParagraphs] = useState<string[]>([])
+  const [loadingContext, setLoadingContext] = useState(false)
   const nodeImageStore = useRef<Map<string, string>>(new Map())
   const [uploadedImages, setUploadedImages] = useState<Map<string, string>>(new Map())
   const [nodeImages, setNodeImages] = useState<Map<string, HTMLImageElement>>(new Map())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Load images for main person nodes from their source files
+  // Load images for source nodes (main persons) from their docx files
   useEffect(() => {
-    const mainPersons = graph.nodes.filter((n) => n.type === 'person' && n.role === 'main')
-    mainPersons.forEach((p) => {
-      if (nodeImages.has(p.id)) return
-      // Find source index for this person
-      const link = graph.links.find((l) => {
-        const s = getNodeId(l.source), t = getNodeId(l.target)
-        return (t === p.id && s.startsWith('source:')) || (s === p.id && t.startsWith('source:'))
-      })
-      if (!link) return
-      const srcId = getNodeId(link.source).startsWith('source:') ? getNodeId(link.source) : getNodeId(link.target)
-      const srcNode = graph.nodes.find((n) => n.id === srcId)
-      if (!srcNode?.source_id) return
-
-      sourcesApi.getProfileImage(srcNode.source_id).then((url) => {
+    const sourceNodes = graph.nodes.filter((n) => n.type === 'source' && n.source_id)
+    sourceNodes.forEach((n) => {
+      if (nodeImages.has(n.id)) return
+      sourcesApi.getProfileImage(n.source_id!).then((url) => {
         if (!url) return
         const img = new Image()
-        img.onload = () => {
-          setNodeImages((prev) => new Map(prev).set(p.id, img))
-        }
+        img.onload = () => setNodeImages((prev) => new Map(prev).set(n.id, img))
         img.src = url
       }).catch(() => {})
     })
@@ -211,26 +200,44 @@ function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mod
     } catch {}
   }, [dimensions])
 
-  // Convert canvas node position to screen position
-  const nodeToScreen = useCallback((node: GraphNode) => {
-    const fg = graphRef.current as any
-    const el = containerRef.current
-    if (!fg || !el || !node.x || !node.y) return null
-    try {
-      const { x: cx, y: cy } = fg.graph2ScreenCoords(node.x, node.y)
-      return { x: cx, y: cy }
-    } catch { return null }
-  }, [])
+  // Convert canvas node position to screen position (unused — kept for reference)
+  // const nodeToScreen = ...
 
-  const handleNodeClick = useCallback((node: any) => {
+  const handleNodeClick = useCallback(async (node: any) => {
     const n = node as GraphNode
     if (selectedNode?.id === n.id) {
-      setSelectedNode(null); setPopupPos(null); return
+      setSelectedNode(null)
+      setContextParagraphs([])
+      return
     }
     setSelectedNode(n)
-    const pos = nodeToScreen(n)
-    setPopupPos(pos)
-  }, [selectedNode, nodeToScreen])
+    setContextParagraphs([])
+
+    // If person has no details, load context paragraphs from source text
+    if ((n.type === 'person' || n.type === 'relative') && !n.details) {
+      // Find which source this person belongs to
+      const link = graph.links.find((l) => {
+        const s = getNodeId(l.source), t = getNodeId(l.target)
+        return (t === n.id && s.startsWith('source:')) || (s === n.id && t.startsWith('source:'))
+      })
+      const srcNodeId = link
+        ? (getNodeId(link.source).startsWith('source:') ? getNodeId(link.source) : getNodeId(link.target))
+        : null
+      const srcIdx = srcNodeId ? parseInt(srcNodeId.replace('source:', '')) : 0
+      const sourceId = sourceIds[srcIdx]
+      if (sourceId) {
+        setLoadingContext(true)
+        try {
+          const result = await sourcesApi.getPersonContext(sourceId, n.label)
+          setContextParagraphs(result.paragraphs)
+        } catch {
+          setContextParagraphs([])
+        } finally {
+          setLoadingContext(false)
+        }
+      }
+    }
+  }, [selectedNode, graph, sourceIds])
 
   const handleUploadImage = useCallback((nodeId: string, file: File) => {
     const reader = new FileReader()
@@ -272,16 +279,13 @@ function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mod
       // Add cross-source links for common persons
       const extraLinks: GraphLink[] = []
       const commonPersons = filteredNodes.filter((n) => n.type === 'person' && n.common)
-      // Connect common persons to both source nodes
       const sourceNodes = filteredNodes.filter((n) => n.type === 'source')
       if (sourceNodes.length >= 2) {
         commonPersons.forEach((p) => {
-          // Check if already connected to both sources
           const connectedSources = filteredLinks
             .filter((l) => getNodeId(l.target) === p.id || getNodeId(l.source) === p.id)
             .map((l) => getNodeId(l.source) === p.id ? getNodeId(l.target) : getNodeId(l.source))
             .filter((id) => id.startsWith('source:'))
-          // If only connected to one source, add link to the other
           sourceNodes.forEach((src) => {
             if (!connectedSources.includes(src.id)) {
               extraLinks.push({ source: src.id, target: p.id, type: 'common_link', weight: 1 })
@@ -290,8 +294,38 @@ function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mod
         })
       }
       return { nodes: filteredNodes, links: [...filteredLinks, ...extraLinks] }
+
+    } else if (mode === 'associates') {
+      // Show ONLY common persons (appear in both files) + source nodes
+      // These are the shared associates/gang members
+      const sourceNodes = graph.nodes.filter((n) => n.type === 'source')
+      const commonPersons = graph.nodes.filter((n) =>
+        (n.type === 'person' || n.type === 'relative') && n.common === true
+      )
+      const filteredNodes = [...sourceNodes, ...commonPersons]
+      const allowedIds = new Set(filteredNodes.map((n) => n.id))
+      // Include all links connecting these nodes
+      const filteredLinks = graph.links.filter((l) => {
+        const s = getNodeId(l.source), t = getNodeId(l.target)
+        return allowedIds.has(s) && allowedIds.has(t)
+      })
+      // Add links from both sources to each common person
+      const extraLinks: GraphLink[] = []
+      commonPersons.forEach((p) => {
+        const connectedSources = filteredLinks
+          .filter((l) => getNodeId(l.target) === p.id || getNodeId(l.source) === p.id)
+          .map((l) => getNodeId(l.source) === p.id ? getNodeId(l.target) : getNodeId(l.source))
+          .filter((id) => id.startsWith('source:'))
+        sourceNodes.forEach((src) => {
+          if (!connectedSources.includes(src.id)) {
+            extraLinks.push({ source: src.id, target: p.id, type: 'common_link', weight: 1 })
+          }
+        })
+      })
+      return { nodes: filteredNodes, links: [...filteredLinks, ...extraLinks] }
+
     } else {
-      // Only source + activity nodes
+      // Activity graph — only source + activity nodes
       const allowedTypes = new Set(['source', 'activity'])
       const filteredNodes = graph.nodes.filter((n) => allowedTypes.has(n.type))
       const allowedIds = new Set(filteredNodes.map((n) => n.id))
@@ -417,18 +451,52 @@ function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mod
       ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText(disp, node.x, node.y + radius + 4)
 
+      // ℹ️ badge for nodes with details
+      if (node.details && node.details.trim()) {
+        const bx = node.x + radius * 0.7
+        const by = node.y - radius * 0.7
+        const br = 6
+        ctx.beginPath(); ctx.arc(bx, by, br, 0, 2 * Math.PI)
+        ctx.fillStyle = '#0ea5e9'; ctx.fill()
+        ctx.fillStyle = '#fff'
+        ctx.font = `bold ${br * 1.4}px Sans-Serif`
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText('i', bx, by + 0.5)
+      }
+
     } else if (isSource) {
-      ctx.beginPath(); ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI)
-      ctx.fillStyle = SOURCE_LINK_COLORS[getSourceIdx(node.id) % SOURCE_LINK_COLORS.length].glow
-      ctx.fill()
-      const words = node.label.replace(/\.docx?$/i, '').split(/[\s_-]+/)
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Sans-Serif'
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      const half = Math.ceil(words.length / 2)
-      const l1 = words.slice(0, half).join(' ').slice(0, 14)
-      const l2 = words.slice(half).join(' ').slice(0, 14)
-      if (l2) { ctx.fillText(l1, node.x, node.y - 7); ctx.fillText(l2, node.x, node.y + 7) }
-      else ctx.fillText(l1, node.x, node.y)
+      // Source node = main person of the document
+      const srcIdx = getSourceIdx(node.id)
+      const ringColor = SOURCE_LINK_COLORS[srcIdx % SOURCE_LINK_COLORS.length].glow
+      const loadedImg = nodeImages.get(node.id)
+
+      // Outer glow ring
+      ctx.shadowColor = ringColor; ctx.shadowBlur = 16
+      ctx.beginPath(); ctx.arc(node.x, node.y, radius + 5, 0, 2 * Math.PI)
+      ctx.fillStyle = ringColor; ctx.fill()
+      ctx.beginPath(); ctx.arc(node.x, node.y, radius + 2, 0, 2 * Math.PI)
+      ctx.fillStyle = '#fff'; ctx.fill()
+      ctx.shadowBlur = 0
+
+      // Photo or avatar
+      ctx.save()
+      ctx.beginPath(); ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI); ctx.clip()
+      if (loadedImg) {
+        ctx.drawImage(loadedImg, node.x - radius, node.y - radius, radius * 2, radius * 2)
+      } else {
+        ctx.fillStyle = '#dbeafe'; ctx.fillRect(node.x - radius, node.y - radius, radius * 2, radius * 2)
+        ctx.fillStyle = '#3b82f6'
+        ctx.beginPath(); ctx.arc(node.x, node.y - radius * 0.1, radius * 0.36, 0, 2 * Math.PI); ctx.fill()
+        ctx.beginPath(); ctx.ellipse(node.x, node.y + radius * 0.7, radius * 0.5, radius * 0.4, 0, 0, 2 * Math.PI); ctx.fill()
+      }
+      ctx.restore()
+
+      // Name below
+      const nameDisp = node.label.length > 16 ? node.label.slice(0, 14) + '…' : node.label
+      ctx.fillStyle = ringColor
+      ctx.font = 'bold 11px Sans-Serif'
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText(nameDisp, node.x, node.y + radius + 5)
 
     } else {
       ctx.beginPath(); ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI)
@@ -512,100 +580,102 @@ function NetworkGraphViewer({ graph, mode = 'persons' }: { graph: GraphData; mod
           cooldownTicks={150}
         />
 
-        {/* Person detail popup — positioned near clicked node */}
-        {selectedNode && selectedNode.type === 'person' && (
+        {/* Person detail side panel */}
+        {selectedNode && (selectedNode.type === 'person' || selectedNode.type === 'relative') && (
           <div
-            className="absolute z-20 flex items-start gap-0 pointer-events-auto"
-            style={{
-              left: popupPos
-                ? Math.min(Math.max(popupPos.x - 30, 8), dimensions.width - 340)
-                : dimensions.width / 2 - 160,
-              top: popupPos
-                ? Math.min(Math.max(popupPos.y + 40, 8), dimensions.height - 180)
-                : dimensions.height - 180,
-            }}
+            className="absolute top-0 right-0 bottom-0 z-20 flex flex-col bg-white border-l border-slate-100 shadow-2xl"
+            style={{ width: 300 }}
           >
-            {/* Photo circle */}
-            <div className="relative flex-shrink-0 -mr-3 z-10">
-              <div
-                className="rounded-full overflow-hidden border-4 shadow-xl cursor-pointer group"
-                style={{
-                  width: 80, height: 80,
-                  borderColor: selectedNode.common ? '#3b82f6' : '#94a3b8',
-                  background: '#f1f5f9',
-                }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {uploadedImages.get(selectedNode.id) ? (
-                  <img src={uploadedImages.get(selectedNode.id)} alt={selectedNode.label} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-blue-50">
-                    <div className="text-blue-300 text-3xl font-bold">{selectedNode.label.charAt(0).toUpperCase()}</div>
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-full">
-                  <span className="text-white text-lg">📷</span>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  style={{ background: selectedNode.common ? '#f59e0b' : '#0ea5e9' }}
+                >
+                  {selectedNode.label.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-bold text-slate-800 text-sm leading-tight">{selectedNode.label}</p>
+                  {selectedNode.role && (
+                    <p className="text-xs text-slate-400 capitalize">{selectedNode.role}</p>
+                  )}
+                  {selectedNode.common && (
+                    <span className="text-xs text-amber-600 font-medium">● Common in both files</span>
+                  )}
                 </div>
               </div>
-              {/* Name below photo */}
-              <div className="text-center mt-1" style={{ width: 80 }}>
-                <p className="text-xs font-bold text-slate-700 leading-tight text-center truncate">{selectedNode.label.split(' ')[0]}</p>
-                {selectedNode.role && <p className="text-xs text-slate-400 capitalize">{selectedNode.role}</p>}
-              </div>
+              <button
+                onClick={() => { setSelectedNode(null); setContextParagraphs([]) }}
+                className="text-slate-300 hover:text-slate-500 p-1"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
             </div>
 
-            {/* Detail card */}
-            <div
-              className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden"
-              style={{ minWidth: 200, maxWidth: 280 }}
-            >
-              <div className="px-4 pt-3 pb-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-bold text-slate-800 text-sm leading-tight">{selectedNode.label}</p>
-                    {selectedNode.common && (
-                      <span className="text-xs text-blue-500 font-medium">● Common in both files</span>
-                    )}
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto">
+              {selectedNode.details && selectedNode.details.trim() ? (
+                /* Has structured details — show info card */
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="w-5 h-5 rounded-full bg-sky-100 flex items-center justify-center">
+                      <span className="text-sky-600 text-xs font-bold">i</span>
+                    </span>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Details</span>
                   </div>
-                  <button
-                    onClick={() => { setSelectedNode(null); setPopupPos(null) }}
-                    className="text-slate-300 hover:text-slate-500 ml-2 flex-shrink-0 mt-0.5"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  </button>
-                </div>
-              </div>
-
-              {selectedNode.details ? (
-                <div className="px-4 pb-3 space-y-1 border-t border-slate-50 pt-2">
                   {selectedNode.details.split(' | ').filter(Boolean).map((detail, i) => {
                     const colonIdx = detail.indexOf(': ')
-                    if (colonIdx === -1) return <p key={i} className="text-xs text-slate-600">{detail}</p>
+                    if (colonIdx === -1) return (
+                      <div key={i} className="bg-slate-50 rounded-lg px-3 py-2">
+                        <p className="text-xs text-slate-600">{detail}</p>
+                      </div>
+                    )
                     const key = detail.slice(0, colonIdx)
                     const val = detail.slice(colonIdx + 2)
                     return (
-                      <div key={i}>
-                        <p className="text-xs text-slate-400 font-medium leading-tight">{key}</p>
-                        <p className="text-xs text-slate-700 font-semibold leading-tight">{val}</p>
+                      <div key={i} className="bg-slate-50 rounded-lg px-3 py-2">
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wide leading-tight">{key}</p>
+                        <p className="text-sm text-slate-800 font-semibold leading-snug mt-0.5">{val}</p>
                       </div>
                     )
                   })}
                 </div>
               ) : (
-                <div className="px-4 pb-3 pt-2 border-t border-slate-50">
-                  <p className="text-xs text-slate-400">No details available.</p>
+                /* No details — show source text paragraphs */
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Mentioned in source</span>
+                  </div>
+                  {loadingContext ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : contextParagraphs.length > 0 ? (
+                    contextParagraphs.map((para, i) => (
+                      <div key={i} className="bg-slate-50 rounded-lg px-3 py-2 border-l-2 border-sky-300">
+                        <p className="text-xs text-slate-700 leading-relaxed">{para}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="bg-slate-50 rounded-lg px-3 py-4 text-center">
+                      <p className="text-xs text-slate-400">No context found in source text.</p>
+                    </div>
+                  )}
                 </div>
               )}
+            </div>
 
-              {/* Upload photo button */}
-              <div className="px-4 pb-3">
-                <button
-                  className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  📷 {uploadedImages.get(selectedNode.id) ? 'Change photo' : 'Add photo'}
-                </button>
-              </div>
+            {/* Photo upload */}
+            <div className="flex-shrink-0 px-4 py-3 border-t border-slate-100">
+              <button
+                className="text-xs text-sky-500 hover:text-sky-700 flex items-center gap-1.5"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                📷 {uploadedImages.get(selectedNode.id) ? 'Change photo' : 'Add photo'}
+              </button>
             </div>
           </div>
         )}
@@ -666,7 +736,7 @@ export function CommonGraphModal({ open, onOpenChange, sourceIds }: CommonGraphM
   const [buildError, setBuildError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [savedTransformationId, setSavedTransformationId] = useState<string | null>(null)
-  const [graphMode, setGraphMode] = useState<'persons' | 'activities'>('persons')
+  const [graphMode, setGraphMode] = useState<'persons' | 'activities' | 'associates'>('persons')
 
   const { data: models = [] } = useModels()
   const { data: defaults } = useModelDefaults()
@@ -883,18 +953,23 @@ export function CommonGraphModal({ open, onOpenChange, sourceIds }: CommonGraphM
                     className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${graphMode === 'persons' ? 'bg-sky-500 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     onClick={() => setGraphMode('persons')}
                   >
-                    👤 Common Persons
+                    👤 All Persons
                   </button>
                   <button
-                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${graphMode === 'activities' ? 'bg-amber-500 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${graphMode === 'associates' ? 'bg-amber-500 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    onClick={() => setGraphMode('associates')}
+                  >
+                    🔗 Common Associates
+                  </button>
+                  <button
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${graphMode === 'activities' ? 'bg-red-500 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     onClick={() => setGraphMode('activities')}
                   >
-                    ⚡ Activity Graph
+                    ⚡ Activities
                   </button>
                 </div>
                 <div className="flex-1 min-h-0">
-                  <NetworkGraphViewer graph={graphData as GraphData} mode={graphMode} />
-                </div>
+                  <NetworkGraphViewer graph={graphData as GraphData} mode={graphMode} sourceIds={sourceIds} /></div>
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center" style={{ background: '#0a0f1e', borderRadius: 8 }}>

@@ -1,434 +1,434 @@
-# import asyncio
-# import base64
-# import os
-# from typing import Any, Dict, List, Optional
-# from urllib.parse import unquote
-# import json
-# import re
+import asyncio
+import base64
+import os
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote
+import json
+import re
 
-# import numpy as np
-# from fastapi import APIRouter, HTTPException
-# from loguru import logger
-# from pydantic import BaseModel
+import numpy as np
+from fastapi import APIRouter, HTTPException
+from loguru import logger
+from pydantic import BaseModel
 
-# from open_notebook.domain.notebook import Source
+from open_notebook.domain.notebook import Source
 
-# router = APIRouter()
+router = APIRouter()
 
-# KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093")
-
-
-# def _decode_source_id(source_id: str) -> str:
-#     """URL-decode source_id — FastAPI :path doesn't auto-decode %3A → : """
-#     return unquote(source_id)
-
-# # Module-level orchestrator instance (initialized on first use)
-# _orchestrator: Optional[Any] = None
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093")
 
 
-# def _build_orchestrator():
-#     """Build and return a KafkaMindMapOrchestrator with a fully wired MindMapPipeline."""
-#     from langchain_ollama import ChatOllama
-#     from open_notebook.graphs.mind_map import (
-#         EasyOCRService,
-#         IntelligenceLLMService,
-#         KafkaMindMapOrchestrator,
-#         MindMapPipeline,
-#         TextProcessor,
-#     )
+def _decode_source_id(source_id: str) -> str:
+    """URL-decode source_id — FastAPI :path doesn't auto-decode %3A → : """
+    return unquote(source_id)
 
-#     # Read env vars fresh at build time — never at module load — so the correct
-#     # runtime value is always used even after container restarts or hot-reloads.
-#     ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-#     kafka_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093")
-
-#     logger.info(f"Building MindMapPipeline — Ollama: {ollama_url}, Kafka: {kafka_servers}")
-#     llm = ChatOllama(model="qwen3", temperature=0.2, base_url=ollama_url)
-#     ocr_service = EasyOCRService()
-#     text_processor = TextProcessor()
-#     llm_service = IntelligenceLLMService(llm)
-#     pipeline = MindMapPipeline(
-#         ocr_service=ocr_service,
-#         processor=text_processor,
-#         llm_service=llm_service,
-#     )
-#     orchestrator = KafkaMindMapOrchestrator(
-#         pipeline=pipeline,
-#         bootstrap_servers=kafka_servers,
-#     )
-#     logger.info("KafkaMindMapOrchestrator ready")
-#     return orchestrator
+# Module-level orchestrator instance (initialized on first use)
+_orchestrator: Optional[Any] = None
 
 
-# def get_orchestrator():
-#     global _orchestrator
-#     if _orchestrator is None:
-#         _orchestrator = _build_orchestrator()
-#     return _orchestrator
+def _build_orchestrator():
+    """Build and return a KafkaMindMapOrchestrator with a fully wired MindMapPipeline."""
+    from langchain_ollama import ChatOllama
+    from open_notebook.graphs.mind_map import (
+        EasyOCRService,
+        IntelligenceLLMService,
+        KafkaMindMapOrchestrator,
+        MindMapPipeline,
+        TextProcessor,
+    )
+
+    # Read env vars fresh at build time — never at module load — so the correct
+    # runtime value is always used even after container restarts or hot-reloads.
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    kafka_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093")
+
+    logger.info(f"Building MindMapPipeline — Ollama: {ollama_url}, Kafka: {kafka_servers}")
+    llm = ChatOllama(model="qwen3", temperature=0.2, base_url=ollama_url)
+    ocr_service = EasyOCRService()
+    text_processor = TextProcessor()
+    llm_service = IntelligenceLLMService(llm)
+    pipeline = MindMapPipeline(
+        ocr_service=ocr_service,
+        processor=text_processor,
+        llm_service=llm_service,
+    )
+    orchestrator = KafkaMindMapOrchestrator(
+        pipeline=pipeline,
+        bootstrap_servers=kafka_servers,
+    )
+    logger.info("KafkaMindMapOrchestrator ready")
+    return orchestrator
 
 
-# class MindMapRequest(BaseModel):
-#     model_name: str = "qwen3"
-#     temperature: float = 0.2
+def get_orchestrator():
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = _build_orchestrator()
+    return _orchestrator
 
 
-# class MindMapResponse(BaseModel):
-#     mind_map: Dict[str, Any]
-#     source_id: str
+class MindMapRequest(BaseModel):
+    model_name: str = "qwen3"
+    temperature: float = 0.2
 
 
-# @router.post("/sources/{source_id}/mindmap", response_model=MindMapResponse)
-# async def generate_mind_map(source_id: str, request: MindMapRequest):
-#     """Generate a mind map from a source's content using KafkaMindMapOrchestrator."""
-#     try:
-#         source_id = _decode_source_id(source_id)
-#         try:
-#             source = await Source.get(source_id)
-#         except Exception:
-#             raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
+class MindMapResponse(BaseModel):
+    mind_map: Dict[str, Any]
+    source_id: str
 
-#         if not source.full_text or not source.full_text.strip():
-#             raise HTTPException(
-#                 status_code=400,
-#                 detail="Source has no text content to generate a mind map from",
-#             )
 
-#         orchestrator = get_orchestrator()
+@router.post("/sources/{source_id}/mindmap", response_model=MindMapResponse)
+async def generate_mind_map(source_id: str, request: MindMapRequest):
+    """Generate a mind map from a source's content using KafkaMindMapOrchestrator."""
+    try:
+        source_id = _decode_source_id(source_id)
+        try:
+            source = await Source.get(source_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
 
-#         # Publish job to Kafka (non-blocking, best-effort)
-#         asyncio.create_task(_safe_produce(orchestrator, source_id))
+        if not source.full_text or not source.full_text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Source has no text content to generate a mind map from",
+            )
 
-#         # Generate directly via the pipeline (no timeout)
-#         logger.info(f"Generating mind map for source_id={source_id}")
-#         mind_map = await orchestrator.pipeline.generate_from_source_id(source_id)
+        orchestrator = get_orchestrator()
+
+        # Publish job to Kafka (non-blocking, best-effort)
+        asyncio.create_task(_safe_produce(orchestrator, source_id))
+
+        # Generate directly via the pipeline (no timeout)
+        logger.info(f"Generating mind map for source_id={source_id}")
+        mind_map = await orchestrator.pipeline.generate_from_source_id(source_id)
         
-#         # Validate the response is a proper dict
-#         if not isinstance(mind_map, dict):
-#             logger.error(f"Mind map returned non-dict type: {type(mind_map)}")
-#             raise ValueError("Mind map generation returned invalid type")
+        # Validate the response is a proper dict
+        if not isinstance(mind_map, dict):
+            logger.error(f"Mind map returned non-dict type: {type(mind_map)}")
+            raise ValueError("Mind map generation returned invalid type")
         
-#         if not mind_map.get("label"):
-#             logger.error("Mind map missing required 'label' field")
-#             mind_map = {
-#                 "label": "Generated Mind Map",
-#                 "children": [{"label": "Unable to generate structured mind map"}]
-#             }
+        if not mind_map.get("label"):
+            logger.error("Mind map missing required 'label' field")
+            mind_map = {
+                "label": "Generated Mind Map",
+                "children": [{"label": "Unable to generate structured mind map"}]
+            }
         
-#         logger.success(f"Mind map generation completed for source_id={source_id}")
-#         return MindMapResponse(mind_map=mind_map, source_id=source_id)
+        logger.success(f"Mind map generation completed for source_id={source_id}")
+        return MindMapResponse(mind_map=mind_map, source_id=source_id)
 
-#     except HTTPException:
-#         raise
-#     except ValueError as e:
-#         logger.error(f"Mind map validation error: {e}")
-#         raise HTTPException(status_code=422, detail=str(e))
-#     except Exception as e:
-#         logger.error(f"Mind map generation failed for source {source_id}: {type(e).__name__}: {e}")
-#         import traceback
-#         logger.debug(f"Traceback: {traceback.format_exc()}")
-#         raise HTTPException(status_code=500, detail=f"Mind map generation failed: {str(e)}")
-
-
-# async def _safe_produce(orchestrator, source_id: str):
-#     """Fire-and-forget Kafka job publish — errors are logged, never raised."""
-#     try:
-#         await orchestrator.produce_jobs([source_id])
-#     except Exception as e:
-#         logger.warning(f"Kafka produce skipped for {source_id}: {e}")
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Mind map validation error: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Mind map generation failed for source {source_id}: {type(e).__name__}: {e}")
+        import traceback
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Mind map generation failed: {str(e)}")
 
 
-# async def start_kafka_consumer():
-#     """Start the KafkaMindMapOrchestrator consumer as a background task."""
-#     try:
-#         orchestrator = get_orchestrator()
-#         logger.info("Starting KafkaMindMapOrchestrator consumer...")
-#         await orchestrator.start_consumer()
-#     except Exception as e:
-#         logger.warning(f"Kafka consumer could not start (Kafka may be unavailable): {e}")
+async def _safe_produce(orchestrator, source_id: str):
+    """Fire-and-forget Kafka job publish — errors are logged, never raised."""
+    try:
+        await orchestrator.produce_jobs([source_id])
+    except Exception as e:
+        logger.warning(f"Kafka produce skipped for {source_id}: {e}")
 
 
-# class SourceImagesResponse(BaseModel):
-#     images: List[str]  # base64-encoded PNG strings
-#     source_id: str
-#     count: int
+async def start_kafka_consumer():
+    """Start the KafkaMindMapOrchestrator consumer as a background task."""
+    try:
+        orchestrator = get_orchestrator()
+        logger.info("Starting KafkaMindMapOrchestrator consumer...")
+        await orchestrator.start_consumer()
+    except Exception as e:
+        logger.warning(f"Kafka consumer could not start (Kafka may be unavailable): {e}")
 
 
-# class NodeSummaryRequest(BaseModel):
-#     node_name: str
-#     root_subject: str  # the root node label (person/topic name)
+class SourceImagesResponse(BaseModel):
+    images: List[str]  # base64-encoded PNG strings
+    source_id: str
+    count: int
 
 
-# class NodeSummaryResponse(BaseModel):
-#     summary: str
-#     node_name: str
-#     root_subject: str
+class NodeSummaryRequest(BaseModel):
+    node_name: str
+    root_subject: str  # the root node label (person/topic name)
 
 
-# @router.post("/sources/{source_id}/node-summary", response_model=NodeSummaryResponse)
-# async def get_node_summary(source_id: str, request: NodeSummaryRequest):
-#     """Generate a detailed summary for a specific mind map node using the source content."""
-#     try:
-#         logger.info(f"Node summary request: source_id={source_id!r}, node={request.node_name!r}")
-#         source_id = _decode_source_id(source_id)
-#         logger.info(f"Decoded source_id={source_id!r}")
-#         try:
-#             source = await Source.get(source_id)
-#         except Exception:
-#             raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
-
-#         if not source:
-#             raise HTTPException(status_code=404, detail="Source not found")
-
-#         if not source.full_text or not source.full_text.strip():
-#             raise HTTPException(status_code=400, detail="Source has no text content")
-
-#         ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-
-#         from langchain_ollama import ChatOllama
-#         from langchain_core.messages import HumanMessage, SystemMessage
-
-#         llm = ChatOllama(model="qwen3", temperature=0.3, base_url=ollama_url)
-
-#         # Truncate source text to avoid context overflow (~12k chars)
-#         context_text = source.full_text[:12000]
-
-#         system_prompt = (
-#             "You are an expert analyst. Given source document content, provide a detailed, "
-#             "well-structured summary about a specific topic as it relates to the main subject. "
-#             "Be thorough, cite specific facts from the source, and organize your response clearly. "
-#             "Do not add information not present in the source. "
-#             "STRICT FORMATTING RULES: "
-#             "- Do NOT use any markdown headers (no #, ##, ### etc). "
-#             "- Do NOT use --- horizontal rules. "
-#             "- Use **bold** only for section titles and key terms. "
-#             "- Use plain numbered lists or bullet points for structure. "
-#             "- Write in clean plain text paragraphs."
-#         )
-
-#         user_prompt = (
-#             f"Discuss what these sources say about '{request.node_name}', "
-#             f"in the larger context of '{request.root_subject}'.\n\n"
-#             f"Source content:\n{context_text}"
-#         )
-
-#         def _run_llm():
-#             messages = [
-#                 SystemMessage(content=system_prompt),
-#                 HumanMessage(content=user_prompt),
-#             ]
-#             response = llm.invoke(messages)
-#             return response.content
-
-#         summary = await asyncio.to_thread(_run_llm)
-
-#         # Strip <think>...</think> tags if model outputs chain-of-thought
-#         import re
-#         summary = re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL).strip()
-#         # Strip markdown headers (###, ##, #) — replace with bold text instead
-#         summary = re.sub(r'^#{1,6}\s+(.+)$', r'**\1**', summary, flags=re.MULTILINE)
-#         # Strip horizontal rules
-#         summary = re.sub(r'^-{3,}$', '', summary, flags=re.MULTILINE)
-#         # Collapse multiple blank lines
-#         summary = re.sub(r'\n{3,}', '\n\n', summary).strip()
-
-#         logger.info(f"Node summary generated for '{request.node_name}' in source {source_id}")
-#         return NodeSummaryResponse(
-#             summary=summary,
-#             node_name=request.node_name,
-#             root_subject=request.root_subject,
-#         )
-
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Node summary failed for source {source_id}: {e}")
-#         raise HTTPException(status_code=500, detail=f"Node summary failed: {str(e)}")
+class NodeSummaryResponse(BaseModel):
+    summary: str
+    node_name: str
+    root_subject: str
 
 
-# class SourceSummaryResponse(BaseModel):
-#     summary: str
-#     source_id: str
+@router.post("/sources/{source_id}/node-summary", response_model=NodeSummaryResponse)
+async def get_node_summary(source_id: str, request: NodeSummaryRequest):
+    """Generate a detailed summary for a specific mind map node using the source content."""
+    try:
+        logger.info(f"Node summary request: source_id={source_id!r}, node={request.node_name!r}")
+        source_id = _decode_source_id(source_id)
+        logger.info(f"Decoded source_id={source_id!r}")
+        try:
+            source = await Source.get(source_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
+
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        if not source.full_text or not source.full_text.strip():
+            raise HTTPException(status_code=400, detail="Source has no text content")
+
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+
+        from langchain_ollama import ChatOllama
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        llm = ChatOllama(model="qwen3", temperature=0.3, base_url=ollama_url)
+
+        # Truncate source text to avoid context overflow (~12k chars)
+        context_text = source.full_text[:12000]
+
+        system_prompt = (
+            "You are an expert analyst. Given source document content, provide a detailed, "
+            "well-structured summary about a specific topic as it relates to the main subject. "
+            "Be thorough, cite specific facts from the source, and organize your response clearly. "
+            "Do not add information not present in the source. "
+            "STRICT FORMATTING RULES: "
+            "- Do NOT use any markdown headers (no #, ##, ### etc). "
+            "- Do NOT use --- horizontal rules. "
+            "- Use **bold** only for section titles and key terms. "
+            "- Use plain numbered lists or bullet points for structure. "
+            "- Write in clean plain text paragraphs."
+        )
+
+        user_prompt = (
+            f"Discuss what these sources say about '{request.node_name}', "
+            f"in the larger context of '{request.root_subject}'.\n\n"
+            f"Source content:\n{context_text}"
+        )
+
+        def _run_llm():
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+            response = llm.invoke(messages)
+            return response.content
+
+        summary = await asyncio.to_thread(_run_llm)
+
+        # Strip <think>...</think> tags if model outputs chain-of-thought
+        import re
+        summary = re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL).strip()
+        # Strip markdown headers (###, ##, #) — replace with bold text instead
+        summary = re.sub(r'^#{1,6}\s+(.+)$', r'**\1**', summary, flags=re.MULTILINE)
+        # Strip horizontal rules
+        summary = re.sub(r'^-{3,}$', '', summary, flags=re.MULTILINE)
+        # Collapse multiple blank lines
+        summary = re.sub(r'\n{3,}', '\n\n', summary).strip()
+
+        logger.info(f"Node summary generated for '{request.node_name}' in source {source_id}")
+        return NodeSummaryResponse(
+            summary=summary,
+            node_name=request.node_name,
+            root_subject=request.root_subject,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Node summary failed for source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Node summary failed: {str(e)}")
 
 
-# @router.post("/sources/{source_id}/summary", response_model=SourceSummaryResponse)
-# async def get_source_summary(source_id: str):
-#     """Generate a full summary of the source document using Ollama qwen3 via SummaryPipeline."""
-#     try:
-#         source_id = _decode_source_id(source_id)
-#         logger.info(f"Source summary request: source_id={source_id!r}")
-
-#         from langchain_ollama import ChatOllama
-#         from open_notebook.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
-
-#         ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-#         llm = ChatOllama(model="qwen3", temperature=0.3, base_url=ollama_url)
-
-#         pipeline = SummaryPipeline(
-#             processor=SummaryTextProcessor(),
-#             llm_service=SummaryLLMService(llm),
-#         )
-
-#         result = await pipeline.generate_from_source_id(source_id)
-
-#         logger.info(f"Source summary generated for source {source_id}")
-#         return SourceSummaryResponse(summary=result["summary"], source_id=source_id)
-
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Source summary failed for source {source_id}: {e}")
-#         raise HTTPException(status_code=500, detail=f"Source summary failed: {str(e)}")
+class SourceSummaryResponse(BaseModel):
+    summary: str
+    source_id: str
 
 
-# def _extract_images_from_pdf(file_path: str) -> List[str]:
-#     """
-#     Extract images from a PDF using two strategies:
-#     1. Embedded XObject images (photos embedded in the PDF stream)
-#     2. Page rendering — render each page as a high-res image (catches scanned PDFs,
-#        pages with photos drawn directly, charts, etc.)
-#     Returns a deduplicated list of base64-encoded PNG strings.
-#     """
-#     import io
-#     import fitz  # PyMuPDF
-#     from PIL import Image
+@router.post("/sources/{source_id}/summary", response_model=SourceSummaryResponse)
+async def get_source_summary(source_id: str):
+    """Generate a full summary of the source document using Ollama qwen3 via SummaryPipeline."""
+    try:
+        source_id = _decode_source_id(source_id)
+        logger.info(f"Source summary request: source_id={source_id!r}")
 
-#     images_b64: List[str] = []
-#     seen_sizes: set = set()  # deduplicate by (width, height, first-bytes)
+        from langchain_ollama import ChatOllama
+        from open_notebook.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
 
-#     doc = fitz.open(file_path)
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        llm = ChatOllama(model="qwen3", temperature=0.3, base_url=ollama_url)
 
-#     for page_index in range(len(doc)):
-#         page = doc[page_index]
+        pipeline = SummaryPipeline(
+            processor=SummaryTextProcessor(),
+            llm_service=SummaryLLMService(llm),
+        )
 
-#         # ── Strategy 1: extract embedded XObject images ──────────────────────
-#         embedded = page.get_images(full=True)
-#         page_has_embedded = False
+        result = await pipeline.generate_from_source_id(source_id)
 
-#         for img_info in embedded:
-#             xref = img_info[0]
-#             try:
-#                 base_image = doc.extract_image(xref)
-#                 img_bytes = base_image["image"]
-#                 img = Image.open(io.BytesIO(img_bytes))
-#                 # Skip tiny icons / artifacts
-#                 if img.width < 80 or img.height < 80:
-#                     continue
-#                 buf = io.BytesIO()
-#                 img.convert("RGB").save(buf, format="PNG")
-#                 raw = buf.getvalue()
-#                 key = (img.width, img.height, raw[:64])
-#                 if key in seen_sizes:
-#                     continue
-#                 seen_sizes.add(key)
-#                 images_b64.append(base64.b64encode(raw).decode("utf-8"))
-#                 page_has_embedded = True
-#             except Exception as e:
-#                 logger.warning(f"Skipping embedded image xref={xref} on page {page_index}: {e}")
+        logger.info(f"Source summary generated for source {source_id}")
+        return SourceSummaryResponse(summary=result["summary"], source_id=source_id)
 
-#         # ── Strategy 2: render the full page if it has no embedded images ────
-#         # This catches scanned PDFs and pages where photos are drawn as page content
-#         if not page_has_embedded:
-#             try:
-#                 # 150 DPI is a good balance of quality vs size
-#                 mat = fitz.Matrix(150 / 72, 150 / 72)
-#                 pix = page.get_pixmap(matrix=mat, alpha=False)
-#                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-
-#                 # Skip pages that are mostly white (text-only pages)
-#                 arr = np.array(img)
-#                 white_ratio = (arr > 240).all(axis=2).mean()
-#                 if white_ratio > 0.92:
-#                     # Mostly blank/text page — skip
-#                     continue
-
-#                 buf = io.BytesIO()
-#                 img.save(buf, format="PNG")
-#                 raw = buf.getvalue()
-#                 key = (img.width, img.height, raw[:64])
-#                 if key not in seen_sizes:
-#                     seen_sizes.add(key)
-#                     images_b64.append(base64.b64encode(raw).decode("utf-8"))
-#             except Exception as e:
-#                 logger.warning(f"Page render failed for page {page_index}: {e}")
-
-#     doc.close()
-#     return images_b64
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Source summary failed for source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Source summary failed: {str(e)}")
 
 
-# def _extract_images_from_docx(file_path: str) -> List[str]:
-#     """Extract embedded images from a .docx file using python-docx."""
-#     import io
-#     from PIL import Image
-#     from docx import Document
+def _extract_images_from_pdf(file_path: str) -> List[str]:
+    """
+    Extract images from a PDF using two strategies:
+    1. Embedded XObject images (photos embedded in the PDF stream)
+    2. Page rendering — render each page as a high-res image (catches scanned PDFs,
+       pages with photos drawn directly, charts, etc.)
+    Returns a deduplicated list of base64-encoded PNG strings.
+    """
+    import io
+    import fitz  # PyMuPDF
+    from PIL import Image
 
-#     images_b64: List[str] = []
-#     seen: set = set()
+    images_b64: List[str] = []
+    seen_sizes: set = set()  # deduplicate by (width, height, first-bytes)
 
-#     doc = Document(file_path)
-#     for rel in doc.part.rels.values():
-#         if "image" in rel.reltype:
-#             try:
-#                 img_bytes = rel.target_part.blob
-#                 img = Image.open(io.BytesIO(img_bytes))
-#                 if img.width < 80 or img.height < 80:
-#                     continue
-#                 buf = io.BytesIO()
-#                 img.convert("RGB").save(buf, format="PNG")
-#                 raw = buf.getvalue()
-#                 key = raw[:128]
-#                 if key in seen:
-#                     continue
-#                 seen.add(key)
-#                 images_b64.append(base64.b64encode(raw).decode("utf-8"))
-#             except Exception as e:
-#                 logger.warning(f"Skipping docx image: {e}")
+    doc = fitz.open(file_path)
 
-#     return images_b64
+    for page_index in range(len(doc)):
+        page = doc[page_index]
+
+        # ── Strategy 1: extract embedded XObject images ──────────────────────
+        embedded = page.get_images(full=True)
+        page_has_embedded = False
+
+        for img_info in embedded:
+            xref = img_info[0]
+            try:
+                base_image = doc.extract_image(xref)
+                img_bytes = base_image["image"]
+                img = Image.open(io.BytesIO(img_bytes))
+                # Skip tiny icons / artifacts
+                if img.width < 80 or img.height < 80:
+                    continue
+                buf = io.BytesIO()
+                img.convert("RGB").save(buf, format="PNG")
+                raw = buf.getvalue()
+                key = (img.width, img.height, raw[:64])
+                if key in seen_sizes:
+                    continue
+                seen_sizes.add(key)
+                images_b64.append(base64.b64encode(raw).decode("utf-8"))
+                page_has_embedded = True
+            except Exception as e:
+                logger.warning(f"Skipping embedded image xref={xref} on page {page_index}: {e}")
+
+        # ── Strategy 2: render the full page if it has no embedded images ────
+        # This catches scanned PDFs and pages where photos are drawn as page content
+        if not page_has_embedded:
+            try:
+                # 150 DPI is a good balance of quality vs size
+                mat = fitz.Matrix(150 / 72, 150 / 72)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                # Skip pages that are mostly white (text-only pages)
+                arr = np.array(img)
+                white_ratio = (arr > 240).all(axis=2).mean()
+                if white_ratio > 0.92:
+                    # Mostly blank/text page — skip
+                    continue
+
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                raw = buf.getvalue()
+                key = (img.width, img.height, raw[:64])
+                if key not in seen_sizes:
+                    seen_sizes.add(key)
+                    images_b64.append(base64.b64encode(raw).decode("utf-8"))
+            except Exception as e:
+                logger.warning(f"Page render failed for page {page_index}: {e}")
+
+    doc.close()
+    return images_b64
 
 
-# @router.get("/sources/{source_id}/images", response_model=SourceImagesResponse)
-# async def get_source_images(source_id: str):
-#     """Extract images from a source's PDF/file and return them as base64 PNGs."""
-#     try:
-#         source_id = _decode_source_id(source_id)
-#         try:
-#             source = await Source.get(source_id)
-#         except Exception:
-#             raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
+def _extract_images_from_docx(file_path: str) -> List[str]:
+    """Extract embedded images from a .docx file using python-docx."""
+    import io
+    from PIL import Image
+    from docx import Document
 
-#         file_path = source.asset.file_path if source.asset else None
-#         if not file_path or not os.path.exists(file_path):
-#             # No file — return empty list gracefully
-#             return SourceImagesResponse(images=[], source_id=source_id, count=0)
+    images_b64: List[str] = []
+    seen: set = set()
 
-#         ext = os.path.splitext(file_path)[1].lower()
-#         images_b64: List[str] = []
+    doc = Document(file_path)
+    for rel in doc.part.rels.values():
+        if "image" in rel.reltype:
+            try:
+                img_bytes = rel.target_part.blob
+                img = Image.open(io.BytesIO(img_bytes))
+                if img.width < 80 or img.height < 80:
+                    continue
+                buf = io.BytesIO()
+                img.convert("RGB").save(buf, format="PNG")
+                raw = buf.getvalue()
+                key = raw[:128]
+                if key in seen:
+                    continue
+                seen.add(key)
+                images_b64.append(base64.b64encode(raw).decode("utf-8"))
+            except Exception as e:
+                logger.warning(f"Skipping docx image: {e}")
 
-#         if ext == ".pdf":
-#             # Run in thread pool — CPU-bound PDF rendering
-#             images_b64 = await asyncio.to_thread(_extract_images_from_pdf, file_path)
-#         elif ext in (".docx", ".doc"):
-#             images_b64 = await asyncio.to_thread(_extract_images_from_docx, file_path)
-#         else:
-#             # For image files themselves, return the file directly
-#             try:
-#                 import io
-#                 from PIL import Image
-#                 img = Image.open(file_path)
-#                 buf = io.BytesIO()
-#                 img.convert("RGB").save(buf, format="PNG")
-#                 images_b64.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
-#             except Exception as e:
-#                 logger.warning(f"Could not read file as image for {source_id}: {e}")
+    return images_b64
 
-#         logger.info(f"Extracted {len(images_b64)} images from source {source_id}")
-#         return SourceImagesResponse(images=images_b64, source_id=source_id, count=len(images_b64))
 
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Image extraction failed for source {source_id}: {e}")
-#         raise HTTPException(status_code=500, detail=f"Image extraction failed: {str(e)}")
+@router.get("/sources/{source_id}/images", response_model=SourceImagesResponse)
+async def get_source_images(source_id: str):
+    """Extract images from a source's PDF/file and return them as base64 PNGs."""
+    try:
+        source_id = _decode_source_id(source_id)
+        try:
+            source = await Source.get(source_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
+
+        file_path = source.asset.file_path if source.asset else None
+        if not file_path or not os.path.exists(file_path):
+            # No file — return empty list gracefully
+            return SourceImagesResponse(images=[], source_id=source_id, count=0)
+
+        ext = os.path.splitext(file_path)[1].lower()
+        images_b64: List[str] = []
+
+        if ext == ".pdf":
+            # Run in thread pool — CPU-bound PDF rendering
+            images_b64 = await asyncio.to_thread(_extract_images_from_pdf, file_path)
+        elif ext in (".docx", ".doc"):
+            images_b64 = await asyncio.to_thread(_extract_images_from_docx, file_path)
+        else:
+            # For image files themselves, return the file directly
+            try:
+                import io
+                from PIL import Image
+                img = Image.open(file_path)
+                buf = io.BytesIO()
+                img.convert("RGB").save(buf, format="PNG")
+                images_b64.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+            except Exception as e:
+                logger.warning(f"Could not read file as image for {source_id}: {e}")
+
+        logger.info(f"Extracted {len(images_b64)} images from source {source_id}")
+        return SourceImagesResponse(images=images_b64, source_id=source_id, count=len(images_b64))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Image extraction failed for source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Image extraction failed: {str(e)}")
 
 
 
@@ -465,51 +465,44 @@ def _decode_source_id(source_id: str) -> str:
 def _parse_llm_json(raw: str) -> dict:
     """
     Robustly parse JSON from an LLM response that may contain:
-      - <think>...</think> chain-of-thought blocks (qwen3)
+      - <think>...</think> chain-of-thought blocks
       - Markdown code fences:  ```json { ... } ```  or  ``` { ... } ```
       - Python function syntax: json(...), json.loads(...), etc.
       - Leading/trailing prose around the JSON object
       - Other formatting noise
-    
+
     Returns a clean dict, raising ValueError if no valid JSON found.
     """
     logger.debug(f"[_parse_llm_json] Raw input (first 300 chars): {raw[:300]}")
-    
-    original_raw = raw
-    
-    # 1. Strip <think>...</think> blocks (qwen3 reasoning)
-    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.DOTALL).strip()
-    if cleaned != raw:
-        logger.debug("[_parse_llm_json] Stripped <think> blocks")
 
-    # 2. Remove common function call wrappers: json(...), json.loads(...), etc.
-    # Strip leading "json\n(" or "json(" or "json (" varieties
+    original_raw = raw
+
+    # 1. Strip <think>...</think> blocks
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.DOTALL).strip()
+
+    # 2. Remove common function call wrappers
     cleaned = re.sub(r'^\s*(?:json\.loads\s*\(|json\s*\(|python\s*\()', '', cleaned, flags=re.IGNORECASE)
-    # Strip trailing ")" that matches the opening paren
     cleaned = re.sub(r'\)\s*$', '', cleaned).strip()
-    if cleaned != raw:
-        logger.debug("[_parse_llm_json] Removed function call wrappers")
 
     # 3. Try markdown code fence
     fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, flags=re.DOTALL)
     if fence_match:
         fence_content = fence_match.group(1).strip()
-        logger.debug("[_parse_llm_json] Found markdown fence")
         try:
             result = json.loads(fence_content)
             if isinstance(result, dict) and result.get("label"):
                 logger.debug("[_parse_llm_json] ✓ Parsed from markdown fence")
                 return result
         except json.JSONDecodeError:
-            logger.debug("[_parse_llm_json] Markdown fence content was invalid JSON, trying fallback")
-    
+            pass
+
     # 4. Find ALL { } candidates (bracket-balanced search)
     candidates = []
     depth = 0
     start = -1
     in_string = False
     escape_next = False
-    
+
     for i, char in enumerate(cleaned):
         if escape_next:
             escape_next = False
@@ -529,34 +522,50 @@ def _parse_llm_json(raw: str) -> dict:
         elif char == '}':
             depth -= 1
             if depth == 0 and start != -1:
-                candidate = cleaned[start : i + 1]
+                candidate = cleaned[start: i + 1]
                 try:
                     parsed = json.loads(candidate)
                     if isinstance(parsed, dict) and parsed.get("label"):
                         candidates.append(parsed)
-                        logger.debug(f"[_parse_llm_json] Found valid candidate at [{start}:{i+1}]")
                 except json.JSONDecodeError:
                     pass
                 start = -1
-    
+
     if candidates:
-        # Pick the largest (most detailed) candidate
         best = sorted(candidates, key=lambda x: len(json.dumps(x)), reverse=True)[0]
-        logger.debug(f"[_parse_llm_json] ✓ Parsed from {len(candidates)} candidates (picked largest)")
+        logger.debug(f"[_parse_llm_json] ✓ Parsed from {len(candidates)} candidates")
         return best
-    
-    # 5. If no candidates found, try parsing the whole cleaned string
+
+    # 5. Try parsing the whole cleaned string
     try:
         result = json.loads(cleaned)
         if isinstance(result, dict) and result.get("label"):
-            logger.debug("[_parse_llm_json] ✓ Parsed cleaned JSON directly")
             return result
     except json.JSONDecodeError:
         pass
-    
-    # 5. Last resort: log raw and raise
+
     logger.error(f"[_parse_llm_json] FAILED to parse. Raw (500 chars):\n{original_raw[:500]}\n...")
     raise ValueError(f"Could not extract valid JSON with 'label' key. Raw preview: {original_raw[:150]}...")
+
+
+def _build_fallback_mind_map(text: str, title: str = "Mind Map") -> dict:
+    """
+    Build a basic mind map from plain text when LLM returns prose instead of JSON.
+    Splits text into sentences and groups them into generic categories.
+    """
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if len(s.strip()) > 20]
+    chunk_size = max(3, len(sentences) // 5)
+    children = []
+    for i in range(0, len(sentences), chunk_size):
+        chunk = sentences[i:i + chunk_size]
+        children.append({
+            "label": f"Section {i // chunk_size + 1}",
+            "children": [{"label": s[:120]} for s in chunk]
+        })
+    return {
+        "label": title,
+        "children": children if children else [{"label": "No structured content found"}]
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -577,19 +586,21 @@ def _build_orchestrator():
         TextProcessor,
     )
 
-
-    # Read env vars fresh at build time — never at module load — so the correct
-    # runtime value is always used even after container restarts or hot-reloads.
-    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-
     ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-
     kafka_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9093")
 
-    logger.info(f"Building MindMapPipeline — Ollama: {ollama_url}, Kafka: {kafka_servers}")
-    # Use configured Ollama model from env, fallback to a sensible default
-    ollama_model = os.environ.get("OLLAMA_MODEL", os.environ.get("DEFAULT_CHAT_MODEL", "qwen2.5:1.5b"))
-    llm = ChatOllama(model=ollama_model, temperature=0.2, base_url=ollama_url)
+    # llama3 works best with temperature=0 for strict JSON output
+    ollama_model = os.environ.get("OLLAMA_MODEL", os.environ.get("DEFAULT_CHAT_MODEL", "llama3:latest"))
+    print(f"Using Ollama model: {ollama_model}")
+    logger.info(f"Building MindMapPipeline — model: {ollama_model}, Ollama: {ollama_url}, Kafka: {kafka_servers}")
+
+    llm = ChatOllama(
+        model=ollama_model,
+        temperature=0,           # llama3: temperature=0 gives most consistent JSON
+        base_url=ollama_url,
+        num_ctx=8192,            # llama3 Large Ctx — use available context
+        repeat_penalty=1.1,      # reduce repetition in output
+    )
     ocr_service = EasyOCRService()
     text_processor = TextProcessor()
     llm_service = IntelligenceLLMService(llm)
@@ -618,8 +629,8 @@ def get_orchestrator():
 # ---------------------------------------------------------------------------
 
 class MindMapRequest(BaseModel):
-    model_name: str = "qwen3"
-    temperature: float = 0.2
+    model_name: str = "llama3:latest"
+    temperature: float = 0.0
 
 
 class MindMapResponse(BaseModel):
@@ -631,9 +642,188 @@ class MindMapResponse(BaseModel):
 # Mind Map endpoint
 # ---------------------------------------------------------------------------
 
+def _build_mindmap_from_docx(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Build a clean, structured mind map directly from DOCX tables and PART-IV narrative.
+    This bypasses the LLM/OCR pipeline entirely for IR documents.
+    Returns None if the file is not a valid IR docx.
+    """
+    from api.routers.sources import _extract_profile_from_docx, _extract_part_iv_from_docx
+
+    profile = _extract_profile_from_docx(file_path)
+    part4 = _extract_part_iv_from_docx(file_path)
+
+    personal: dict = profile.get('personal', {})
+    family: list = profile.get('family', [])
+    associates: list = profile.get('associates', [])
+    main_person: str = profile.get('main_person', '') or personal.get('Name', 'Unknown Subject')
+    part4_sections: dict = part4.get('sections', {})
+
+    if not personal and not part4_sections:
+        return None  # Not a structured IR doc — fall back to LLM pipeline
+
+    # ── Helper ────────────────────────────────────────────────────────────
+    def _leaf(text: str) -> Dict:
+        return {"label": re.sub(r'\s+', ' ', text).strip()}
+
+    def _section(label: str, children: list) -> Dict:
+        return {"label": label, "children": children}
+
+    children: list = []
+
+    # ── 1. Personal Profile ───────────────────────────────────────────────
+    personal_leaves = []
+
+    # Priority fields in display order
+    priority_fields = [
+        'Name', 'Code Name', 'Alias', 'Date Of Birth', 'Age', 'Sex', 'Nationality',
+        'Religion', 'Caste', 'Marital Status', 'Complexion', 'Height', 'Weight',
+        'Build', 'Hair', 'Eyes', 'Descriptive Roll', 'Mark Of Identification',
+        'Education', 'Occupation', 'Bad Habits', 'Present Address', 'Permanent Address',
+        'Facebook Id', 'Email Id', 'Mobile No',
+    ]
+    shown_keys = set()
+    for field in priority_fields:
+        for k, v in personal.items():
+            if k.lower().strip() == field.lower() and v and v not in ('---', '-', 'N/A', 'Nil'):
+                personal_leaves.append(_leaf(f"{k}: {v}"))
+                shown_keys.add(k.lower())
+                break
+
+    # Remaining personal fields not in priority list
+    for k, v in personal.items():
+        if k.lower() not in shown_keys and v and v not in ('---', '-', 'N/A', 'Nil'):
+            personal_leaves.append(_leaf(f"{k}: {v}"))
+
+    if personal_leaves:
+        children.append(_section("Personal Profile", personal_leaves))
+
+    # ── 2. Family & Relationships ─────────────────────────────────────────
+    family_leaves = []
+    for member in family:
+        name = member.get('name', '')
+        relation = member.get('relation', '').title()
+        details = member.get('details', '')
+        if name:
+            label = f"{relation}: {name}"
+            if details:
+                label += f" ({details})"
+            family_leaves.append(_leaf(label))
+
+    if family_leaves:
+        children.append(_section("Family & Relationships", family_leaves))
+
+    # ── 3. Criminal Career (from PART-IV sections) ────────────────────────
+    criminal_leaves = []
+    criminal_keys = [
+        'how he got involved in crime', 'how she got involved in crime',
+        'criminal career', 'criminal history', 'modus operandi',
+        'expertise in criminal act', 'occupation before joining crime',
+        'weapons details', 'weapon details', 'bad habits',
+    ]
+    for sec_key, sec_val in part4_sections.items():
+        sk = sec_key.lower()
+        if any(ck in sk for ck in criminal_keys):
+            # Summarize long text into bullet sentences
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', sec_val) if len(s.strip()) > 15]
+            if sentences:
+                criminal_leaves.append(_section(sec_key, [_leaf(s) for s in sentences[:6]]))
+            elif sec_val.strip():
+                criminal_leaves.append(_leaf(f"{sec_key}: {sec_val[:120]}"))
+
+    # Gang affiliations from associates
+    gang_leaves = []
+    for assoc in associates:
+        rel = assoc.get('relation', '').lower()
+        if any(g in rel for g in ['gang', 'gangster', 'associate', 'group']):
+            name = assoc.get('name', '')
+            details = assoc.get('details', '')
+            label = name
+            if details:
+                label += f" — {details}"
+            gang_leaves.append(_leaf(label))
+
+    if gang_leaves:
+        criminal_leaves.append(_section("Gang Associates", gang_leaves))
+
+    if criminal_leaves:
+        children.append(_section("Criminal Career", criminal_leaves))
+
+    # ── 4. Legal History (FIR cases from personal table) ─────────────────
+    legal_leaves = []
+    # Extract FIR data from personal fields
+    fir_fields = {k: v for k, v in personal.items()
+                  if any(x in k.lower() for x in ['fir', 'case', 'arrest', 'police station', 'status of case', 'under section', 'u/s'])}
+    for k, v in fir_fields.items():
+        legal_leaves.append(_leaf(f"{k}: {v}"))
+
+    # Also from PART-IV sections
+    legal_keys = ['previous involvements', 'legal history', 'fir details', 'case details', 'arrest details']
+    for sec_key, sec_val in part4_sections.items():
+        sk = sec_key.lower()
+        if any(lk in sk for lk in legal_keys):
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', sec_val) if len(s.strip()) > 15]
+            if sentences:
+                legal_leaves.append(_section(sec_key, [_leaf(s) for s in sentences[:8]]))
+            elif sec_val.strip():
+                legal_leaves.append(_leaf(f"{sec_key}: {sec_val[:150]}"))
+
+    if legal_leaves:
+        children.append(_section("Legal History", legal_leaves))
+
+    # ── 5. Movements & Hideouts ───────────────────────────────────────────
+    movement_leaves = []
+    movement_keys = ['movements', 'hideout', 'places', 'location', 'hide out', 'travel', 'stayed', 'residence']
+    for sec_key, sec_val in part4_sections.items():
+        sk = sec_key.lower()
+        if any(mk in sk for mk in movement_keys):
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', sec_val) if len(s.strip()) > 15]
+            if sentences:
+                movement_leaves.append(_section(sec_key, [_leaf(s) for s in sentences[:6]]))
+            elif sec_val.strip():
+                movement_leaves.append(_leaf(f"{sec_key}: {sec_val[:150]}"))
+
+    # Address fields
+    for k, v in personal.items():
+        if 'address' in k.lower() and v and v not in ('---', '-', 'N/A', 'Nil'):
+            movement_leaves.append(_leaf(f"{k}: {v}"))
+
+    if movement_leaves:
+        children.append(_section("Movements & Hideouts", movement_leaves))
+
+    # ── 6. Any remaining PART-IV sections ────────────────────────────────
+    handled_keys = set()
+    for sec_key in part4_sections:
+        sk = sec_key.lower()
+        already = any(
+            any(ck in sk for ck in criminal_keys + legal_keys + movement_keys)
+            for _ in [1]
+        )
+        if not already:
+            sec_val = part4_sections[sec_key]
+            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', sec_val) if len(s.strip()) > 15]
+            if sentences:
+                children.append(_section(sec_key, [_leaf(s) for s in sentences[:5]]))
+            elif sec_val.strip():
+                children.append(_leaf(f"{sec_key}: {sec_val[:120]}"))
+
+    if not children:
+        return None
+
+    return {
+        "label": main_person,
+        "children": children,
+    }
+
+
 @router.post("/sources/{source_id}/mindmap", response_model=MindMapResponse)
 async def generate_mind_map(source_id: str, request: MindMapRequest):
-    """Generate a mind map from a source's content using KafkaMindMapOrchestrator."""
+    """Generate a mind map from a source's content.
+    
+    Priority:
+    1. DOCX structured extraction (IR documents) — fast, accurate, no LLM needed
+    2. LLM pipeline fallback for non-DOCX or unstructured sources
+    """
     try:
         source_id = _decode_source_id(source_id)
 
@@ -648,51 +838,53 @@ async def generate_mind_map(source_id: str, request: MindMapRequest):
                 detail="Source has no text content to generate a mind map from",
             )
 
-        orchestrator = get_orchestrator()
+        mind_map: Optional[Dict[str, Any]] = None
 
-        # Publish job to Kafka (non-blocking, best-effort)
-        asyncio.create_task(_safe_produce(orchestrator, source_id))
-
-        # Generate directly via the pipeline
-        logger.info(f"Generating mind map for source_id={source_id}")
-        raw_result = await orchestrator.pipeline.generate_from_source_id(source_id)
-        logger.debug(f"Raw mind map result type={type(raw_result)}, preview={str(raw_result)[:300]}")
-
-        # ── Normalise: pipeline may return a str OR a dict ──────────────────
-        if isinstance(raw_result, str):
+        # ── Path 1: DOCX structured extraction (IR documents) ───────────────
+        file_path = source.asset.file_path if source.asset else None
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.docx', '.doc')):
             try:
-                mind_map = _parse_llm_json(raw_result)
-            except (json.JSONDecodeError, ValueError) as exc:
-                logger.error(f"JSON parse failed after cleaning. Raw:\n{raw_result[:500]}\nError: {exc}")
-                raise ValueError(f"LLM returned non-parseable JSON: {exc}") from exc
-        elif isinstance(raw_result, dict):
-            mind_map = raw_result
-        else:
-            logger.error(f"Unexpected mind map type: {type(raw_result)}")
-            raise ValueError(f"Mind map generation returned unsupported type: {type(raw_result)}")
+                logger.info(f"[MindMap] Trying DOCX structured extraction for {source_id}")
+                mind_map = await asyncio.to_thread(_build_mindmap_from_docx, file_path)
+                if mind_map:
+                    logger.success(f"[MindMap] DOCX extraction succeeded for {source_id}: {mind_map.get('label')}")
+                else:
+                    logger.info(f"[MindMap] DOCX extraction returned None — falling back to LLM pipeline")
+            except Exception as e:
+                logger.warning(f"[MindMap] DOCX extraction failed: {e} — falling back to LLM pipeline")
+                mind_map = None
 
-        # ── Validate minimum structure ───────────────────────────────────────
-        if not mind_map.get("label"):
-            logger.warning("Mind map missing 'label' — using fallback structure")
+        # ── Path 2: LLM pipeline fallback ───────────────────────────────────
+        if not mind_map:
+            orchestrator = get_orchestrator()
+            asyncio.create_task(_safe_produce(orchestrator, source_id))
+
+            logger.info(f"[MindMap] Running LLM pipeline for source_id={source_id}")
+            raw_result = await orchestrator.pipeline.generate_from_source_id(source_id)
+            logger.debug(f"[MindMap] LLM result type={type(raw_result)}, preview={str(raw_result)[:300]}")
+
+            if isinstance(raw_result, str):
+                try:
+                    mind_map = _parse_llm_json(raw_result)
+                except (json.JSONDecodeError, ValueError) as exc:
+                    logger.warning(f"[MindMap] JSON parse failed — using fallback. Error: {exc}")
+                    mind_map = _build_fallback_mind_map(raw_result, title=source.title or "Mind Map")
+            elif isinstance(raw_result, dict):
+                mind_map = raw_result
+            else:
+                raise ValueError(f"Mind map generation returned unsupported type: {type(raw_result)}")
+
+        # ── Validate ─────────────────────────────────────────────────────────
+        if not mind_map or not mind_map.get("label"):
             mind_map = {
-                "label": "Generated Mind Map",
+                "label": source.title or "Generated Mind Map",
                 "children": [{"label": "Unable to generate structured mind map"}],
             }
 
-        # ── CRITICAL: Re-serialize and validate JSON is clean ──
-        # This ensures frontend receives ONLY valid JSON, no corruption
-        try:
-            json_str = json.dumps(mind_map)
-            mind_map = json.loads(json_str)
-            logger.debug(f"[validate] Mind map JSON is clean ({len(json_str)} bytes)")
-        except Exception as e:
-            logger.error(f"[validate] Mind map JSON corruption detected: {e}")
-            mind_map = {
-                "label": f"Error: {str(e)[:50]}",
-                "children": [{"label": "Mind map JSON validation failed"}],
-            }
+        # Ensure clean JSON
+        mind_map = json.loads(json.dumps(mind_map))
 
-        logger.success(f"Mind map generation completed for source_id={source_id}")
+        logger.success(f"[MindMap] Completed for source_id={source_id}: {mind_map.get('label')}")
         return MindMapResponse(mind_map=mind_map, source_id=source_id)
 
     except HTTPException:
@@ -756,20 +948,14 @@ async def get_node_summary(source_id: str, request: NodeSummaryRequest):
     try:
         logger.info(f"Node summary request: source_id={source_id!r}, node={request.node_name!r}")
         source_id = _decode_source_id(source_id)
-        logger.info(f"Decoded source_id={source_id!r}")
 
         try:
             source = await Source.get(source_id)
         except Exception:
             raise HTTPException(status_code=404, detail=f"Source not found: {source_id}")
 
-        if not source:
-            raise HTTPException(status_code=404, detail="Source not found")
-
-        if not source.full_text or not source.full_text.strip():
+        if not source or not source.full_text or not source.full_text.strip():
             raise HTTPException(status_code=400, detail="Source has no text content")
-
-        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
         from open_notebook.ai.provision import provision_langchain_model
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -809,13 +995,10 @@ async def get_node_summary(source_id: str, request: NodeSummaryRequest):
 
         summary = await asyncio.to_thread(_run_llm)
 
-        # Strip <think>...</think> tags
+        # Clean up output
         summary = re.sub(r"<think>.*?</think>", "", summary, flags=re.DOTALL).strip()
-        # Strip markdown headers — replace with bold text
         summary = re.sub(r"^#{1,6}\s+(.+)$", r"**\1**", summary, flags=re.MULTILINE)
-        # Strip horizontal rules
         summary = re.sub(r"^-{3,}$", "", summary, flags=re.MULTILINE)
-        # Collapse multiple blank lines
         summary = re.sub(r"\n{3,}", "\n\n", summary).strip()
 
         logger.info(f"Node summary generated for '{request.node_name}' in source {source_id}")
@@ -843,7 +1026,7 @@ class SourceSummaryResponse(BaseModel):
 
 @router.post("/sources/{source_id}/summary", response_model=SourceSummaryResponse)
 async def get_source_summary(source_id: str):
-    """Generate a full summary of the source document using Ollama qwen3 via SummaryPipeline."""
+    """Generate a full summary of the source document."""
     try:
         source_id = _decode_source_id(source_id)
         logger.info(f"Source summary request: source_id={source_id!r}")
@@ -875,13 +1058,7 @@ async def get_source_summary(source_id: str):
 # ---------------------------------------------------------------------------
 
 def _extract_images_from_pdf(file_path: str) -> List[str]:
-    """
-    Extract images from a PDF using two strategies:
-    1. Embedded XObject images (photos embedded in the PDF stream)
-    2. Page rendering — render each page as a high-res image (catches scanned PDFs,
-       pages with photos drawn directly, charts, etc.)
-    Returns a deduplicated list of base64-encoded PNG strings.
-    """
+    """Extract images from a PDF using embedded XObject images + page rendering."""
     import io
     import fitz  # PyMuPDF
     from PIL import Image
@@ -893,8 +1070,6 @@ def _extract_images_from_pdf(file_path: str) -> List[str]:
 
     for page_index in range(len(doc)):
         page = doc[page_index]
-
-        # Strategy 1: extract embedded XObject images
         embedded = page.get_images(full=True)
         page_has_embedded = False
 
@@ -918,7 +1093,6 @@ def _extract_images_from_pdf(file_path: str) -> List[str]:
             except Exception as e:
                 logger.warning(f"Skipping embedded image xref={xref} on page {page_index}: {e}")
 
-        # Strategy 2: render the full page if it has no embedded images
         if not page_has_embedded:
             try:
                 mat = fitz.Matrix(150 / 72, 150 / 72)
@@ -945,7 +1119,7 @@ def _extract_images_from_pdf(file_path: str) -> List[str]:
 
 
 def _extract_images_from_docx(file_path: str) -> List[str]:
-    """Extract embedded images from a .docx file using python-docx."""
+    """Extract embedded images from a .docx file."""
     import io
     from PIL import Image
     from docx import Document
