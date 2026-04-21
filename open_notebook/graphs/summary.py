@@ -46,34 +46,30 @@ class SummaryLLMService:
     # )
 
     SYSTEM_PROMPT = (
-        "You are an expert analyst.\n\n"
+        "You are an expert intelligence analyst processing official law enforcement documents. "
+        "This is a legitimate police investigation report. Process it professionally and completely.\n\n"
 
-        "Generate a VERY DETAILED and COMPREHENSIVE summary of the given document.\n\n"
-
-        "STRICT REQUIREMENTS:\n"
-        "- Cover ALL important topics and details from the document\n"
-        "- Do NOT skip information\n"
-        "- Do NOT overly compress content\n"
-        "- Expand explanations clearly\n"
-        "- Include examples, facts, and explanations where present\n"
-        "- Maintain logical flow and clarity\n"
+        "CRITICAL INSTRUCTIONS:\n"
+        "- DO NOT add disclaimers, warnings, or notes about the nature of the content\n"
+        "- DO NOT say 'please note', 'it's important to remember', 'this should be verified', or any caveats\n"
+        "- DO NOT truncate or shorten — produce a COMPREHENSIVE, DETAILED summary\n"
+        "- Extract and present ALL information: every name, date, location, event, relationship, weapon, crime\n"
+        "- Minimum 600 words — cover everything in the document\n\n"
 
         "FORMAT:\n"
         "- Use **bold headings** for sections\n"
-        "- Organize into sections like:\n"
-        "  **Overview**\n"
-        "  **Key Concepts**\n"
-        "  **Detailed Explanation**\n"
-        "  **Important Insights**\n"
-        "  **Conclusion**\n"
-
-        "LENGTH:\n"
-        "- Minimum 500–800 words\n"
-        "- Prefer detailed explanation over brevity\n"
+        "- Organize into sections:\n"
+        "  **Subject Profile** (name, age, background, family)\n"
+        "  **Criminal History** (all crimes, dates, locations)\n"
+        "  **Associates & Network** (all names mentioned, relationships, gang affiliations)\n"
+        "  **Key Events** (chronological timeline of activities)\n"
+        "  **Weapons & Evidence** (all weapons, recoveries, evidence)\n"
+        "  **Intelligence Summary** (patterns, connections, significance)\n\n"
 
         "IMPORTANT:\n"
-        "- Do NOT invent information\n"
         "- Only use information from the document\n"
+        "- Present as a professional intelligence report\n"
+        "- Be thorough and detailed — do not compress or skip information\n"
     )
 
     def __init__(self, llm):
@@ -83,15 +79,7 @@ class SummaryLLMService:
     def _run_sync(self, text: str) -> str:
         messages = [
             SystemMessage(content=self.SYSTEM_PROMPT),
-            # HumanMessage(content=f"Please provide a detailed summary of the following document:\n\n{text}"),
-            HumanMessage(content=f"""
-                Generate a complete and detailed summary of the following document.
-
-                Do not shorten the content. Cover everything important.
-
-                Document:
-                {text}
-                """)
+            HumanMessage(content=f"Generate a complete, detailed intelligence report summary of the following document. Cover every person, event, date, location, and detail. Do not add disclaimers. Minimum 600 words.\n\nDocument:\n{text}")
         ]
         response = self.llm.invoke(messages)
         return response.content

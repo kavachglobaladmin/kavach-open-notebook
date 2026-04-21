@@ -154,6 +154,11 @@ def _call_model_with_source_context_inner(state, config):
     # -------------------------
     retrieval_start = time.time()
 
+    # Extract year from question if present
+    import re as _re
+    year_match = _re.search(r'\b(19\d{2}|20\d{2})\b', latest_user_message or '')
+    target_year = year_match.group(1) if year_match else None
+
     def build_context():
         new_loop = asyncio.new_event_loop()
         try:
@@ -162,9 +167,23 @@ def _call_model_with_source_context_inner(state, config):
                 source_id=source_id,
                 include_insights=True,
                 include_notes=False,
-                max_tokens=50000
+                max_tokens=5000  # Leave room for system prompt + response within 8K context
             )
-            return new_loop.run_until_complete(cb.build())
+            context_data = new_loop.run_until_complete(cb.build())
+
+            # If question mentions a year, prioritize chunks containing that year
+            if target_year and context_data.get('sources'):
+                for src in context_data['sources']:
+                    if isinstance(src, dict) and src.get('full_text'):
+                        text = src['full_text']
+                        # Find paragraphs containing the target year
+                        paragraphs = text.split('\n\n')
+                        relevant = [p for p in paragraphs if target_year in p]
+                        if relevant:
+                            # Prepend relevant paragraphs to the full text
+                            src['full_text'] = '\n\n'.join(relevant[:5]) + '\n\n[...]\n\n' + text[:20000]
+
+            return context_data
         finally:
             new_loop.close()
             asyncio.set_event_loop(None)
@@ -303,8 +322,8 @@ def _call_model_with_source_context_inner(state, config):
         prompt_template="source_chat/system"
     ).render(data=prompt_data)
 
-    # Limit history to last 3 turns to avoid context pollution
-    MAX_HISTORY_TURNS = 3
+    # Limit history to last 6 turns for better context
+    MAX_HISTORY_TURNS = 6
     recent_messages = []
     temp_messages = list(messages)
     while temp_messages and len(recent_messages) < MAX_HISTORY_TURNS * 2:
@@ -316,8 +335,8 @@ def _call_model_with_source_context_inner(state, config):
 
     dynamic_max_tokens = (
         8192 if payload_len > 60000
-        else 4096 if payload_len > 30000
-        else 2048
+        else 6144 if payload_len > 30000
+        else 4096
     )
 
     model_id = config.get("configurable", {}).get("model_id") or state.get("model_override")
@@ -334,7 +353,7 @@ def _call_model_with_source_context_inner(state, config):
     generation_start = time.time()
 
     # -------------------------
-    # MODEL CALL
+    # MODEL CALL — with token streaming support
     # -------------------------
     def run_model():
         new_loop = asyncio.new_event_loop()
@@ -497,6 +516,51 @@ def _format_source_context(context_data, raw_insights=None):
                 parts.append("")
 
     return "\n".join(parts)
+
+
+# -------------------------
+# STREAMING FUNCTION
+# -------------------------
+async def stream_source_chat_tokens(
+    source_id: str,
+    message: str,
+    model_id: Optional[str],
+    context: str,
+    system_prompt: str,
+    payload: list,
+    dynamic_max_tokens: int,
+):
+    """Stream tokens from the model as they're generated."""
+    from open_notebook.utils import clean_thinking_content
+
+    try:
+        model = await provision_langchain_model(
+            str(payload),
+            model_id,
+            "chat",
+            max_tokens=dynamic_max_tokens,
+            temperature=0.2,
+        )
+
+        # Try async streaming
+        try:
+            async for chunk in model.astream(payload):
+                if hasattr(chunk, "content"):
+                    token = chunk.content
+                    if token:
+                        cleaned = clean_thinking_content(token)
+                        if cleaned:
+                            yield cleaned
+        except (AttributeError, NotImplementedError):
+            # Fallback: sync invoke
+            response = model.invoke(payload)
+            content = response.content if hasattr(response, "content") else str(response)
+            cleaned = clean_thinking_content(content)
+            yield cleaned
+
+    except Exception as e:
+        logger.error(f"[SourceChat] Streaming error: {e}")
+        yield f"\n\n[Error generating response: {str(e)}]"
 
 
 # -------------------------
