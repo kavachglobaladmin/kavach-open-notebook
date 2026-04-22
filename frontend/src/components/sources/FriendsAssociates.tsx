@@ -1,12 +1,7 @@
 'use client'
 
-import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { motion, AnimatePresence, Variants } from 'framer-motion'
-import { 
-  User, MapPin, Briefcase, Calendar, ShieldAlert, 
-  Search, Info, ZoomIn, ZoomOut, Maximize, 
-  MousePointer2, Activity
-} from 'lucide-react'
+import { useEffect, useRef, useState, useMemo } from 'react'
+import { User } from 'lucide-react'
 
 export interface Associate {
   name: string
@@ -20,199 +15,213 @@ interface FriendsAndAssociatesProps {
   mainPerson: string
 }
 
+const CENTER_R = 72
+const MEMBER_R = 44
+const DETAIL_W = 230
+
+const ringColor = (gender: string) =>
+  gender.toLowerCase() === 'female' ? '#fda4af' : '#93c5fd'
+
 export function FriendsAssociates({ data, mainPerson }: FriendsAndAssociatesProps) {
-  const [searchTerm, setSearchTerm] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
-  
-  // === Transform State (Zoom & Pan Logic) ===
-  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.85 })
-  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
-  const dragStart = useRef({ x: 0, y: 0 })
+  const [size, setSize]           = useState({ w: 1000, h: 700 })
+  const [scale, setScale]         = useState(0.85)
+  const [pan, setPan]             = useState({ x: 0, y: 0 })
+  const [dragging, setDragging]   = useState(false)
+  const [selected, setSelected]   = useState<Set<string>>(new Set())
+  const drag0 = useRef({ x: 0, y: 0 })
 
-  const filteredData = useMemo(() => {
-    if (!searchTerm) return data
-    const lowerSearch = searchTerm.toLowerCase()
-    return data.filter(
-      (person) =>
-        person.name.toLowerCase().includes(lowerSearch) ||
-        person.relation.toLowerCase().includes(lowerSearch) ||
-        (person.details && person.details.toLowerCase().includes(lowerSearch))
-    )
-  }, [data, searchTerm])
-
-  // === Mouse Wheel Zoom Logic ===
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const zoomSensitivity = 0.001
-      const delta = -e.deltaY * zoomSensitivity
-      setTransform((prev) => ({
-        ...prev,
-        scale: Math.min(Math.max(0.3, prev.scale + delta), 2)
-      }))
-    }
-
-    container.addEventListener('wheel', handleWheel, { passive: false })
-    return () => container.removeEventListener('wheel', handleWheel)
+    const el = containerRef.current; if (!el) return
+    const ro = new ResizeObserver(([e]) => {
+      const r = e.contentRect
+      setSize({ w: Math.max(800, r.width), h: Math.max(600, r.height) })
+    })
+    ro.observe(el); return () => ro.disconnect()
   }, [])
 
-  // === Canvas Pan Logic ===
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.interactive-node') || (e.target as HTMLElement).closest('.ui-controls')) return
-    setIsDraggingCanvas(true)
-    dragStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y }
-  }
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDraggingCanvas) {
-      setTransform((prev) => ({
-        ...prev,
-        x: e.clientX - dragStart.current.x,
-        y: e.clientY - dragStart.current.y
-      }))
+  useEffect(() => {
+    const el = containerRef.current; if (!el) return
+    const fn = (e: WheelEvent) => {
+      e.preventDefault()
+      setScale(s => Math.min(2.5, Math.max(0.25, s - e.deltaY * 0.001)))
     }
+    el.addEventListener('wheel', fn, { passive: false })
+    return () => el.removeEventListener('wheel', fn)
+  }, [])
+
+  const onDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.np')) return
+    setDragging(true)
+    drag0.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
+  }
+  const onMove = (e: React.MouseEvent) => {
+    if (!dragging) return
+    setPan({ x: e.clientX - drag0.current.x, y: e.clientY - drag0.current.y })
+  }
+  const onUp = () => setDragging(false)
+
+  const toggleSelected = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  const getDetailIcon = (text: string) => {
-    const l = text.toLowerCase()
-    if (l.includes('age') || l.includes('dob') || l.includes('year')) return <Calendar className="w-3 h-3" />
-    if (l.includes('occup') || l.includes('work')) return <Briefcase className="w-3 h-3" />
-    if (l.includes('distt') || l.includes('village')) return <MapPin className="w-3 h-3" />
-    return <Info className="w-3 h-3" />
-  }
+  const cx = size.w / 2
+  const cy = size.h / 2
+
+  // Deduplicate
+  const members = useMemo(() => {
+    const seen = new Set<string>()
+    return data.filter(m => {
+      const key = `${m.name.toLowerCase().trim()}|${m.relation.toLowerCase().trim()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return m.name?.trim().length > 0
+    })
+  }, [data])
+
+  // Orbit radius — scales with member count
+  const ORBIT = Math.min(cx - MEMBER_R - 60, cy - MEMBER_R - 80, Math.max(220, members.length * 28))
+
+  const nodes = useMemo(() => {
+    const n = members.length
+    if (n === 0) return []
+    return members.map((m, i) => {
+      const angle = -Math.PI / 2 + (i / n) * 2 * Math.PI
+      return {
+        ...m,
+        id: `${m.relation}_${i}`,
+        angle,
+        x: cx + ORBIT * Math.cos(angle),
+        y: cy + ORBIT * Math.sin(angle),
+        details: m.details
+          ? m.details.split('|').map(s => s.trim()).filter(Boolean)
+          : [],
+      }
+    })
+  }, [members, cx, cy, ORBIT])
 
   return (
-    <div 
+    <div
       ref={containerRef}
-      className={`relative w-full h-[750px] overflow-hidden select-none bg-[#f8fafc] border border-slate-200 rounded-3xl shadow-inner font-sans ${isDraggingCanvas ? 'cursor-grabbing' : 'cursor-grab'}`}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={() => setIsDraggingCanvas(false)}
-      onMouseLeave={() => setIsDraggingCanvas(false)}
+      className={`relative w-full h-full overflow-hidden bg-gradient-to-br from-[#eef3fb] to-[#f8faff] select-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+      onClick={() => setSelected(new Set())}
     >
-      {/* Dynamic Grid Background */}
-      <div 
-        className="absolute inset-0 pointer-events-none opacity-[0.03]" 
-        style={{ 
-          backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', 
-          backgroundSize: '40px 40px',
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
-        }} 
-      />
-
-      {/* UI Controls (Zoom & Search) - Preserved from logic but visual layout maintained */}
-      <div className="absolute top-6 right-6 z-20 flex items-center gap-3 ui-controls">
-        {/* <div className="relative group">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Search Network..." 
-            className="pl-10 pr-4 py-2.5 bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl text-sm font-bold shadow-2xl focus:ring-4 focus:ring-blue-500/10 transition-all w-64"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div> */}
-        <div className="flex bg-white/90 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
-          <button onClick={() => setTransform(t => ({...t, scale: Math.min(t.scale + 0.1, 2)}))} className="p-3 hover:bg-slate-50 text-slate-600 transition-colors"><ZoomIn className="h-4 w-4"/></button>
-          <button onClick={() => setTransform(t => ({...t, scale: Math.max(t.scale - 0.1, 0.3)}))} className="p-3 hover:bg-slate-50 text-slate-600 transition-colors border-l border-slate-100"><ZoomOut className="h-4 w-4"/></button>
-          <button onClick={() => setTransform({x: 0, y: 0, scale: 0.85})} className="p-3 hover:bg-slate-50 text-slate-600 transition-colors border-l border-slate-100"><Maximize className="h-4 w-4"/></button>
-        </div>
+      {/* hint */}
+      <div className="absolute bottom-3 left-3 z-50 pointer-events-none text-[11px] text-slate-400 bg-white/80 px-2 py-1 rounded-lg border border-slate-100">
+        {Math.round(scale * 100)}% • Scroll to zoom • Drag to pan • Click member for details
       </div>
 
-      {/* Main Graph Area */}
-      <div 
-        className="absolute inset-0 origin-center pointer-events-none"
+      {/* zoomable layer */}
+      <div
+        className="absolute inset-0"
         style={{
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transition: isDraggingCanvas ? 'none' : 'transform 0.1s ease-out'
+          transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})`,
+          transformOrigin: `${cx}px ${cy}px`,
         }}
       >
-        <div className="relative w-full h-full flex items-center justify-center min-h-[1000px] py-32 px-[10%]">
-          
-          <AnimatePresence mode="popLayout">
-            <motion.div 
-              className="flex flex-wrap items-center justify-center gap-8 max-w-[1400px]"
-              layout
-            >
-              {filteredData.map((person, index) => {
-                const isThreat = person.relation.toLowerCase().includes('jail') || person.relation.toLowerCase().includes('lodged')
-                const details = person.details ? person.details.split('|').map(s => s.trim()).filter(Boolean) : []
+        {/* SVG lines + relation labels */}
+        <svg
+          className="absolute inset-0 overflow-visible pointer-events-none"
+          style={{ width: size.w, height: size.h }}
+        >
+          {nodes.map(node => {
+            const angle = node.angle
+            const x1 = cx + (CENTER_R + 6) * Math.cos(angle)
+            const y1 = cy + (CENTER_R + 6) * Math.sin(angle)
+            const x2 = node.x - (MEMBER_R + 4) * Math.cos(angle)
+            const y2 = node.y - (MEMBER_R + 4) * Math.sin(angle)
+            const lx = (x1 + x2) / 2
+            const ly = (y1 + y2) / 2
+            return (
+              <g key={node.id}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#93c5fd" strokeWidth={1.5} opacity={0.8} strokeLinecap="round" />
+                <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize={11} fontWeight={600} fill="#64748b" style={{ userSelect: 'none' }}>
+                  {node.relation}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
 
-                return (
-                  <motion.div
-                    key={`${person.name}-${index}`}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ delay: index * 0.03 }}
-                    className="interactive-node pointer-events-auto group relative"
-                  >
-                    {/* Animated Connection Link */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full -z-10 opacity-20 group-hover:opacity-40 transition-opacity">
-                       <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] rounded-full border-2 border-dashed ${isThreat ? 'border-red-400' : 'border-blue-400'} animate-[spin_10s_linear_infinite]`} />
-                    </div>
-
-                    <div className={`relative bg-white border ${isThreat ? 'border-red-200' : 'border-slate-200'} rounded-[32px] p-6 shadow-sm hover:shadow-2xl hover:border-blue-400 transition-all w-[320px] overflow-hidden`}>
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-inner ${isThreat ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-blue-600 border-slate-100'}`}>
-                            <User className="h-6 w-6" />
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight truncate w-32">{person.name}</h4>
-                            <div className={`mt-1 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border inline-block ${isThreat ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200'}`}>
-                              {person.relation}
-                            </div>
-                          </div>
-                        </div>
-                        {isThreat && <ShieldAlert className="h-5 w-5 text-red-500 animate-pulse" />}
-                      </div>
-
-                      <div className="space-y-1.5">
-                        {details.slice(0, 3).map((detail, i) => (
-                          <div key={i} className="flex items-center gap-2.5 bg-slate-50/50 p-2 rounded-xl group-hover:bg-blue-50/50 transition-colors">
-                            <span className="text-slate-400 group-hover:text-blue-500 transition-colors">{getDetailIcon(detail)}</span>
-                            <span className="text-[10px] font-bold text-slate-600 truncate uppercase tracking-tight">{detail}</span>
-                          </div>
-                        ))}
-                        {details.length === 0 && (
-                          <div className="py-2 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">No Metadata</div>
-                        )}
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between">
-                         <span className="text-[8px] font-black text-slate-300 uppercase">Node #{index + 101}</span>
-                         <div className="flex gap-1">
-                            <div className="w-1 h-1 rounded-full bg-blue-400" />
-                            <div className="w-1 h-1 rounded-full bg-blue-200" />
-                         </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* Footer Instructions Badge */}
-      <div className="absolute bottom-6 left-6 right-6 z-20 flex justify-between items-end pointer-events-none">
-        <div className="bg-slate-900/90 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 pointer-events-auto">
-          <Activity className="h-4 w-4 text-blue-400" />
-          <div className="flex flex-col">
-            <span className="text-[8px] font-black uppercase text-slate-500 tracking-[0.2em]">Active Trace</span>
-            <span className="text-sm font-black tracking-tight">{filteredData.length} Connection Nodes</span>
+        {/* CENTER CIRCLE */}
+        <div
+          className="absolute np"
+          style={{ left: cx - CENTER_R, top: cy - CENTER_R, width: CENTER_R * 2, height: CENTER_R * 2, zIndex: 20 }}
+        >
+          <div className="absolute inset-[-18px] rounded-full bg-blue-400/10 animate-pulse pointer-events-none" />
+          <div className="absolute inset-[-6px] rounded-full bg-blue-500 shadow-2xl pointer-events-none" />
+          <div className="absolute inset-[-1px] rounded-full bg-white pointer-events-none" />
+          <div className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center bg-slate-200 z-10">
+            <User className="w-1/2 h-1/2 text-slate-400" />
+          </div>
+          <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none">
+            <span className="text-[14px] font-extrabold text-slate-800 bg-white/90 px-3 py-1 rounded-full shadow-sm border border-slate-200">
+              {mainPerson || 'Subject'}
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-200 pointer-events-none">
-          <MousePointer2 className="h-3 w-3" />
-          Scroll to Zoom • Drag to Pan
-        </div>
+        {/* SATELLITE NODES */}
+        {nodes.map(node => {
+          const rc = ringColor(node.gender)
+          return (
+            <div
+              key={node.id}
+              className="absolute np"
+              style={{ left: node.x - MEMBER_R, top: node.y - MEMBER_R, width: MEMBER_R * 2, height: MEMBER_R * 2, zIndex: selected.has(node.id) ? 30 : 15 }}
+              onClick={e => { e.stopPropagation(); toggleSelected(node.id) }}
+            >
+              <div className="absolute inset-[-4px] rounded-full pointer-events-none" style={{ background: rc, opacity: 0.3 }} />
+              <div className="absolute inset-[-2px] rounded-full pointer-events-none" style={{ border: `2.5px solid ${rc}` }} />
+              <div className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center bg-slate-100 cursor-pointer shadow-md z-10 hover:shadow-lg transition-shadow">
+                <User className="w-1/2 h-1/2 text-slate-400" />
+              </div>
+              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none whitespace-nowrap">
+                <span className="text-[13px] font-bold text-slate-800">{node.name}</span>
+                <span className="text-[11px] text-slate-500 capitalize">{node.relation}</span>
+              </div>
+            </div>
+          )
+        })}
+
+        {/* DETAIL POPUPS — outside node divs, canvas coordinates */}
+        {nodes.map(node => {
+          if (!selected.has(node.id)) return null
+          const angle = node.angle
+          const POPUP_OFFSET = MEMBER_R + 20
+          const goRight = Math.cos(angle) >= 0
+          const popupX = goRight
+            ? node.x + POPUP_OFFSET
+            : node.x - POPUP_OFFSET - DETAIL_W
+          const popupY = node.y - MEMBER_R
+
+          return (
+            <div
+              key={`popup_${node.id}`}
+              className="absolute np bg-white rounded-2xl shadow-lg border border-slate-200 p-5"
+              style={{ left: popupX, top: popupY, width: DETAIL_W, zIndex: 50 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <p className="text-[16px] font-extrabold text-slate-900 leading-tight">{node.name}</p>
+              <p className="text-[12px] text-slate-400 capitalize mb-3 mt-0.5">{node.relation}</p>
+              {node.details.length > 0 ? (
+                <div className="space-y-2">
+                  {node.details.map((d: string, i: number) => (
+                    <p key={i} className="text-[13px] text-slate-600 leading-snug">{d}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[12px] text-slate-400 italic">No additional details</p>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
