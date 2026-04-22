@@ -44,163 +44,6 @@ function Card({
   )
 }
 
-// export function PersonalMindMap({ data, mainPerson }: any) {
-//   // ── parse flat data object into grouped fields ──
-//   const fields = useMemo(() => {
-//     const f: Record<string, string> = {}
-//     if (!data) return f
-//     Object.entries(data).forEach(([k, v]) => {
-//       if (!blank(v as string)) f[k] = v as string
-//     })
-//     return f
-//   }, [data])
-
-//   const get = (...keys: string[]) => {
-//     for (const k of keys) {
-//       const found = Object.entries(fields).find(
-//         ([fk]) => fk.toLowerCase().includes(k.toLowerCase())
-//       )
-//       if (found) return found[1]
-//     }
-//     return ''
-//   }
-
-//   const getKey = (...keys: string[]) => {
-//     for (const k of keys) {
-//       const found = Object.entries(fields).find(
-//         ([fk]) => fk.toLowerCase().includes(k.toLowerCase())
-//       )
-//       if (found) return found[0]
-//     }
-//     return ''
-//   }
-
-//   // ── identity rows for left card ──
-//   const identityKeys = ['name', 'parentage', 'birth', 'nationality', 'marital', 'descriptive', 'place of birth', 'religion', 'economic', 'caste', 'tribe', 'sect', 'code']
-//   const identityRows = useMemo(() => {
-//     return Object.entries(fields).filter(([k]) =>
-//       identityKeys.some(id => k.toLowerCase().includes(id))
-//     )
-//   }, [fields])
-
-//   // ── other cards ──
-//   const markValue = get('mark')
-//   const educationValue = get('education', 'school', 'qualification')
-//   const addressValue = get('address')
-//   const arrestedByValue = get('arrested by', 'arrestedby')
-//   const placeOfArrestValue = get('place of arrest', 'placeofarrest')
-//   const expertiseTitleKey = getKey('expertise')
-//   const expertiseTitleValue = expertiseTitleKey
-//   const expertiseValue = get('expertise')
-//   const habitsValue = get('habit')
-//   const occupationValue = get('occupation')
-//   const typeValue = get('type', 'criminal', 'category', 'classification')
-//   const photo = get('photo', 'image', 'picture')
-
-//   return (
-//     <div className="w-full min-h-full bg-[#f4f7fb] p-6 font-sans">
-//       <div
-//         className="grid gap-3 max-w-[980px] mx-auto"
-//         style={{
-//           gridTemplateColumns: '280px 1fr 1fr',
-//           gridTemplateRows: 'auto',
-//         }}
-//       >
-//         {/* ── LEFT COL ── */}
-//         <div className="flex flex-col gap-3" style={{ gridColumn: '1', gridRow: '1 / 4' }}>
-//           {/* Personal info */}
-//           <Card title={mainPerson || data?.name || 'Profile'} accent="#dce8f8">
-//             {identityRows.map(([k, v]) => (
-//               <InfoRow key={k} label={k} value={v} />
-//             ))}
-//           </Card>
-
-//           {/* Mark of identification */}
-//           {markValue && (
-//             <Card title="Mark Of Identification">
-//               <p className="text-sm text-gray-700 m-0">{markValue}</p>
-//             </Card>
-//           )}
-
-//           {/* Education */}
-//           {educationValue && (
-//             <Card title="Educational Qualification And School Details">
-//               <p className="text-sm text-gray-700 m-0">{educationValue}</p>
-//             </Card>
-//           )}
-//         </div>
-
-//         {/* ── CENTER COL ── */}
-//         <div className="flex flex-col gap-3" style={{ gridColumn: '2', gridRow: '1' }}>
-//           {/* Address */}
-//           {addressValue && (
-//             <Card title="Address">
-//               <p className="text-sm text-gray-700 m-0">{addressValue}</p>
-//             </Card>
-//           )}
-
-//           {/* Photo + badge */}
-//           <div className="flex flex-col items-center gap-3 py-2">
-//             <div
-//               className="w-28 h-28 rounded-full border-4 border-blue-300 overflow-hidden bg-slate-200 flex items-center justify-center"
-//             >
-//               {photo ? (
-//                 <img src={photo} alt={mainPerson} className="w-full h-full object-cover" />
-//               ) : (
-//                 <User className="w-12 h-12 text-gray-400" />
-//               )}
-//             </div>
-
-//             {typeValue && (
-//               <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-1 text-red-600 font-bold text-sm tracking-wide">
-//                 {typeValue}
-//               </div>
-//             )}
-//           </div>
-
-//           {/* Arrested By */}
-//           {arrestedByValue && (
-//             <Card title="Arrested By">
-//               <p className="text-sm text-gray-700 m-0">{arrestedByValue}</p>
-//             </Card>
-//           )}
-//         </div>
-
-//         {/* ── RIGHT COL ── */}
-//         <div className="flex flex-col gap-3" style={{ gridColumn: '3', gridRow: '1' }}>
-//           {/* Place of Arrest */}
-//           {placeOfArrestValue && (
-//             <Card title="Place Of Arrest">
-//               <p className="text-sm text-gray-700 m-0">{placeOfArrestValue}</p>
-//             </Card>
-//           )}
-
-//           {/* Expertise */}
-//           {expertiseValue && (
-//             <Card title={expertiseTitleValue || 'Expertise'} accent="#dce8f8">
-//               <p className="text-sm text-gray-700 m-0">{expertiseValue}</p>
-//             </Card>
-//           )}
-
-//           {/* Habits */}
-//           {habitsValue && (
-//             <Card title="Habits">
-//               <p className="text-sm text-gray-700 m-0">{habitsValue}</p>
-//             </Card>
-//           )}
-
-//           {/* Occupation */}
-//           {occupationValue && (
-//             <Card title="Occupation Before Joining Crime">
-//               <p className="text-sm text-gray-700 m-0">{occupationValue}</p>
-//             </Card>
-//           )}
-//         </div>
-//       </div>
-//     </div>
-//   )
-// }
-
 
 export function PersonalMindMap({ data, mainPerson }: any) {
   const fields = useMemo(() => {
@@ -302,14 +145,14 @@ export function PersonalMindMap({ data, mainPerson }: any) {
               </div>
             )}
           </div>
-          
+
           {address && (
             <div className="bg-white rounded-2xl shadow p-4">
               <h3 className="font-semibold text-sm mb-2">Address</h3>
               <p className="text-sm">{address}</p>
             </div>
           )}
-
+ 
           {arrestedBy && (
             <div className="bg-[#f3efff] rounded-2xl shadow p-4">
               <h3 className="font-semibold text-sm mb-2">Arrested By</h3>

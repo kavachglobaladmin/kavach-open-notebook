@@ -2438,6 +2438,7 @@ async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Que
                 result['source_id'] = source_id
                 result['source_title'] = source.title or 'Unknown'
                 logger.info(f"[ProfileGraph] DOCX: {len(result.get('personal',{}))} personal, {len(result.get('family',[]))} family, {len(result.get('associates',[]))} associates")
+                print(result)
                 return result
             except Exception as e:
                 logger.warning(f"[ProfileGraph] DOCX extraction failed: {e}, falling back to text")
