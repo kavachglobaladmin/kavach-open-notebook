@@ -9,7 +9,7 @@ kafka server :  C:\kafka\kafka> .\bin\windows\kafka-server-start.bat .\config\se
 
 surreal-commands-worker: uv run --env-file .env surreal-commands-worker --import-modules commands
 
-
+C:\Bhavesh\env
 
 git hub
 # 1. Switch to your branch (if not already)

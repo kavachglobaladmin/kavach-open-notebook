@@ -3516,6 +3516,29 @@ async def get_source_insights(source_id: str):
         )
 
 
+@router.delete("/sources/{source_id}/insights/mindmap")
+async def delete_mindmap_insights(source_id: str):
+    """Delete all Mind Map insights for a source so they can be regenerated fresh."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        insights = await source.get_insights()
+        deleted = 0
+        for insight in insights:
+            if insight.insight_type and 'mind' in insight.insight_type.lower():
+                await insight.delete()
+                deleted += 1
+
+        return {"message": f"Deleted {deleted} Mind Map insight(s)", "deleted": deleted}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting mindmap insights for source {source_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post(
     "/sources/{source_id}/insights",
     response_model=InsightCreationResponse,

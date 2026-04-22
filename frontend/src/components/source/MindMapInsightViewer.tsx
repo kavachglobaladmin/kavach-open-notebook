@@ -144,49 +144,69 @@ function extractMindMapJson(raw: unknown): MindMapNode {
   }
   if (typeof raw !== 'string') throw new Error(`Unsupported content type: ${typeof raw}`)
 
-  // Unescape common escape sequences that LLMs emit
+  // ── Step 1: Try direct JSON.parse FIRST (fastest, most reliable) ──────────
+  try {
+    const direct = JSON.parse(raw.trim())
+    const node = pickNode(direct)
+    if (node) return node
+  } catch { /* not clean JSON, continue */ }
+
   let text = raw
+
+  // Strip <think> blocks
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
+
+  // Unescape common escape sequences that LLMs emit
+  text = text
     .replace(/\\n/g, '\n')
     .replace(/\\t/g, '\t')
     .replace(/\\"/g, '"')
     .replace(/\\'/g, "'")
 
-  // Strip <think> blocks
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  // ── Step 2: Try after unescaping ──────────────────────────────────────────
+  try {
+    const node = pickNode(JSON.parse(text.trim()))
+    if (node) return node
+  } catch { /* continue */ }
 
-  // FIX: Handle malformed JSON where LLM uses Sets { "string", "string" } instead of Arrays [ "string", "string" ]
-  const strPattern = '"(?:\\\\.|[^"\\\\])*"';
-  const setPattern = new RegExp(`\\{\\s*(${strPattern}(?:\\s*,\\s*${strPattern})*)\\s*\\}`, 'g');
-  text = text.replace(setPattern, '[$1]');
-
-  // Try extracting from a markdown code fence first
-  // Using RegExp with `{3}` to avoid markdown formatting conflicts
-  const fenceRegex = new RegExp('`{3}(?:json)?\\s*([\\s\\S]*?)\\s*`{3}');
-  const fenceMatch = text.match(fenceRegex);
+  // ── Step 3: Extract from markdown code fence ──────────────────────────────
+  const fenceRegex = new RegExp('`{3}(?:json)?\\s*([\\s\\S]*?)\\s*`{3}')
+  const fenceMatch = text.match(fenceRegex)
   if (fenceMatch) {
-    const fenced = fenceMatch[1].trim()
     try {
-      const node = pickNode(JSON.parse(fenced))
+      const node = pickNode(JSON.parse(fenceMatch[1].trim()))
       if (node) return node
     } catch {}
   }
 
-  // If the whole string is a JSON-encoded string (starts/ends with quotes), unwrap it
+  // ── Step 4: Unwrap double-encoded string ──────────────────────────────────
   const tr = text.trim()
   if (tr.startsWith('"') && tr.endsWith('"')) {
     try {
       const inner = JSON.parse(tr)
-      if (typeof inner === 'string') text = inner
+      if (typeof inner === 'string') {
+        try {
+          const node = pickNode(JSON.parse(inner))
+          if (node) return node
+        } catch {}
+      }
     } catch {}
   }
 
-  // Try parsing the full text directly
+  // ── Step 5: Fix malformed Sets { "a", "b" } → [ "a", "b" ] ──────────────
+  // ONLY replace when braces contain ONLY quoted strings with NO colons
+  const strPattern = '"(?:\\\\.|[^"\\\\])*"'
+  const setPattern = new RegExp(`\\{\\s*(${strPattern}(?:\\s*,\\s*${strPattern})*)\\s*\\}`, 'g')
+  const fixed = text.replace(setPattern, (match) => {
+    if (match.includes(':')) return match  // real JSON object, leave it
+    return match.replace('{', '[').replace(/\}$/, ']')
+  })
   try {
-    const node = pickNode(JSON.parse(text.trim()))
+    const node = pickNode(JSON.parse(fixed.trim()))
     if (node) return node
   } catch {}
 
-  // Scan for all top-level JSON objects and pick the largest valid one
+  // ── Step 6: Bracket-scan for largest valid JSON object ───────────────────
   const candidates: { node: MindMapNode; len: number }[] = []
   let depth = 0, start = -1, inString = false, escape = false
   for (let i = 0; i < text.length; i++) {
@@ -212,6 +232,7 @@ function extractMindMapJson(raw: unknown): MindMapNode {
     candidates.sort((a, b) => b.len - a.len)
     return candidates[0].node
   }
+
   throw new Error(`No valid mind-map JSON found. Content starts with: ${String(raw).slice(0, 300)}`)
 }
 
@@ -445,6 +466,9 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
           const isRoot = d.depth === 0
           const hasChildren = !!d.children || !!d._children
           const isSelected = selectedNode === d.data.label
+
+          // Clean up whitespace in labels
+          const displayLabel = (d.data.label || '').replace(/\s+/g, ' ').trim()
           
           let colorClass = ''
           if (isRoot) colorClass = 'bg-[#e0e7ff] text-[#4338ca] border-[#c7d2fe] ring-4 ring-indigo-50/50 shadow-md font-bold py-3.5 px-8 text-base ring-offset-2'
@@ -459,7 +483,7 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
           return `
             <div class="flex items-center group relative">
               <div class="node-label border-2 rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${colorClass}">
-                 ${d.data.label}
+                 ${displayLabel}
               </div>
               ${hasChildren ? `
                 <div class="chevron-toggle ml-[-12px] z-[60] w-6 h-6 rounded-full bg-white border-2 border-indigo-200 flex items-center justify-center shadow-sm hover:scale-110 transition-transform cursor-pointer">
