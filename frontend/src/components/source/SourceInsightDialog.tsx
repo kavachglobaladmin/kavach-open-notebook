@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { FileText } from 'lucide-react'
+import { FileText, RefreshCw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useInsight } from '@/lib/hooks/use-insights'
@@ -15,6 +15,8 @@ import { BankAnalysisInsightViewer, isBankAnalysisInsight } from '@/components/s
 import { InfographicInsightViewer, isInfographicInsight } from '@/components/source/InfographicInsightViewer'
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
+import { sourcesApi } from '@/lib/api/sources'
+import { toast } from 'sonner'
 
 interface SourceInsightDialogProps {
   open: boolean
@@ -34,6 +36,8 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   const { openModal } = useModalManager()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [regeneratedContent, setRegeneratedContent] = useState<string | null>(null)
 
   // Ensure insight ID has 'source_insight:' prefix for API calls
   const insightIdWithPrefix = insight?.id
@@ -44,6 +48,8 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
 
   // Use fetched data if available, otherwise fall back to passed-in insight
   const displayInsight = fetchedInsight ?? insight
+  // Override content if regenerated
+  const displayContent = regeneratedContent ?? displayInsight?.content ?? ''
 
   // Get source_id from fetched data (preferred) or passed-in insight
   const sourceId = fetchedInsight?.source_id ?? insight?.source_id
@@ -77,10 +83,30 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
     }
   }
 
+  const handleRegenerate = async () => {
+    if (!sourceId) return
+    setIsRegenerating(true)
+    setRegeneratedContent(null)
+    try {
+      // Delete old mindmap insights then regenerate via the mindmap API
+      await fetch(`/api/sources/${encodeURIComponent(sourceId)}/insights/mindmap`, { method: 'DELETE' })
+      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}/mindmap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      if (!res.ok) throw new Error(`Regeneration failed: ${res.status}`)
+      const data = await res.json()
+      setRegeneratedContent(JSON.stringify(data.mind_map))
+      toast.success('Mind map regenerated successfully')
+    } catch (e) {
+      toast.error('Regeneration failed: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setIsRegenerating(false)
+    }
+  }
+
   // Reset delete confirmation when dialog closes
   useEffect(() => {
     if (!open) {
       setShowDeleteConfirm(false)
+      setRegeneratedContent(null)
     }
   }, [open])
 
@@ -107,6 +133,18 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
                 >
                   <FileText className="h-3 w-3" />
                   {t.sources.viewSource}
+                </Button>
+              )}
+              {isMindMap && sourceId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegenerate}
+                  disabled={isRegenerating}
+                  className="gap-1"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isRegenerating ? 'animate-spin' : ''}`} />
+                  {isRegenerating ? 'Regenerating...' : 'Regenerate'}
                 </Button>
               )}
             </div>
@@ -146,9 +184,9 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               isMindMap && sourceId ? (
                 /* ── Mind-map insight: interactive graph viewer ── */
                 <MindMapInsightViewer
-                  content={displayInsight.content ?? ''}
+                  content={displayContent}
                   sourceId={sourceId}
-                  title={displayInsight.insight_type}
+                  title={displayInsight?.insight_type}
                 />
               ) : isBankAnalysis ? (
                 /* ── Bank Analysis Profile: structured dashboard ── */
