@@ -1,0 +1,7 @@
+-- Migration 16: Fix common_graph status field and metadata field
+
+-- Remove the VALUE assertion that was locking status to "started"
+DEFINE FIELD OVERWRITE status ON TABLE common_graph TYPE option<string> DEFAULT "started";
+
+-- Fix metadata to allow any nested structure (arrays, nested objects, etc.)
+DEFINE FIELD OVERWRITE metadata ON TABLE common_graph FLEXIBLE TYPE option<object>;
