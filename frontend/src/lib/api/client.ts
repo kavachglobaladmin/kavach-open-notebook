@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios'
 import { getApiUrl } from '@/lib/config'
+import { decodeToken } from '@/lib/jwt'
 
 // API client with runtime-configurable base URL
 // The base URL is fetched from the API config endpoint on first request
@@ -30,6 +31,14 @@ apiClient.interceptors.request.use(async (config) => {
         const { state } = JSON.parse(authStorage)
         if (state?.token) {
           config.headers.Authorization = `Bearer ${state.token}`
+
+          // Send user email so the backend can scope data per-user.
+          // Prefer the persisted currentUserEmail; fall back to JWT sub claim.
+          const userEmail = state.currentUserEmail
+            ?? (state.token !== 'not-required' ? decodeToken(state.token)?.sub : null)
+          if (userEmail) {
+            config.headers['X-User-Email'] = userEmail
+          }
         }
       } catch (error) {
         console.error('Error parsing auth storage:', error)

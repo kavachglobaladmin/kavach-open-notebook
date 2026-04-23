@@ -18,6 +18,8 @@ class Notebook(ObjectModel):
     name: str
     description: str
     archived: Optional[bool] = False
+    owner: Optional[str] = None  # user email — None means visible to all (legacy data)
+    storage_limit_mb: Optional[int] = None  # max storage in MB; None = unlimited
 
     @field_validator("name")
     @classmethod
@@ -559,6 +561,7 @@ class Note(ObjectModel):
     title: Optional[str] = None
     note_type: Optional[Literal["human", "ai"]] = None
     content: Optional[str] = None
+    owner: Optional[str] = None  # user email — None means visible to all (legacy data)
 
     @field_validator("content")
     @classmethod

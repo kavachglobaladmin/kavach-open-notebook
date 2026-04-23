@@ -14,11 +14,14 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from fastapi.responses import FileResponse, Response
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
+
+from api.auth import get_current_user
 
 from api.command_service import CommandService
 from api.models import (
@@ -1366,6 +1369,7 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
 
 @router.get("/sources", response_model=List[SourceListResponse])
 async def get_sources(
+    request: Request,
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
     limit: int = Query(
         50, ge=1, le=100, description="Number of sources to return (1-100)"
@@ -1375,6 +1379,7 @@ async def get_sources(
         "updated", description="Field to sort by (created or updated)"
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    current_user: Optional[str] = Depends(get_current_user),
 ):
     """Get sources with pagination and sorting support."""
     try:
@@ -1393,10 +1398,12 @@ async def get_sources(
 
         # Build the query
         if notebook_id:
-            # Verify notebook exists first
+            # Verify notebook exists and belongs to current user
             notebook = await Notebook.get(notebook_id)
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
+            if current_user and notebook.owner and notebook.owner != current_user:
+                raise HTTPException(status_code=403, detail="Access denied")
 
             # Query sources for specific notebook - include command field with FETCH
             query = f"""
@@ -1415,6 +1422,24 @@ async def get_sources(
                     "limit": limit,
                     "offset": offset,
                 },
+            )
+        elif current_user:
+            # Return only sources linked to notebooks owned by this user
+            query = f"""
+                SELECT id, asset, created, title, updated, topics, command,
+                (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
+                (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
+                FROM (
+                    SELECT VALUE in FROM reference
+                    WHERE out IN (SELECT VALUE id FROM notebook WHERE owner = $owner)
+                )
+                {order_clause}
+                LIMIT $limit START $offset
+                FETCH command
+            """
+            result = await repo_query(
+                query,
+                {"owner": current_user, "limit": limit, "offset": offset},
             )
         else:
             # Query all sources - include command field with FETCH
@@ -1515,6 +1540,31 @@ async def create_source(
 
         # Handle file upload if provided
         if upload_file and source_data.type == "upload":
+            # Check storage limit for each target notebook before saving
+            if upload_file.size is not None:
+                file_size_mb = upload_file.size / (1024 * 1024)
+            else:
+                # Read to get size, then reset
+                content_bytes = await upload_file.read()
+                file_size_mb = len(content_bytes) / (1024 * 1024)
+                await upload_file.seek(0)
+
+            for notebook_id in source_data.notebooks or []:
+                nb_obj = await Notebook.get(notebook_id)
+                if nb_obj and nb_obj.storage_limit_mb:
+                    from api.routers.notebooks import _get_notebook_storage_used_mb
+                    used_mb = await _get_notebook_storage_used_mb(notebook_id)
+                    if used_mb + file_size_mb > nb_obj.storage_limit_mb:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=(
+                                f"Storage limit exceeded for notebook '{nb_obj.name}'. "
+                                f"Limit: {nb_obj.storage_limit_mb} MB, "
+                                f"Used: {used_mb:.1f} MB, "
+                                f"File: {file_size_mb:.1f} MB."
+                            ),
+                        )
+
             try:
                 file_path = await save_uploaded_file(upload_file)
             except Exception as e:

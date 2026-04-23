@@ -3,6 +3,8 @@ export interface NotebookResponse {
   name: string
   description: string
   archived: boolean
+  storage_limit_mb?: number | null
+  storage_used_mb?: number | null
   created: string
   updated: string
   source_count: number
@@ -63,6 +65,7 @@ export interface SettingsResponse {
 export interface CreateNotebookRequest {
   name: string
   description?: string
+  storage_limit_mb?: number
 }
 
 export interface UpdateNotebookRequest {

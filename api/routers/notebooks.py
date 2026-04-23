@@ -1,8 +1,10 @@
+from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
+from api.auth import get_current_user
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -17,41 +19,85 @@ from open_notebook.exceptions import InvalidInputError
 router = APIRouter()
 
 
+def _calc_storage_used_mb(nb_id: str, sources: list) -> float:
+    """Sum file sizes (MB) of all uploaded sources linked to this notebook."""
+    total_bytes = 0
+    for src in sources:
+        asset = src.get("asset") or {}
+        file_path = asset.get("file_path") if isinstance(asset, dict) else None
+        if file_path:
+            try:
+                total_bytes += Path(file_path).stat().st_size
+            except OSError:
+                pass
+    return round(total_bytes / (1024 * 1024), 2)
+
+
+async def _get_notebook_storage_used_mb(notebook_id: str) -> float:
+    """Query sources for a notebook and calculate total file storage used."""
+    try:
+        srcs = await repo_query(
+            "SELECT asset FROM (SELECT in as source FROM reference WHERE out=$id FETCH source)[*].source",
+            {"id": ensure_record_id(notebook_id)},
+        )
+        return _calc_storage_used_mb(notebook_id, srcs)
+    except Exception:
+        return 0.0
+
+
 @router.get("/notebooks", response_model=List[NotebookResponse])
 async def get_notebooks(
+    request: Request,
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
     order_by: str = Query("updated desc", description="Order by field and direction"),
+    current_user: Optional[str] = Depends(get_current_user),
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
-        # Build the query with counts
-        query = f"""
-            SELECT *,
-            count(<-reference.in) as source_count,
-            count(<-artifact.in) as note_count
-            FROM notebook
-            ORDER BY {order_by}
-        """
-
-        result = await repo_query(query)
+        # Build the query with counts, filtered by owner when a user is present
+        if current_user:
+            query = f"""
+                SELECT *,
+                count(<-reference.in) as source_count,
+                count(<-artifact.in) as note_count
+                FROM notebook
+                WHERE owner = $owner
+                ORDER BY {order_by}
+            """
+            result = await repo_query(query, {"owner": current_user})
+        else:
+            query = f"""
+                SELECT *,
+                count(<-reference.in) as source_count,
+                count(<-artifact.in) as note_count
+                FROM notebook
+                ORDER BY {order_by}
+            """
+            result = await repo_query(query)
 
         # Filter by archived status if specified
         if archived is not None:
             result = [nb for nb in result if nb.get("archived") == archived]
 
-        return [
-            NotebookResponse(
-                id=str(nb.get("id", "")),
+        # Build responses — calculate storage_used_mb only for notebooks with a limit
+        responses = []
+        for nb in result:
+            nb_id = str(nb.get("id", ""))
+            limit = nb.get("storage_limit_mb")
+            used = await _get_notebook_storage_used_mb(nb_id) if limit else None
+            responses.append(NotebookResponse(
+                id=nb_id,
                 name=nb.get("name", ""),
                 description=nb.get("description", ""),
                 archived=nb.get("archived", False),
+                storage_limit_mb=limit,
+                storage_used_mb=used,
                 created=str(nb.get("created", "")),
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
-            )
-            for nb in result
-        ]
+            ))
+        return responses
     except Exception as e:
         logger.error(f"Error fetching notebooks: {str(e)}")
         raise HTTPException(
@@ -60,12 +106,17 @@ async def get_notebooks(
 
 
 @router.post("/notebooks", response_model=NotebookResponse)
-async def create_notebook(notebook: NotebookCreate):
+async def create_notebook(
+    notebook: NotebookCreate,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Create a new notebook."""
     try:
         new_notebook = Notebook(
             name=notebook.name,
             description=notebook.description,
+            owner=current_user,
+            storage_limit_mb=notebook.storage_limit_mb,
         )
         await new_notebook.save()
 
@@ -74,10 +125,12 @@ async def create_notebook(notebook: NotebookCreate):
             name=new_notebook.name,
             description=new_notebook.description,
             archived=new_notebook.archived or False,
+            storage_limit_mb=new_notebook.storage_limit_mb,
+            storage_used_mb=0.0,
             created=str(new_notebook.created),
             updated=str(new_notebook.updated),
-            source_count=0,  # New notebook has no sources
-            note_count=0,  # New notebook has no notes
+            source_count=0,
+            note_count=0,
         )
     except InvalidInputError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -88,15 +141,18 @@ async def create_notebook(notebook: NotebookCreate):
         )
 
 
-@router.get(
-    "/notebooks/{notebook_id}/delete-preview", response_model=NotebookDeletePreview
-)
-async def get_notebook_delete_preview(notebook_id: str):
+@router.get("/notebooks/{notebook_id}/delete-preview", response_model=NotebookDeletePreview)
+async def get_notebook_delete_preview(
+    notebook_id: str,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Get a preview of what will be deleted when this notebook is deleted."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        if current_user and notebook.owner and notebook.owner != current_user:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         preview = await notebook.get_delete_preview()
 
@@ -118,7 +174,10 @@ async def get_notebook_delete_preview(notebook_id: str):
 
 
 @router.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-async def get_notebook(notebook_id: str):
+async def get_notebook(
+    notebook_id: str,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Get a specific notebook by ID."""
     try:
         # Query with counts for single notebook
@@ -134,11 +193,21 @@ async def get_notebook(notebook_id: str):
             raise HTTPException(status_code=404, detail="Notebook not found")
 
         nb = result[0]
+
+        # Owner check — deny access if notebook belongs to a different user
+        nb_owner = nb.get("owner")
+        if current_user and nb_owner and nb_owner != current_user:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        nb_id = str(nb.get("id", ""))
+        storage_used = await _get_notebook_storage_used_mb(nb_id)
         return NotebookResponse(
-            id=str(nb.get("id", "")),
+            id=nb_id,
             name=nb.get("name", ""),
             description=nb.get("description", ""),
             archived=nb.get("archived", False),
+            storage_limit_mb=nb.get("storage_limit_mb"),
+            storage_used_mb=storage_used,
             created=str(nb.get("created", "")),
             updated=str(nb.get("updated", "")),
             source_count=nb.get("source_count", 0),
@@ -154,12 +223,20 @@ async def get_notebook(notebook_id: str):
 
 
 @router.put("/notebooks/{notebook_id}", response_model=NotebookResponse)
-async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
+async def update_notebook(
+    notebook_id: str,
+    notebook_update: NotebookUpdate,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Update a notebook."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+
+        # Owner check
+        if current_user and notebook.owner and notebook.owner != current_user:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Update only provided fields
         if notebook_update.name is not None:
@@ -216,13 +293,18 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
 
 
 @router.post("/notebooks/{notebook_id}/sources/{source_id}")
-async def add_source_to_notebook(notebook_id: str, source_id: str):
+async def add_source_to_notebook(
+    notebook_id: str,
+    source_id: str,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Add an existing source to a notebook (create the reference)."""
     try:
-        # Check if notebook exists
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        if current_user and notebook.owner and notebook.owner != current_user:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Check if source exists
         source = await Source.get(source_id)
@@ -261,13 +343,18 @@ async def add_source_to_notebook(notebook_id: str, source_id: str):
 
 
 @router.delete("/notebooks/{notebook_id}/sources/{source_id}")
-async def remove_source_from_notebook(notebook_id: str, source_id: str):
+async def remove_source_from_notebook(
+    notebook_id: str,
+    source_id: str,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Remove a source from a notebook (delete the reference)."""
     try:
-        # Check if notebook exists
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        if current_user and notebook.owner and notebook.owner != current_user:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Delete the reference record linking source to notebook
         await repo_query(
@@ -293,22 +380,16 @@ async def remove_source_from_notebook(notebook_id: str, source_id: str):
 @router.delete("/notebooks/{notebook_id}", response_model=NotebookDeleteResponse)
 async def delete_notebook(
     notebook_id: str,
-    delete_exclusive_sources: bool = Query(
-        False,
-        description="Whether to delete sources that belong only to this notebook",
-    ),
+    delete_exclusive_sources: bool = Query(False),
+    current_user: Optional[str] = Depends(get_current_user),
 ):
-    """
-    Delete a notebook with cascade deletion.
-
-    Always deletes all notes associated with the notebook.
-    If delete_exclusive_sources is True, also deletes sources that belong only
-    to this notebook (not linked to any other notebooks).
-    """
+    """Delete a notebook with cascade deletion."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        if current_user and notebook.owner and notebook.owner != current_user:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         result = await notebook.delete(delete_exclusive_sources=delete_exclusive_sources)
 
