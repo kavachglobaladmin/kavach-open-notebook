@@ -183,6 +183,7 @@ def _get_spacy_nlp() -> Optional[spacy.language.Language]:
 
     # Try transformer model first (most accurate for person NER)
     for model_name in ("en_core_web_trf", "en_core_web_lg", "en_core_web_md", "en_core_web_sm"):
+    # for model_name in ("en_core_web_trf", "en_core_web_lg", "en_core_web_md", "en_core_web_sm"):
         try:
             _spacy_nlp = spacy.load(model_name)
             logger.info(f"[spaCy] Loaded model: {model_name}")

@@ -766,9 +766,31 @@ export function CommonGraphModal({ open, onOpenChange, sourceIds }: CommonGraphM
     // If no saved transformation, prompt stays empty — NLP handles extraction
   }, [transformations])
 
-  // Auto-build when modal opens with sources
+  // Auto-load saved graph OR build when modal opens
   useEffect(() => {
-    if (open && sourceIds.length >= 2 && selectedModelId && !isBuilding && !buildResult) {
+    if (!open || sourceIds.length < 2) return
+    if (buildResult) return  // already have data
+
+    // Try to load previously saved graph from localStorage
+    const cacheKey = `common_graph_id_${[...sourceIds].sort().join('_')}`
+    const savedId = localStorage.getItem(cacheKey)
+
+    if (savedId) {
+      sourcesApi.getCommonGraph(savedId)
+        .then((result) => {
+          const meta = result?.metadata as any
+          if (result?.metadata && meta?.graph?.nodes?.length > 0) {
+            setBuildResult(result)
+          } else {
+            localStorage.removeItem(cacheKey)
+            handleBuild()
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem(cacheKey)
+          handleBuild()
+        })
+    } else {
       handleBuild()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
