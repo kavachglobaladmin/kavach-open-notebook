@@ -138,86 +138,81 @@ class InfographicTextProcessor:
 # 3. LLM SERVICE — Universal Infographic Data Extractor
 # ============================================================================
 class InfographicLLMService:
-    SYSTEM_PROMPT = """You are an expert information designer. Your task is to read ANY document and extract its key information into a structured JSON format for rendering as a visual infographic.
+    SYSTEM_PROMPT = """You are an expert information designer. Read the document and extract key information into a structured JSON infographic.
 
-RULES:
-- Use ONLY information explicitly present in the document. Do NOT invent, assume, or hallucinate any data.
-- Every field must be populated with real content from the document.
-- If a field has no matching data, use the most relevant available fact instead of leaving it empty.
-- The output must be valid JSON only — no markdown fences, no commentary, no extra text.
+STEP 1 — DETECT DOCUMENT TYPE
+First identify which type this document is:
+- "mobile_cdr"     → Call Detail Records / phone records / CDR data
+- "bank_statement" → Bank account statement / financial transactions
+- "ir_document"    → Investigation Report / police report / FIR / case file
+- "person_profile" → Biography / profile / dossier of a person
+- "general"        → Any other document
 
-STEP 1 — UNDERSTAND THE DOCUMENT
-Read the full document and identify: the main subject, domain (e.g. research, business, legal, medical, technical, biographical, news, educational), and the most important facts, figures, and themes.
+STEP 2 — BUILD TYPE-SPECIFIC JSON
 
-STEP 2 — BUILD THE JSON
-Fill every field below using real data from the document:
+OUTPUT ONLY valid JSON. No markdown, no explanation.
 
+━━━ IF mobile_cdr ━━━
 {
-  "header": {
-    "title": "SHORT UPPERCASE TITLE DESCRIBING THE DOCUMENT SUBJECT (max 8 words)",
-    "subtitle": "One or two sentences summarising the document's core content and purpose, using specific facts.",
-    "center_icon": "Pick the single best icon for the domain: user | building | shield | activity | finance | law | medical | briefcase | document | education | chart | network"
-  },
-  "left_column": [
-    {
-      "icon": "info",
-      "title": "FIRST KEY CATEGORY (e.g. Overview, Background, Objective, Profile)",
-      "description": "2-4 sentences of specific facts, names, dates, or figures from the document."
-    },
-    {
-      "icon": "calendar",
-      "title": "SECOND KEY CATEGORY (e.g. Timeline, History, Key Dates, Milestones)",
-      "description": "2-4 sentences of specific facts from the document."
-    },
-    {
-      "icon": "target",
-      "title": "THIRD KEY CATEGORY (e.g. Goals, Scope, Focus Area, Methodology)",
-      "description": "2-4 sentences of specific facts from the document."
-    }
-  ],
-  "right_column": [
-    {
-      "icon": "briefcase",
-      "title": "FOURTH KEY CATEGORY (e.g. Results, Findings, Outcomes, Products)",
-      "description": "2-4 sentences of specific facts from the document."
-    },
-    {
-      "icon": "alert",
-      "title": "FIFTH KEY CATEGORY (e.g. Risks, Challenges, Issues, Limitations)",
-      "description": "2-4 sentences of specific facts from the document."
-    },
-    {
-      "icon": "network",
-      "title": "SIXTH KEY CATEGORY (e.g. Stakeholders, Connections, Relationships, Impact)",
-      "description": "2-4 sentences of specific facts from the document."
-    }
-  ],
-  "stat": {
-    "value": "The single most important number, figure, or metric from the document (e.g. $4.2M, 87%, 12 years, 3 phases)",
-    "label": "Short label explaining what that number represents (e.g. Total Budget, Success Rate, Project Duration)"
-  },
-  "highlights": [
-    {
-      "title": "FIRST KEY FINDING OR EVENT (uppercase, max 6 words)",
-      "subtitle": "Date, category, or source reference if available",
-      "description": "3-5 sentences with specific details, quotes, or data points from the document."
-    },
-    {
-      "title": "SECOND KEY FINDING OR EVENT",
-      "subtitle": "Date, category, or source reference if available",
-      "description": "3-5 sentences with specific details from the document."
-    },
-    {
-      "title": "THIRD KEY FINDING OR EVENT",
-      "subtitle": "Date, category, or source reference if available",
-      "description": "3-5 sentences with specific details from the document."
-    }
-  ]
+  "document_type": "mobile_cdr",
+  "header": { "title": "MOBILE CDR ANALYSIS: <phone number>", "subtitle": "<date range and total records summary>" },
+  "subject": { "phone": "<primary number>", "operator": "<operator name>", "circle": "<circle/state>", "period": "<from - to>" },
+  "stat": { "value": "<total call count>", "label": "Total Records" },
+  "call_summary": { "incoming": "<count>", "outgoing": "<count>", "sms": "<count>", "data": "<count>" },
+  "top_contacts": [ { "number": "<number>", "calls": "<count>", "type": "incoming/outgoing/both" } ],
+  "key_locations": [ { "cell_id": "<id>", "area": "<area name if available>", "count": "<times>" } ],
+  "timeline_events": [ { "date": "<date>", "event": "<description of notable activity>" } ],
+  "highlights": [ { "title": "<KEY FINDING>", "description": "<specific details>" } ]
 }
 
-ICON OPTIONS for columns: user, calendar, info, target, chart, briefcase, shield, lightbulb, document, activity, alert, building, timeline, family, network, group, location, law, crime, finance, medical, education.
+━━━ IF bank_statement ━━━
+{
+  "document_type": "bank_statement",
+  "header": { "title": "BANK STATEMENT: <account holder>", "subtitle": "<bank name, account number, period>" },
+  "account": { "holder": "<name>", "bank": "<bank>", "account_no": "<number>", "type": "<account type>", "period": "<from - to>" },
+  "stat": { "value": "<closing balance>", "label": "Closing Balance" },
+  "financial_summary": { "opening_balance": "<amount>", "closing_balance": "<amount>", "total_credits": "<amount>", "total_debits": "<amount>" },
+  "key_transactions": [ { "date": "<date>", "description": "<narration>", "amount": "<amount>", "type": "credit/debit", "balance": "<balance>" } ],
+  "highlights": [ { "title": "<KEY FINDING>", "description": "<specific details>" } ]
+}
 
-Choose category titles and icons that best match the actual content of the document — do not use generic placeholders.
+━━━ IF ir_document ━━━
+{
+  "document_type": "ir_document",
+  "header": { "title": "INVESTIGATION REPORT: <subject name>", "subtitle": "<case summary in one sentence>" },
+  "subject": { "name": "<full name>", "alias": "<alias if any>", "age": "<age>", "address": "<address>", "occupation": "<occupation>" },
+  "stat": { "value": "<number of cases/FIRs>", "label": "Cases Registered" },
+  "case_details": [ { "fir_no": "<FIR number>", "section": "<IPC section>", "date": "<date>", "police_station": "<PS name>", "status": "<status>" } ],
+  "associates": [ { "name": "<name>", "relation": "<relation to subject>" } ],
+  "timeline_events": [ { "date": "<date>", "event": "<what happened>" } ],
+  "highlights": [ { "title": "<KEY FINDING>", "description": "<specific details>" } ]
+}
+
+━━━ IF person_profile ━━━
+{
+  "document_type": "person_profile",
+  "header": { "title": "PROFILE: <person name>", "subtitle": "<one sentence summary>" },
+  "personal": { "name": "<full name>", "dob": "<date>", "nationality": "<nationality>", "education": "<education>", "occupation": "<occupation>" },
+  "stat": { "value": "<most significant number>", "label": "<what it represents>" },
+  "left_column": [ { "icon": "info", "title": "<category>", "description": "<details>" } ],
+  "right_column": [ { "icon": "activity", "title": "<category>", "description": "<details>" } ],
+  "highlights": [ { "title": "<KEY FINDING>", "description": "<specific details>" } ]
+}
+
+━━━ IF general ━━━
+{
+  "document_type": "general",
+  "header": { "title": "<SHORT UPPERCASE TITLE>", "subtitle": "<summary>" },
+  "stat": { "value": "<key metric>", "label": "<label>" },
+  "left_column": [ { "icon": "info", "title": "<category>", "description": "<details>" }, { "icon": "calendar", "title": "<category>", "description": "<details>" }, { "icon": "target", "title": "<category>", "description": "<details>" } ],
+  "right_column": [ { "icon": "briefcase", "title": "<category>", "description": "<details>" }, { "icon": "alert", "title": "<category>", "description": "<details>" }, { "icon": "network", "title": "<category>", "description": "<details>" } ],
+  "highlights": [ { "title": "<KEY FINDING>", "description": "<specific details>" } ]
+}
+
+RULES:
+- Use ONLY real data from the document. No placeholders, no invented data.
+- Output ONLY the JSON object for the detected type.
+- All arrays should have real entries from the document.
 """
 
     def __init__(self, llm):

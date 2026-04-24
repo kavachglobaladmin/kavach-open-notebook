@@ -16,12 +16,29 @@ export interface InfographicHighlight {
 
 export interface InfographicResponse {
   source_id: string
-  html?: string // kept for backward compat but no longer used for rendering
+  html?: string
+  document_type?: 'mobile_cdr' | 'bank_statement' | 'ir_document' | 'person_profile' | 'general'
   header?: { title: string; subtitle: string; center_icon?: string }
+  // Generic columns (person_profile, general)
   left_column?: InfographicColumn[]
   right_column?: InfographicColumn[]
   stat?: { value: string; label: string }
   highlights?: InfographicHighlight[]
+  // Mobile CDR specific
+  subject?: Record<string, string>
+  call_summary?: Record<string, string>
+  top_contacts?: Array<{ number: string; calls: string; type: string }>
+  key_locations?: Array<{ cell_id: string; area: string; count: string }>
+  timeline_events?: Array<{ date: string; event: string }>
+  // Bank statement specific
+  account?: Record<string, string>
+  financial_summary?: Record<string, string>
+  key_transactions?: Array<{ date: string; description: string; amount: string; type: string; balance?: string }>
+  // IR document specific
+  case_details?: Array<{ fir_no: string; section: string; date: string; police_station: string; status: string }>
+  associates?: Array<{ name: string; relation: string }>
+  // Person profile specific
+  personal?: Record<string, string>
 }
 
 // ── localStorage cache helpers ────────────────────────────────────────────────

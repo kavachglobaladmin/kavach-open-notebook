@@ -2,6 +2,8 @@
 
 import { useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface DenseSummaryViewerProps {
   content: string
@@ -19,31 +21,16 @@ function stripPreamble(text: string): string {
     .replace(/^here is the combined output in a dense representation[:\s]*/i, '')
     .replace(/^here is a dense summary[:\s]*/i, '')
     .replace(/^dense summary[:\s]*/i, '')
-    .replace(/^summary[:\s]*/i, '')
+    .replace(/^based on the provided content[^.]*\.\s*/i, '')
+    .replace(/^i['']ve extracted[^.]*\.\s*/i, '')
     .trim()
 }
 
-// Split into paragraphs — keep bullet lists as-is but group them
-function parseParagraphs(text: string): string[] {
-  const cleaned = stripPreamble(text)
-
-  // Split on double newlines first
-  const blocks = cleaned.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
-  if (blocks.length > 1) return blocks
-
-  // If single block with bullet points, split on bullets
-  const bullets = cleaned.split(/(?:^|\n)\s*[•\-\*]\s+/m).map(s => s.trim()).filter(Boolean)
-  if (bullets.length > 1) return bullets
-
-  // Single paragraph — return as-is
-  return [cleaned]
-}
-
 export function DenseSummaryViewer({ content, createdAt }: DenseSummaryViewerProps) {
-  const paragraphs = useMemo(() => parseParagraphs(content), [content])
+  const cleaned = useMemo(() => stripPreamble(content), [content])
 
   return (
-    <div className="space-y-4 pb-2">
+    <div className="space-y-3 pb-2">
       {/* Timestamp */}
       {createdAt && (() => {
         const d = new Date(createdAt)
@@ -54,13 +41,19 @@ export function DenseSummaryViewer({ content, createdAt }: DenseSummaryViewerPro
         ) : null
       })()}
 
-      {/* Content — clean readable paragraphs */}
-      <div className="space-y-3">
-        {paragraphs.map((para, i) => (
-          <p key={i} className="text-sm leading-relaxed text-foreground">
-            {para}
-          </p>
-        ))}
+      {/* Markdown-rendered content */}
+      <div className="prose prose-sm prose-slate dark:prose-invert max-w-none
+        [&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2
+        [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-1.5 [&_h2]:text-foreground
+        [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1
+        [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-2
+        [&_ul]:space-y-1 [&_ul]:my-2 [&_li]:text-sm [&_li]:leading-relaxed
+        [&_ol]:space-y-1 [&_ol]:my-2
+        [&_strong]:font-semibold [&_strong]:text-foreground
+        [&_em]:italic">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {cleaned}
+        </ReactMarkdown>
       </div>
     </div>
   )

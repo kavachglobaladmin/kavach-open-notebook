@@ -934,6 +934,7 @@ export function SourceDetailContent({
             {isMarkdownView && source.full_text && (
               <FormattedViewDialog
                 text={source.full_text}
+                sourceId={source.id}
                 open={isMarkdownView}
                 onClose={() => setIsMarkdownView(false)}
               />
