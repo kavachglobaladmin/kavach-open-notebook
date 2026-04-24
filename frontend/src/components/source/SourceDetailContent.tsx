@@ -77,6 +77,7 @@ import { getDateLocale } from '@/lib/utils/date-locale'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
+import { FormattedViewDialog } from '@/components/source/FormattedViewDialog'
 import { NotebookAssociations } from '@/components/source/NotebookAssociations'
 
 // Safe paginated content renderer — avoids browser crash on large documents
@@ -931,59 +932,11 @@ export function SourceDetailContent({
             </Card>
 
             {isMarkdownView && source.full_text && (
-              <div className="fixed inset-0 z-[100] flex flex-col bg-white dark:bg-slate-900 w-full h-full overflow-hidden">
-                {/* ─── Header ─── */}
-                <div className="flex items-center justify-between px-8 py-5 bg-slate-900 dark:bg-slate-950 shrink-0 border-b border-b-slate-800 shadow-sm relative z-10">
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="text"
-                      placeholder="Search..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="ml-4 px-3 py-1.5 text-sm rounded-md bg-white/10 text-white placeholder:text-slate-400 outline-none border border-white/20"
-                    />
-                    <div className="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center shadow-inner">
-                      <Sparkles className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-tight">Document Reader</p>
-                      <h2 className="text-[15px] font-bold text-white leading-tight mt-0.5">Formatted View</h2>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsMarkdownView(false)}
-                    className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white transition-all ring-1 ring-white/10"
-                    aria-label="Close"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  </button>
-                </div>
-
-                {/* ─── Body ─── */}
-                <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0a0c10]">
-                  <div className="max-w-[1100px] w-full mx-auto bg-white dark:bg-slate-900 min-h-full px-12 py-10 shadow-sm border-x border-slate-200 dark:border-slate-800">
-                    {/*
-                      FIX: Pass highlight as a closure that captures searchQuery.
-                      SmartDocumentRenderer calls highlight(text) with 1 arg —
-                      the closure supplies searchQuery from state automatically.
-                    */}
-                    <SmartDocumentRenderer
-                      text={source.full_text}
-                      highlight={highlightText}
-                    />
-                  </div>
-                </div>
-
-                {/* ─── Footer ─── */}
-                <div className="flex items-center justify-between px-8 py-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0 relative z-10 w-full">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    {(source.full_text.length / 1000).toFixed(1)}K characters total
-                  </span>
-                  <Button size="sm" variant="outline" onClick={() => setIsMarkdownView(false)} className="font-semibold px-6 shadow-sm">
-                    Close View
-                  </Button>
-                </div>
-              </div>
+              <FormattedViewDialog
+                text={source.full_text}
+                open={isMarkdownView}
+                onClose={() => setIsMarkdownView(false)}
+              />
             )}
           </TabsContent>
 

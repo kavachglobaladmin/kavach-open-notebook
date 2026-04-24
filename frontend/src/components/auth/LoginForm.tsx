@@ -4,27 +4,47 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
-import { getConfig } from '@/lib/config'
+import { getApiUrl, getConfig } from '@/lib/config'
 import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import Image from 'next/image'
 import { ForgotPasswordModal } from './ForgotPasswordModal'
 
-// ── Local user store ──────────────────────────────────────────────────────────
-interface LocalUser { name: string; email: string; password: string }
+// ── Backend user API ──────────────────────────────────────────────────────────
+async function apiRegister(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const apiUrl = await getApiUrl()
+    const res = await fetch(`${apiUrl}/api/users/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    })
+    if (res.ok) return { ok: true }
+    const data = await res.json().catch(() => ({}))
+    if (res.status === 409) return { ok: false, error: 'Account already exists. Please sign in.' }
+    return { ok: false, error: data.detail || 'Registration failed' }
+  } catch {
+    return { ok: false, error: 'Unable to connect to server.' }
+  }
+}
 
-function getUsers(): LocalUser[] {
-  try { return JSON.parse(localStorage.getItem('kavach_users') || '[]') } catch { return [] }
-}
-function saveUser(u: LocalUser) {
-  const users = getUsers(); users.push(u)
-  localStorage.setItem('kavach_users', JSON.stringify(users))
-}
-function findUser(email: string, password: string): LocalUser | null {
-  return getUsers().find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password) ?? null
-}
-function emailExists(email: string): boolean {
-  return getUsers().some(u => u.email.toLowerCase() === email.toLowerCase())
+async function apiLogin(email: string, password: string): Promise<{ ok: boolean; name?: string; error?: string }> {
+  try {
+    const apiUrl = await getApiUrl()
+    const res = await fetch(`${apiUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return { ok: true, name: data.name }
+    }
+    const data = await res.json().catch(() => ({}))
+    return { ok: false, error: data.detail || 'Invalid email or password' }
+  } catch {
+    return { ok: false, error: 'Unable to connect to server.' }
+  }
 }
 
 // ── Email validation ──────────────────────────────────────────────────────────
@@ -213,12 +233,24 @@ export function LoginForm() {
       if (!password.trim())                      { setLocalError('Password is required.'); return }
       if (!isPasswordValid(password))            { setLocalError('Password must have 8+ chars, 1 uppercase, 1 lowercase, and 1 special character.'); return }
       if (!agreed)                               { setLocalError('Please agree to Terms & Conditions.'); return }
-      if (emailExists(email))                    { setLocalError('Account already exists. Please sign in.'); return }
 
       setLocalLoading(true)
-      saveUser({ name: name.trim(), email: email.trim().toLowerCase(), password })
+      const reg = await apiRegister(name.trim(), email.trim().toLowerCase(), password)
+      if (!reg.ok) {
+        setLocalError(reg.error ?? 'Registration failed')
+        setLocalLoading(false)
+        return
+      }
+
+      // Store name in localStorage for sidebar display (non-sensitive)
+      const emailLower = email.trim().toLowerCase()
+      const existing: { email: string; name: string }[] = JSON.parse(localStorage.getItem('kavach_users') ?? '[]')
+      if (!existing.find(u => u.email === emailLower)) {
+        existing.push({ email: emailLower, name: name.trim() })
+        localStorage.setItem('kavach_users', JSON.stringify(existing))
+      }
       localStorage.setItem('kavach_session', 'true')
-      localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
+      localStorage.setItem('kavach_current_user', emailLower)
       const ok = await login(password)
       setLocalLoading(false)
       if (!ok) router.push('/notebooks')
@@ -226,16 +258,30 @@ export function LoginForm() {
     }
 
     // Sign in
-    if (!email.trim())      { setLocalError('Email is required.'); return }
+    if (!email.trim())          { setLocalError('Email is required.'); return }
     if (emailState !== 'valid') { setLocalError('Enter a valid email address.'); return }
-    if (!password.trim())   { setLocalError('Password is required.'); return }
-
-    const user = findUser(email.trim(), password)
-    if (!user) { setLocalError('Invalid email or password.'); return }
+    if (!password.trim())       { setLocalError('Password is required.'); return }
 
     setLocalLoading(true)
+    const result = await apiLogin(email.trim().toLowerCase(), password)
+    if (!result.ok) {
+      setLocalError(result.error ?? 'Invalid email or password')
+      setLocalLoading(false)
+      return
+    }
+
+    // Sync name to localStorage for sidebar display
+    const emailLower = email.trim().toLowerCase()
+    const existing: { email: string; name: string }[] = JSON.parse(localStorage.getItem('kavach_users') ?? '[]')
+    const idx = existing.findIndex(u => u.email === emailLower)
+    if (idx >= 0) {
+      existing[idx].name = result.name ?? existing[idx].name
+    } else {
+      existing.push({ email: emailLower, name: result.name ?? emailLower })
+    }
+    localStorage.setItem('kavach_users', JSON.stringify(existing))
     localStorage.setItem('kavach_session', 'true')
-    localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
+    localStorage.setItem('kavach_current_user', emailLower)
     const ok = await login(password)
     setLocalLoading(false)
     if (!ok) router.push('/notebooks')

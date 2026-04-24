@@ -3292,6 +3292,83 @@ async def download_source_file(source_id: str):
         raise HTTPException(status_code=500, detail="Failed to download source file")
 
 
+@router.post("/sources/{source_id}/format-html")
+async def format_source_as_html(source_id: str, request: Request):
+    """
+    Use AI to convert source full_text into clean, structured HTML.
+    Works for any file format: CSV, plain text, bank statements, IR docs, etc.
+    """
+    try:
+        source = await Source.get(source_id)
+        if not source or not source.full_text:
+            raise HTTPException(status_code=404, detail="Source or content not found")
+
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        model_id = body.get("model_id") if isinstance(body, dict) else None
+
+        # Auto-select a model if none provided
+        if not model_id:
+            from open_notebook.ai.models import DefaultModels
+            defaults = await DefaultModels.get_instance()
+            model_id = (
+                getattr(defaults, "default_chat_model", None)
+                or getattr(defaults, "default_transformation_model", None)
+            )
+        # Fallback: get first available language model
+        if not model_id:
+            from open_notebook.ai.models import Model
+            models = await Model.get_all()
+            lang_models = [m for m in models if getattr(m, "type", "") == "language"]
+            if lang_models:
+                model_id = lang_models[0].id
+        if not model_id:
+            raise HTTPException(status_code=400, detail="No language model configured. Please add a model in Settings.")
+
+        from open_notebook.ai.provision import provision_langchain_model
+
+        content = source.full_text
+        CHUNK = 12000
+        chunks = [content[i:i+CHUNK] for i in range(0, len(content), CHUNK)]
+
+        system = """You are a document formatter. Convert the raw text below into clean, semantic HTML.
+
+Rules:
+- Detect the document type automatically (CSV, call records, bank statement, report, etc.)
+- For tabular/CSV data: output a proper <table> with <thead> and <tbody>
+- For structured documents: use <h2> for sections, <h3> for sub-sections, <p> for paragraphs, <ul><li> for lists
+- For key-value data: use <dl><dt><dd> or a 2-column table
+- Preserve ALL data — do not summarize or omit anything
+- Output ONLY valid HTML fragment (no <html>, <head>, <body> tags)
+- No markdown, no explanation, no code fences
+
+TEXT:
+"""
+
+        html_parts = []
+        for chunk in chunks:
+            from langchain_core.messages import SystemMessage, HumanMessage
+            from open_notebook.utils import clean_thinking_content
+            from open_notebook.utils.text_utils import extract_text_content
+
+            chain = await provision_langchain_model(
+                system + chunk, model_id, "transformation", max_tokens=4096
+            )
+            payload = [SystemMessage(content=system), HumanMessage(content=chunk)]
+            response = await chain.ainvoke(payload)
+            raw = clean_thinking_content(extract_text_content(response.content))
+            # Strip markdown fences if model added them
+            raw = raw.replace("```html", "").replace("```", "").strip()
+            html_parts.append(raw)
+
+        return {"html": "\n".join(html_parts)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error formatting source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/sources/{source_id}/status", response_model=SourceStatusResponse)
 async def get_source_status(source_id: str):
     """Get processing status for a source."""

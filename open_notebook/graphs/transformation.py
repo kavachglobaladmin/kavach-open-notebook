@@ -250,13 +250,159 @@ def _sanitize_tree(node: dict, max_label: int = 120) -> dict:
     return result
 
 
+async def _extract_bank_statement(model_id: str, content: str) -> str:
+    """
+    Multi-pass bank statement extraction.
+    Pass 1: Extract account summary from first chunk.
+    Pass 2: Extract transactions from every chunk independently.
+    Pass 3: Merge all transaction lists into one JSON.
+    """
+    import json as _json_local
+
+    CHUNK_SIZE = 8000
+    chunks = [
+        content[i: i + CHUNK_SIZE].strip()
+        for i in range(0, len(content), CHUNK_SIZE)
+        if content[i: i + CHUNK_SIZE].strip()
+    ] or [content]
+
+    # ── Pass 1: Account summary from first chunk ──────────────────────────
+    summary_prompt = """Extract the bank account summary from the text below.
+Return ONLY a JSON object like:
+{
+  "bank_name": "...",
+  "account_number": "...",
+  "account_holder": "...",
+  "address": "...",
+  "statement_period": "...",
+  "opening_balance": 0.0,
+  "closing_balance": 0.0,
+  "total_credits": 0.0,
+  "total_debits": 0.0
+}
+Use null for missing fields. Output ONLY the JSON, no explanation.
+
+TEXT:
+"""
+    chain = await provision_langchain_model(
+        summary_prompt + chunks[0], model_id, "transformation", max_tokens=1024
+    )
+    summary_raw = await _invoke_model(chain, summary_prompt, chunks[0])
+    try:
+        cleaned = summary_raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        account_summary = _json_local.loads(cleaned)
+    except Exception:
+        account_summary = {"raw": summary_raw}
+
+    # ── Pass 2: Extract transactions from each chunk ──────────────────────
+    txn_prompt = """You are a bank statement parser. Extract EVERY transaction row from the text.
+
+Common bank statement formats:
+  DATE  NARRATION/DESCRIPTION  [CHQ/REF NO]  WITHDRAWAL(DR)  DEPOSIT(CR)  BALANCE
+  DATE  PARTICULARS  DEBIT  CREDIT  BALANCE
+  DATE  DESCRIPTION  AMOUNT  DR/CR  BALANCE
+
+Return ONLY a valid JSON array — no explanation, no markdown, no extra text:
+[
+  {
+    "date": "DD-MM-YYYY",
+    "description": "full narration text from the document",
+    "cheque_ref": "cheque or reference number, or null",
+    "debit": 0.0,
+    "credit": 0.0,
+    "balance": 0.0
+  }
+]
+
+STRICT RULES:
+1. Copy the EXACT narration/description text from the document — do NOT leave it empty.
+2. Every line that starts with a date (DD-MM-YYYY, DD/MM/YYYY, etc.) is a transaction row.
+3. If the amount column is labelled DR or Withdrawal put in debit, set credit to 0.
+4. If the amount column is labelled CR or Deposit put in credit, set debit to 0.
+5. Numbers must be plain floats — NO commas (write 35738.00 not 35,738.00).
+6. Do NOT include header rows, opening/closing balance summary rows, or totals rows.
+7. Do NOT output placeholder rows like date DD-MM-YYYY — only real data rows.
+8. Output ONLY the JSON array starting with [ and ending with ].
+
+TEXT:
+"""
+
+    all_transactions: list = []
+    for chunk in chunks:
+        chain = await provision_langchain_model(
+            txn_prompt + chunk, model_id, "transformation", max_tokens=4096
+        )
+        raw = await _invoke_model(chain, txn_prompt, chunk)
+        try:
+            cleaned = raw.strip()
+            # Strip markdown fences
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("```", 2)[-1] if cleaned.count("```") >= 2 else cleaned
+                cleaned = cleaned.lstrip("json").strip().rstrip("```").strip()
+            # Find JSON array in response
+            start = cleaned.find("[")
+            end = cleaned.rfind("]") + 1
+            if start >= 0 and end > start:
+                arr_str = cleaned[start:end]
+                # Fix missing commas between objects: }\n{ → },\n{
+                import re as _re
+                arr_str = _re.sub(r'\}\s*\n\s*\{', '},\n{', arr_str)
+                # Fix trailing commas
+                arr_str = _re.sub(r',\s*([}\]])', r'\1', arr_str)
+                # Fix comma-formatted numbers: 35,738.00 → 35738.00
+                arr_str = _re.sub(r':\s*(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)', lambda m: ': ' + m.group(1).replace(',', ''), arr_str)
+                txns = _json_local.loads(arr_str)
+                if isinstance(txns, list):
+                    # Filter out placeholder/template rows
+                    real_txns = [
+                        t for t in txns
+                        if t.get("date") and t.get("date") not in ("DD-MM-YYYY", "YYYY-MM-DD", "")
+                        and (t.get("debit", 0) or t.get("credit", 0) or t.get("balance", 0))
+                    ]
+                    all_transactions.extend(real_txns)
+        except Exception:
+            pass  # skip unparseable chunks
+
+    # ── Pass 3: Deduplicate by (date, description, debit, credit) ────────
+    seen: set = set()
+    unique_txns: list = []
+    for tx in all_transactions:
+        # Clean numeric fields — remove commas from numbers like "35,738.00"
+        for field in ("debit", "credit", "balance"):
+            val = tx.get(field)
+            if isinstance(val, str):
+                try:
+                    tx[field] = float(val.replace(",", "").replace("₹", "").strip()) if val.strip() else 0.0
+                except ValueError:
+                    tx[field] = 0.0
+            elif val is None:
+                tx[field] = 0.0
+
+        key = (
+            str(tx.get("date", "")),
+            str(tx.get("description", ""))[:40],
+            str(tx.get("debit", 0)),
+            str(tx.get("credit", 0)),
+        )
+        if key not in seen:
+            seen.add(key)
+            unique_txns.append(tx)
+
+    result = {
+        "account_summary": account_summary,
+        "transactions": unique_txns,
+    }
+    return _json_local.dumps(result, ensure_ascii=False, indent=2)
+
+
 # =============================================================================
 # Regular transformations (non-mindmap)
 # =============================================================================
 
 async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str) -> str:
     """Single-pass or chunked transformation using the user's prompt."""
-    CHUNK_SIZE = 6000
+    # Bank statement needs larger context to capture all transactions in one pass
+    CHUNK_SIZE = 12000 if ("bank_name" in transformation_prompt or "transactions" in transformation_prompt) else 8000
 
     if len(content) <= CHUNK_SIZE:
         system = transformation_prompt
@@ -272,31 +418,56 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
     ]
 
     summaries = []
-    for idx, chunk in enumerate(chunks):
+    # Process chunks in parallel batches of 5 to reduce total time
+    import asyncio as _asyncio
+
+    async def _summarise_chunk(chunk: str) -> str:
         system = (
             f"{transformation_prompt}\n\n"
-            f"This is part {idx + 1} of {len(chunks)}. "
-            "Extract all key facts, names, dates, events, and details. "
-            "Be exhaustive. Use bullet points."
+            "Extract ONLY the key facts, entities, dates, numbers, and events from the text below. "
+            "Output as concise bullet points. Do NOT add commentary, meta-text, or mention 'part' numbers. "
+            "Just the facts.\n\nTEXT:\n"
         )
         chain = await provision_langchain_model(
-            system + chunk, model_id, "transformation", max_tokens=2048
+            system + chunk, model_id, "transformation", max_tokens=1024
         )
-        summaries.append(await _invoke_model(chain, system, chunk))
+        return await _invoke_model(chain, system, chunk)
+
+    BATCH = 5
+    for i in range(0, len(chunks), BATCH):
+        batch = chunks[i:i + BATCH]
+        results = await _asyncio.gather(*[_summarise_chunk(c) for c in batch])
+        summaries.extend(results)
 
     if len(summaries) == 1:
         return summaries[0]
 
-    all_facts = "\n\n".join(f"[Part {i+1}]\n{s}" for i, s in enumerate(summaries))
-    system = (
-        f"{transformation_prompt}\n\n"
-        "Combine the extracted facts below into one coherent output. "
-        "No repetition. Be comprehensive.\n\nEXTRACTED FACTS:\n"
-    )
+    all_facts = "\n\n".join(s for s in summaries if s.strip())
+
+    # For bank statement JSON, merge transaction arrays across chunks
+    is_bank_stmt = "transactions" in transformation_prompt and "account_summary" in transformation_prompt
+    if is_bank_stmt:
+        merge_system = (
+            "You are given multiple JSON fragments extracted from parts of a bank statement. "
+            "Merge them into ONE valid JSON object with this structure:\n"
+            '{"account_summary": {...}, "transactions": [...]}\n'
+            "Combine ALL transactions from all parts into a single array. "
+            "Use account_summary from the first part that has it. "
+            "Output ONLY the merged JSON, no explanation.\n\nFRAGMENTS:\n"
+        )
+    else:
+        merge_system = (
+            f"{transformation_prompt}\n\n"
+            "Below are key facts extracted from different sections of a document. "
+            "Synthesize them into a single coherent output as instructed above. "
+            "Do NOT mention 'parts', 'sections', or 'chunks'. "
+            "Write as if you read the whole document at once.\n\nFACTS:\n"
+        )
+
     chain = await provision_langchain_model(
-        system + all_facts, model_id, "transformation", max_tokens=4096
+        merge_system + all_facts, model_id, "transformation", max_tokens=4096
     )
-    return await _invoke_model(chain, system, all_facts)
+    return await _invoke_model(chain, merge_system, all_facts)
 
 
 # =============================================================================
@@ -355,12 +526,22 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
 
         default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()
         transformation_prompt = transformation.prompt or ""
-        if default_prompts.transformation_instructions:
-            transformation_prompt = (
-                f"{default_prompts.transformation_instructions}\n\n{transformation_prompt}"
-            )
 
-        final_output = await _run_with_prompt(model_id, content_str, transformation_prompt)
+        # ── Bank Statement special handling ───────────────────────────────
+        # If the transformation is bank-statement type, override with a
+        # robust extraction prompt that returns actual data (not a schema).
+        is_bank_statement = (
+            "bank" in t_title and "statement" in t_title
+            or "bank" in t_name  and "statement" in t_name
+        )
+        if is_bank_statement:
+            final_output = await _extract_bank_statement(model_id, content_str)
+        else:
+            if default_prompts.transformation_instructions:
+                transformation_prompt = (
+                    f"{default_prompts.transformation_instructions}\n\n{transformation_prompt}"
+                )
+            final_output = await _run_with_prompt(model_id, content_str, transformation_prompt)
 
         if source:
             await source.add_insight(transformation.title, final_output)

@@ -66,6 +66,8 @@ export function useAuth() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('kavach_session')
       localStorage.removeItem('kavach_current_user')
+      // Clear any saved redirect path — it belongs to the previous user's session
+      sessionStorage.removeItem('redirectAfterLogin')
     }
     router.push('/login')
   }

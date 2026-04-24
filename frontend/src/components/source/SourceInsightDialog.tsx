@@ -15,6 +15,7 @@ import { BankAnalysisInsightViewer, isBankAnalysisInsight } from '@/components/s
 import { InfographicInsightViewer, isInfographicInsight } from '@/components/source/InfographicInsightViewer'
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
+import { DenseSummaryViewer, isDenseSummaryInsight } from '@/components/source/DenseSummaryViewer'
 import { sourcesApi } from '@/lib/api/sources'
 import { toast } from 'sonner'
 
@@ -64,6 +65,8 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   const isTimeline = !!(displayInsight?.insight_type && isTimelineAnalysisInsight(displayInsight.insight_type))
   // Detect investigative profile insight
   const isInvestigativeProfile = !!(displayInsight?.insight_type && isInvestigativeProfileInsight(displayInsight.insight_type))
+  // Detect dense summary insight
+  const isDenseSummary = !!(displayInsight?.insight_type && isDenseSummaryInsight(displayInsight.insight_type))
 
   const handleViewSource = () => {
     if (sourceId) {
@@ -200,6 +203,9 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               ) : isInvestigativeProfile ? (
                 /* ── Investigative Profile: structured intelligence dashboard ── */
                 <InvestigativeProfileInsightViewer content={displayInsight.content ?? ''} />
+              ) : isDenseSummary ? (
+                /* ── Dense Summary: clean readable paragraph layout ── */
+                <DenseSummaryViewer content={displayInsight.content ?? ''} createdAt={displayInsight.created} />
               ) : (
                 /* ── Regular insight: markdown renderer ── */
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">

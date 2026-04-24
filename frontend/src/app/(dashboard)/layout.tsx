@@ -36,7 +36,15 @@ export default function DashboardLayout({
 
       if (!isAuthenticated || !hasLocalSession) {
         const currentPath = window.location.pathname + window.location.search
-        sessionStorage.setItem('redirectAfterLogin', currentPath)
+        // Only save redirect path for top-level pages, not specific resource URLs
+        // (notebook/source IDs belong to a specific user and should not be
+        //  redirected to after a different user logs in)
+        const isSafeRedirect = !currentPath.match(/\/(notebooks|sources)\/[^/]+/)
+        if (isSafeRedirect) {
+          sessionStorage.setItem('redirectAfterLogin', currentPath)
+        } else {
+          sessionStorage.removeItem('redirectAfterLogin')
+        }
         router.push('/login')
       }
     }
