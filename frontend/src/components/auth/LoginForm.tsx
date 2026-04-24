@@ -228,15 +228,17 @@ export function LoginForm() {
     if (!user) { setLocalError('Invalid email or password.'); return }
 
     setLocalLoading(true)
+    // Set current user BEFORE login() so auth-store can read the email + name
+    localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
     // Perform actual login
     const ok = await login(password)
     
     if (ok) {
       localStorage.setItem('kavach_session', 'true')
-      localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
       router.push('/notebooks')
     } else {
-       setLocalError('Authentication failed. Please try again.')
+      localStorage.removeItem('kavach_current_user')
+      setLocalError('Authentication failed. Please try again.')
     }
     setLocalLoading(false)
   }

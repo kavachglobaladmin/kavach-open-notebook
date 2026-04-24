@@ -25,6 +25,7 @@ cd /d "%ROOT%"
 docker cp "api\routers\source_chat.py"              %CONTAINER%:/app/api/routers/source_chat.py
 docker cp "api\routers\chat.py"                     %CONTAINER%:/app/api/routers/chat.py
 docker cp "api\routers\mindmap.py"                  %CONTAINER%:/app/api/routers/mindmap.py
+docker cp "api\routers\notebooks.py"                %CONTAINER%:/app/api/routers/notebooks.py
 docker cp "api\models.py"                           %CONTAINER%:/app/api/models.py
 docker cp "open_notebook\graphs\source_chat.py"     %CONTAINER%:/app/open_notebook/graphs/source_chat.py
 docker cp "open_notebook\utils\context_builder.py"  %CONTAINER%:/app/open_notebook/utils/context_builder.py

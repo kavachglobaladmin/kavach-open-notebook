@@ -61,10 +61,23 @@ async def get_notebooks(
                 count(<-reference.in) as source_count,
                 count(<-artifact.in) as note_count
                 FROM notebook
-                WHERE owner = $owner
+                WHERE owner = $owner OR owner = 'user' OR owner = NONE OR owner = null
                 ORDER BY {order_by}
             """
             result = await repo_query(query, {"owner": current_user})
+            # Migrate legacy notebooks (owner='user' or no owner) to current user
+            for nb in result:
+                nb_owner = nb.get("owner")
+                if nb_owner != current_user:
+                    nb_id = str(nb.get("id", ""))
+                    try:
+                        await repo_query(
+                            "UPDATE $id SET owner = $owner",
+                            {"id": nb_id, "owner": current_user}
+                        )
+                        logger.info(f"Migrated notebook {nb_id} owner from '{nb_owner}' to '{current_user}'")
+                    except Exception as migrate_err:
+                        logger.warning(f"Could not migrate notebook {nb_id} owner: {migrate_err}")
         else:
             query = f"""
                 SELECT *,

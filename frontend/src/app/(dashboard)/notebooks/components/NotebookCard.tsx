@@ -5,7 +5,7 @@ import { NotebookResponse } from '@/lib/types/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MoreHorizontal, Archive, ArchiveRestore, Trash2, FileText, StickyNote } from 'lucide-react'
+import { MoreHorizontal, Archive, ArchiveRestore, Trash2, FileText, StickyNote, HardDrive } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   DropdownMenu,
@@ -148,20 +148,25 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                 </Badge>
               </div>
 
-              {/* Storage bar — right side, only when limit is set */}
-              {hasLimit && (
-                <div className="flex items-center gap-2 min-w-0" onClick={(e) => e.stopPropagation()}>
-                  <span className={`text-xs whitespace-nowrap ${usedPct >= 100 ? 'text-red-500 font-semibold' : usedPct >= 75 ? 'text-orange-500 font-medium' : 'text-muted-foreground'}`}>
-                    {usedMb.toFixed(1)}/{limitMb}MB
-                  </span>
-                  <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${storageBarColor(usedPct)}`}
-                      style={{ width: `${usedPct}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Storage — always visible */}
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                <HardDrive className="h-3 w-3 shrink-0" />
+                {hasLimit ? (
+                  <>
+                    <span className={usedPct >= 100 ? 'text-red-500 font-semibold' : usedPct >= 75 ? 'text-orange-500 font-medium' : ''}>
+                      {usedMb.toFixed(1)}/{limitMb}MB
+                    </span>
+                    <div className="h-1.5 w-14 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${storageBarColor(usedPct)}`}
+                        style={{ width: `${usedPct}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <span>{usedMb.toFixed(1)} MB</span>
+                )}
+              </div>
             </div>
           </CardContent>
       </Card>
