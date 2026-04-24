@@ -83,11 +83,21 @@ export function AppSidebar() {
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
 
-  // Derive display name and initials from localStorage user data
-  const { displayName, initials } = (() => {
-    if (typeof window === 'undefined' || !currentUserEmail) return { displayName: '', initials: '' }
+  // Derive display name and initials from localStorage user data.
+  // Use state + effect so it re-reads reactively when currentUserEmail changes.
+  const [displayName, setDisplayName] = useState('')
+  const [initials, setInitials] = useState('')
+
+  useEffect(() => {
+    if (!currentUserEmail) {
+      setDisplayName('')
+      setInitials('')
+      return
+    }
     try {
-      const users: { email: string; name: string }[] = JSON.parse(localStorage.getItem('kavach_users') ?? '[]')
+      const users: { email: string; name: string }[] = JSON.parse(
+        localStorage.getItem('kavach_users') ?? '[]'
+      )
       const user = users.find(u => u.email.toLowerCase() === currentUserEmail.toLowerCase())
       const name = user?.name ?? currentUserEmail
       const parts = name.trim().split(/\s+/)
@@ -95,11 +105,13 @@ export function AppSidebar() {
       const abbr = parts.length >= 2
         ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
         : name.slice(0, 2).toUpperCase()
-      return { displayName: capitalizedName, initials: abbr }
+      setDisplayName(capitalizedName)
+      setInitials(abbr)
     } catch {
-      return { displayName: currentUserEmail, initials: currentUserEmail.slice(0, 2).toUpperCase() }
+      setDisplayName(currentUserEmail)
+      setInitials(currentUserEmail.slice(0, 2).toUpperCase())
     }
-  })()
+  }, [currentUserEmail])
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [isMac, setIsMac] = useState(true)

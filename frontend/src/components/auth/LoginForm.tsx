@@ -4,47 +4,32 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
-import { getApiUrl, getConfig } from '@/lib/config'
+import { getConfig } from '@/lib/config'
 import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import Image from 'next/image'
 import { ForgotPasswordModal } from './ForgotPasswordModal'
 
-// ── Backend user API ──────────────────────────────────────────────────────────
-async function apiRegister(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const apiUrl = await getApiUrl()
-    const res = await fetch(`${apiUrl}/api/users/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
-    })
-    if (res.ok) return { ok: true }
-    const data = await res.json().catch(() => ({}))
-    if (res.status === 409) return { ok: false, error: 'Account already exists. Please sign in.' }
-    return { ok: false, error: data.detail || 'Registration failed' }
-  } catch {
-    return { ok: false, error: 'Unable to connect to server.' }
-  }
-}
+// Image Imports
+import KavachLogo from '@/assets/kavach_logo.png'
+import signInIllustration from '@/assets/10241279-01.png'
+import signUpIllustration from '@/assets/Data_security_011.png'
 
-async function apiLogin(email: string, password: string): Promise<{ ok: boolean; name?: string; error?: string }> {
-  try {
-    const apiUrl = await getApiUrl()
-    const res = await fetch(`${apiUrl}/api/users/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      return { ok: true, name: data.name }
-    }
-    const data = await res.json().catch(() => ({}))
-    return { ok: false, error: data.detail || 'Invalid email or password' }
-  } catch {
-    return { ok: false, error: 'Unable to connect to server.' }
-  }
+// ── Local user store ──────────────────────────────────────────────────────────
+interface LocalUser { name: string; email: string; password: string }
+
+function getUsers(): LocalUser[] {
+  try { return JSON.parse(localStorage.getItem('kavach_users') || '[]') } catch { return [] }
+}
+function saveUser(u: LocalUser) {
+  const users = getUsers(); users.push(u)
+  localStorage.setItem('kavach_users', JSON.stringify(users))
+}
+function findUser(email: string, password: string): LocalUser | null {
+  return getUsers().find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password) ?? null
+}
+function emailExists(email: string): boolean {
+  return getUsers().some(u => u.email.toLowerCase() === email.toLowerCase())
 }
 
 // ── Email validation ──────────────────────────────────────────────────────────
@@ -84,68 +69,54 @@ function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
 const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
 const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#22c55e']
 
-// ── Blue panel ────────────────────────────────────────────────────────────────
+// ── Blue panel (Overlay Card) ─────────────────────────────────────────────────
 function BluePanel({ mode, onSwitch }: { mode: 'signin' | 'signup'; onSwitch: () => void }) {
+  const isSignIn = mode === 'signin'
+  const switchButtonText = isSignIn ? 'Sign Up' : 'Sign In'
+  
+  const bgImage = isSignIn ? signInIllustration : signUpIllustration
+
   return (
     <div
-      className="flex flex-col items-center justify-between relative overflow-hidden"
-      style={{
-        background: 'linear-gradient(160deg, #1a3a8f 0%, #0f2460 60%, #0a1a4a 100%)',
-        width: '45%',
-        flexShrink: 0,
-      }}
+      className="flex flex-col relative overflow-hidden w-1/2 flex-shrink-0"
+      style={{ backgroundColor: '#4e78b3ff' }}
     >
-      {/* Network dot/line pattern */}
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 700" preserveAspectRatio="xMidYMid slice">
-        {Array.from({ length: 14 }).map((_, row) =>
-          Array.from({ length: 8 }).map((_, col) => (
-            <circle key={`${row}-${col}`} cx={col * 55 + 20} cy={row * 52 + 20} r="1.5" fill="rgba(255,255,255,0.13)" />
-          ))
-        )}
-        <line x1="75"  y1="72"  x2="130" y2="124" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="130" y1="124" x2="185" y2="72"  stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="185" y1="72"  x2="240" y2="124" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="75"  y1="176" x2="130" y2="124" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="240" y1="124" x2="295" y2="176" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="130" y1="228" x2="185" y2="176" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="185" y1="176" x2="240" y2="228" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
-        <line x1="75"  y1="280" x2="130" y2="228" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-        <line x1="240" y1="228" x2="295" y2="280" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-        <circle cx="130" cy="124" r="3" fill="rgba(100,160,255,0.5)" />
-        <circle cx="240" cy="228" r="3" fill="rgba(100,160,255,0.5)" />
-        <circle cx="185" cy="176" r="4" fill="rgba(100,160,255,0.6)" />
-        <circle cx="75"  cy="280" r="3" fill="rgba(100,160,255,0.4)" />
-        <circle cx="295" cy="176" r="3" fill="rgba(100,160,255,0.4)" />
-      </svg>
-
-      {/* Logo top */}
-      <div className="relative z-10 flex items-center gap-2 pt-10 pb-0">
-        <Image src="/KavachLogo.png" alt="Kavach" width={32} height={32} className="object-contain" />
-        <span className="text-white font-bold text-xl tracking-wide">kavach</span>
+      <div className="absolute inset-0 z-0 flex items-center justify-center p-8 pointer-events-none">
+        <div className="relative w-full h-full flex items-center justify-center">
+          <Image 
+            src={bgImage} 
+            alt={`${mode} illustration`} 
+            fill 
+            className="object-contain object-center" 
+            quality={100}
+            priority
+          />
+        </div>
       </div>
 
-      {/* Center content */}
-      <div className="relative z-10 flex flex-col items-center text-center gap-4 px-8">
-        <p className="text-white/55 text-xs font-semibold tracking-[0.2em] uppercase">Welcome to</p>
-        <h2 className="text-white font-bold leading-snug text-2xl">
-          Advanced Intelligence<br />Platform for Law<br />Enforcement
-        </h2>
-        <p className="text-white/50 text-xs leading-relaxed" style={{ maxWidth: 230 }}>
-          Empowering agencies with secure, real-time insights and seamless operational control. Built for accuracy, speed, and reliability in critical environments.
-        </p>
+      <div className="relative z-10 flex w-full justify-center pt-5">
+        <Image 
+          src={KavachLogo} 
+          alt="Kavach Logo" 
+          width={175} 
+          height={65} 
+          className="object-contain" 
+        />
+      </div>
+
+      <div className="flex-1" />
+
+      <div className="relative z-10 flex w-full justify-center pb-10">
         <button
           onClick={onSwitch}
-          className="mt-1 px-10 py-2.5 rounded-full text-white text-sm font-semibold transition-all hover:opacity-90 active:scale-95"
+          className="px-16 py-3 rounded-md text-white text-sm font-bold transition-all active:scale-95"
           style={{
-            background: 'linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)',
-            boxShadow: '0 4px 18px rgba(37,99,235,0.5)',
+            background: 'rgba(31, 31, 31, 0.65)',
           }}
         >
-          {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+          {switchButtonText}
         </button>
       </div>
-
-      <div className="pb-8" />
     </div>
   )
 }
@@ -206,7 +177,7 @@ export function LoginForm() {
 
   if (!hasHydrated || isCheckingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center" style={{ background: '#e8eef8' }}>
+      <div className="fixed inset-0 flex items-center justify-center bg-[#e8eef8]">
         <LoadingSpinner />
       </div>
     )
@@ -233,70 +204,49 @@ export function LoginForm() {
       if (!password.trim())                      { setLocalError('Password is required.'); return }
       if (!isPasswordValid(password))            { setLocalError('Password must have 8+ chars, 1 uppercase, 1 lowercase, and 1 special character.'); return }
       if (!agreed)                               { setLocalError('Please agree to Terms & Conditions.'); return }
+      if (emailExists(email))                    { setLocalError('Account already exists. Please sign in.'); return }
 
       setLocalLoading(true)
-      const reg = await apiRegister(name.trim(), email.trim().toLowerCase(), password)
-      if (!reg.ok) {
-        setLocalError(reg.error ?? 'Registration failed')
-        setLocalLoading(false)
-        return
-      }
-
-      // Store name in localStorage for sidebar display (non-sensitive)
-      const emailLower = email.trim().toLowerCase()
-      const existing: { email: string; name: string }[] = JSON.parse(localStorage.getItem('kavach_users') ?? '[]')
-      if (!existing.find(u => u.email === emailLower)) {
-        existing.push({ email: emailLower, name: name.trim() })
-        localStorage.setItem('kavach_users', JSON.stringify(existing))
-      }
-      localStorage.setItem('kavach_session', 'true')
-      localStorage.setItem('kavach_current_user', emailLower)
-      const ok = await login(password)
+      // Save locally
+      saveUser({ name: name.trim(), email: email.trim().toLowerCase(), password })
+      
+      // Simulate registration delay
+      await new Promise(resolve => setTimeout(resolve, 800))
+      
       setLocalLoading(false)
-      if (!ok) router.push('/notebooks')
+      // Redirect to Sign In after successful signup
+      switchMode('signin')
       return
     }
 
-    // Sign in
-    if (!email.trim())          { setLocalError('Email is required.'); return }
+    // Sign in flow
+    if (!email.trim())      { setLocalError('Email is required.'); return }
     if (emailState !== 'valid') { setLocalError('Enter a valid email address.'); return }
-    if (!password.trim())       { setLocalError('Password is required.'); return }
+    if (!password.trim())   { setLocalError('Password is required.'); return }
+
+    const user = findUser(email.trim(), password)
+    if (!user) { setLocalError('Invalid email or password.'); return }
 
     setLocalLoading(true)
-    const result = await apiLogin(email.trim().toLowerCase(), password)
-    if (!result.ok) {
-      setLocalError(result.error ?? 'Invalid email or password')
-      setLocalLoading(false)
-      return
-    }
-
-    // Sync name to localStorage for sidebar display
-    const emailLower = email.trim().toLowerCase()
-    const existing: { email: string; name: string }[] = JSON.parse(localStorage.getItem('kavach_users') ?? '[]')
-    const idx = existing.findIndex(u => u.email === emailLower)
-    if (idx >= 0) {
-      existing[idx].name = result.name ?? existing[idx].name
-    } else {
-      existing.push({ email: emailLower, name: result.name ?? emailLower })
-    }
-    localStorage.setItem('kavach_users', JSON.stringify(existing))
-    localStorage.setItem('kavach_session', 'true')
-    localStorage.setItem('kavach_current_user', emailLower)
+    // Perform actual login
     const ok = await login(password)
+    
+    if (ok) {
+      localStorage.setItem('kavach_session', 'true')
+      localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
+      router.push('/notebooks')
+    } else {
+       setLocalError('Authentication failed. Please try again.')
+    }
     setLocalLoading(false)
-    if (!ok) router.push('/notebooks')
   }
 
   const isSignIn = mode === 'signin'
 
-  // When forgot-password flow is active, show it in the right panel
   if (forgotOpen) {
     return (
-      <div
-        className="fixed inset-0 flex"
-        style={{ background: 'linear-gradient(135deg, #dce8ff 0%, #eef2ff 100%)' }}
-      >
-        <div className="flex w-full h-full">
+      <div className="min-h-screen flex items-center justify-center bg-[#e8eef8] p-4 sm:p-8">
+        <div className="flex w-full max-w-[1000px] h-[650px] bg-white rounded-2xl shadow-2xl overflow-hidden">
           <BluePanel mode="signin" onSwitch={() => switchMode('signup')} />
           <ForgotPasswordModal
             open={forgotOpen}
@@ -308,10 +258,9 @@ export function LoginForm() {
     )
   }
 
-  // ── Email field with live validation indicator ────────────────────────────
   const emailField = (
     <div className="space-y-1">
-      <label className="text-xs font-medium text-gray-600">Email Address</label>
+      <label className="text-xs font-semibold text-gray-700">Email Address</label>
       <div className="relative">
         <input
           type="email"
@@ -321,7 +270,7 @@ export function LoginForm() {
           onBlur={() => setEmailTouched(true)}
           disabled={isLoading}
           className={[
-            'w-full px-3 py-2.5 pr-10 text-sm rounded-lg bg-gray-50 focus:outline-none focus:bg-white transition-colors placeholder:text-gray-400 border',
+            'w-full px-3 py-3 pr-10 text-sm rounded-lg bg-gray-50 focus:outline-none focus:bg-white transition-colors placeholder:text-gray-400 border',
             emailTouched && email
               ? emailState === 'valid'
                 ? 'border-green-400 focus:border-green-500'
@@ -329,7 +278,6 @@ export function LoginForm() {
               : 'border-gray-200 focus:border-blue-400',
           ].join(' ')}
         />
-        {/* Validation icon — show only when user has typed */}
         {emailTouched && email && (
           <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
             {emailState === 'valid'
@@ -339,65 +287,48 @@ export function LoginForm() {
           </span>
         )}
       </div>
-      {/* Inline hint below field */}
       {emailTouched && email && emailState === 'invalid' && (
         <p className="text-xs text-red-500 flex items-center gap-1 mt-0.5">
           <AlertCircle className="h-3 w-3 shrink-0" />
           Please enter a valid email (e.g. name@example.com)
         </p>
       )}
-      {emailTouched && email && emailState === 'valid' && (
-        <p className="text-xs text-green-600 mt-0.5">✓ Valid email address</p>
-      )}
     </div>
   )
 
-  // ── Form panel ────────────────────────────────────────────────────────────
   const formPanel = (
     <div
-      className="flex flex-col justify-center bg-white"
+      className="flex flex-col justify-center bg-white px-10 sm:px-14 py-12 relative w-1/2"
       style={{
-        flex: 1,
-        minWidth: 0,
-        padding: '48px 52px',
         opacity: animating ? 0 : 1,
-        transform: animating ? 'translateY(6px)' : 'translateY(0)',
-        transition: 'opacity 0.2s ease, transform 0.2s ease',
+        transition: 'opacity 0.2s ease',
       }}
     >
-      {/* Header */}
-      <div className="mb-8">
-        <h2 className="font-bold text-gray-900 text-2xl mb-1">
+      <div className="mb-8 text-center">
+        <h2 className="font-extrabold text-gray-900 text-[26px] mb-2 tracking-tight">
           {isSignIn ? 'Welcome Back' : 'Create Your Account'}
         </h2>
-        <p className="text-sm">
-          <span className="text-blue-600 font-semibold">{isSignIn ? 'Sign In' : 'Sign Up'}</span>
-          <span className="text-gray-400"> To Get Started</span>
-        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Name — signup only */}
         {!isSignIn && (
           <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">Name</label>
+            <label className="text-xs font-semibold text-gray-700">Name</label>
             <input
               type="text"
-              placeholder="Enter Your Name"
+              placeholder="Please enter your name"
               value={name}
               onChange={e => setName(e.target.value)}
               disabled={isLoading}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors placeholder:text-gray-400"
+              className="w-full px-3 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors placeholder:text-gray-400"
             />
           </div>
         )}
 
-        {/* Email with validation */}
         {emailField}
 
-        {/* Password */}
         <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-600">Password</label>
+          <label className="text-xs font-semibold text-gray-700">Password</label>
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
@@ -407,7 +338,7 @@ export function LoginForm() {
               onBlur={() => setPasswordTouched(true)}
               disabled={isLoading}
               className={[
-                'w-full px-3 py-2.5 pr-10 text-sm rounded-lg bg-gray-50 focus:outline-none focus:bg-white transition-colors placeholder:text-gray-400 border',
+                'w-full px-3 py-3 pr-10 text-sm rounded-lg bg-gray-50 focus:outline-none focus:bg-white transition-colors placeholder:text-gray-400 border',
                 !isSignIn && passwordTouched && password
                   ? isPasswordValid(password)
                     ? 'border-green-400 focus:border-green-500'
@@ -425,26 +356,23 @@ export function LoginForm() {
             </button>
           </div>
 
-          {/* Sign In — forgot password */}
           {isSignIn && (
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-1">
               <button
                 type="button"
                 onClick={() => setForgotOpen(true)}
-                className="text-xs text-blue-500 hover:underline mt-0.5"
+                className="text-xs text-blue-600 hover:underline font-medium"
               >
                 Forgot Password?
               </button>
             </div>
           )}
 
-          {/* Sign Up — strength bar + checklist */}
           {!isSignIn && passwordTouched && password && (() => {
             const checks = getPasswordChecks(password)
             const strength = getStrengthLevel(password)
             return (
               <div className="mt-2 space-y-2">
-                {/* Strength bar */}
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1 flex-1">
                     {[1, 2, 3, 4].map(i => (
@@ -459,7 +387,6 @@ export function LoginForm() {
                     {STRENGTH_LABEL[strength]}
                   </span>
                 </div>
-                {/* Checklist */}
                 <ul className="space-y-1">
                   {checks.map(c => (
                     <li key={c.label} className="flex items-center gap-1.5 text-xs">
@@ -476,25 +403,23 @@ export function LoginForm() {
           })()}
         </div>
 
-        {/* Terms — signup only */}
         {!isSignIn && (
-          <label className="flex items-start gap-2 cursor-pointer select-none">
+          <label className="flex items-start gap-2 cursor-pointer select-none pt-2">
             <input
               type="checkbox"
               checked={agreed}
               onChange={e => setAgreed(e.target.checked)}
-              className="rounded accent-blue-600 w-3.5 h-3.5 shrink-0 mt-0.5"
+              className="rounded accent-blue-600 w-3.5 h-3.5 shrink-0 mt-0.5 border-gray-300"
             />
-            <span className="text-xs text-gray-500 leading-relaxed">
+            <span className="text-xs text-gray-600 font-medium">
               I Agree To The{' '}
-              <span className="text-blue-600 font-medium hover:underline cursor-pointer">
+              <span className="text-gray-800 hover:text-blue-600 transition-colors cursor-pointer">
                 Terms &amp; Conditions And Privacy Policy
               </span>
             </span>
           </label>
         )}
 
-        {/* Submit error */}
         {localError && (
           <div className="flex items-start gap-2 text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -502,15 +427,11 @@ export function LoginForm() {
           </div>
         )}
 
-        {/* Submit button */}
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-3 rounded-lg text-white text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
-          style={{
-            background: 'linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%)',
-            boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
-          }}
+          className="w-full py-3 mt-4 rounded-xl text-white text-sm font-semibold transition-all hover:bg-blue-600 active:scale-[0.98] disabled:opacity-60"
+          style={{ background: '#2563eb' }}
         >
           {isLoading
             ? <span className="flex items-center justify-center gap-2"><LoadingSpinner />{isSignIn ? 'Signing In...' : 'Signing Up...'}</span>
@@ -518,17 +439,16 @@ export function LoginForm() {
           }
         </button>
 
-        {/* Switch mode */}
-        <p className="text-xs text-gray-500 text-center">
+        <p className="text-xs text-gray-900 font-medium text-center pt-2">
           {isSignIn ? (
             <>Don&apos;t Have An Account?{' '}
-              <button type="button" onClick={() => switchMode('signup')} className="text-blue-600 font-semibold hover:underline">
-                Create Account
+              <button type="button" onClick={() => switchMode('signup')} className="text-blue-600 font-bold hover:underline">
+                Sign Up
               </button>
             </>
           ) : (
             <>Remember Your Password?{' '}
-              <button type="button" onClick={() => switchMode('signin')} className="text-blue-600 font-semibold hover:underline">
+              <button type="button" onClick={() => switchMode('signin')} className="text-blue-600 font-bold hover:underline">
                 Sign In
               </button>
             </>
@@ -536,7 +456,7 @@ export function LoginForm() {
         </p>
       </form>
 
-      <p className="text-center text-gray-300 text-xs mt-8">v{configInfo?.version ?? '1.0'}</p>
+      <p className="absolute bottom-4 right-6 text-gray-300 text-[10px]">v{configInfo?.version ?? '1.0'}</p>
     </div>
   )
 
@@ -545,12 +465,8 @@ export function LoginForm() {
   )
 
   return (
-    // Full screen — no centering card, fills entire viewport
-    <div
-      className="fixed inset-0 flex"
-      style={{ background: 'linear-gradient(135deg, #dce8ff 0%, #eef2ff 100%)' }}
-    >
-      <div className="flex w-full h-full">
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#e8eef8] p-4 sm:p-8 ">
+      <div className="flex w-full max-w-[1090px] min-h-[710px] bg-white rounded-4xl shadow-2xl overflow-hidden">
         {isSignIn ? (
           <>
             {bluePanel}
@@ -563,7 +479,6 @@ export function LoginForm() {
           </>
         )}
       </div>
-
     </div>
   )
 }

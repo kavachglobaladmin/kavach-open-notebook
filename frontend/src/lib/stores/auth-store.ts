@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getApiUrl } from '@/lib/config'
 import { issueToken, verifyToken, isTokenExpired, rotateBrowserSecret, decodeToken } from '@/lib/jwt'
+import { queryClient } from '@/lib/api/query-client'
 
 interface AuthState {
   isAuthenticated: boolean
@@ -173,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
         if (token !== 'not-required') {
           if (isTokenExpired(token)) {
             console.info('[Auth] Session expired — logging out')
+            queryClient.clear()
             set({
               isAuthenticated: false,
               token: null,
@@ -190,6 +192,7 @@ export const useAuthStore = create<AuthState>()(
           const payload = await verifyToken(token)
           if (!payload) {
             console.warn('[Auth] Token signature invalid — logging out')
+            queryClient.clear()
             set({
               isAuthenticated: false,
               token: null,
@@ -229,6 +232,7 @@ export const useAuthStore = create<AuthState>()(
             set({ isAuthenticated: true, lastAuthCheck: now, isCheckingAuth: false })
             return true
           } else {
+            queryClient.clear()
             set({
               isAuthenticated: false,
               token: null,
@@ -241,6 +245,7 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('checkAuth error:', error)
+          queryClient.clear()
           set({
             isAuthenticated: false,
             token: null,
@@ -266,6 +271,7 @@ export const useAuthStore = create<AuthState>()(
         if (state) {
           if (state.token && state.token !== 'not-required' && isTokenExpired(state.token)) {
             console.info('[Auth] Persisted token expired on rehydration — clearing session')
+            queryClient.clear()
             state.token = null
             state.isAuthenticated = false
             state.tokenExpiresAt = null

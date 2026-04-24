@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Activity, ZoomIn, ZoomOut, Maximize, MousePointer2 } from 'lucide-react'; 
+import { RefreshCw, Activity, ZoomIn, ZoomOut, Maximize, MousePointer2, Tag, Info } from 'lucide-react'; 
 
 // Ensure you import your API wrapper correctly based on your project structure
 import { sourcesApi } from '@/lib/api/sources'; 
@@ -8,6 +8,15 @@ import { sourcesApi } from '@/lib/api/sources';
 interface WordCloudViewProps {
   sourceId: string;
 }
+
+// Extract exact hex colors from the provided reference image
+const colors = {
+  navy: '#214389', // (ADDRESS, DETAILS, JAIL, DISTRICT)
+  red: '#8B1C31', // (HARYANA, DESCRIPTION LODGED)
+  teal: '#186A63', // (DESCRIPTION, NATIONALITY)
+  slate: '#1D2631', // (SONIPAT, PARENTAGE, RAJESH, SUMIT)
+  rust: '#B25022', // (INDIAN, CONTACT, YEAR, CHAJJU)
+};
 
 export function WordCloudView({ sourceId }: WordCloudViewProps) {
   // Original State Logic
@@ -48,7 +57,8 @@ export function WordCloudView({ sourceId }: WordCloudViewProps) {
     
     const obs = new ResizeObserver((e) => {
       const r = e[0].contentRect;
-      setSize({ w: Math.max(600, r.width), h: Math.max(400, r.height) });
+      // Remove Math.max limits that were previously shifting the center on smaller containers
+      setSize({ w: Math.max(10, r.width), h: Math.max(10, r.height) });
     });
     
     obs.observe(el); 
@@ -103,15 +113,15 @@ export function WordCloudView({ sourceId }: WordCloudViewProps) {
     const minVal = Math.min(...sortedWords.map((w) => w.value));
     const range = maxVal - minVal || 1;
 
-    // Classic Professional Palette matching the reference image
+    // Ordered palette from the reference image
     const typoColors = [
-      '#1f2937', // Dark Slate
-      '#9f1239', // Deep Red/Crimson
-      '#0f766e', // Dark Teal
-      '#b45309', // Rust/Bronze
-      '#1e3a8a', // Navy Blue
-      '#475569', // Slate Gray
-      '#115e59', // Forest Green
+      colors.slate,  // Primary 1 (SONIPAT)
+      colors.red,    // Primary 2 (HARYANA)
+      colors.teal,   // Primary 3 (DESCRIPTION)
+      colors.navy,   // Primary 4 (ADDRESS)
+      colors.rust,   // Primary 5 (INDIAN)
+      '#475569',     // Slate Gray (Misc)
+      '#14532D',     // Forest Green (Misc)
     ];
 
     const placed: { 
@@ -236,6 +246,17 @@ export function WordCloudView({ sourceId }: WordCloudViewProps) {
     setSize(prev => ({ ...prev })); // Trigger auto-fit calculation again
   };
 
+  // Color definition logic: Map specific words to definitions.
+  // This logic is for the LEGEND/KEY, as the actual words in the cloud
+  // are colored by frequency, matching the image.
+  const colorDefinitions = [
+    { name: 'Person/Identity', word: 'Black Color', color: colors.slate },
+    { name: 'State/Region', word: 'Red Color', color: colors.red },
+    { name: 'Subject/Topic', word: 'Teal Color', color: colors.teal },
+    { name: 'Location/Detail', word: 'Navy Color', color: colors.navy },
+    { name: 'Attributes', word: 'Rust Color', color: colors.rust },
+  ];
+
   // Loading State UI
   if (loading) return (
     <div className="flex h-full items-center justify-center gap-3 bg-white min-h-[500px] rounded-xl border border-slate-200 shadow-sm">
@@ -256,7 +277,7 @@ export function WordCloudView({ sourceId }: WordCloudViewProps) {
     <div 
       ref={containerRef} 
       className={`relative w-full h-full overflow-hidden select-none bg-white border border-slate-200 rounded-xl shadow-sm ${isDraggingCanvas ? 'cursor-grabbing' : 'cursor-grab'}`}
-      style={{ minHeight: '550px' }}
+      style={{ minHeight: '600px' }}
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -305,7 +326,7 @@ export function WordCloudView({ sourceId }: WordCloudViewProps) {
                     cursor: 'pointer', 
                     userSelect: 'none',
                     textTransform: 'uppercase', 
-                    filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.15))' // Subtle drop shadow for crispness on white background
+                    filter: 'drop-shadow(1px 1px 1px rgba(0,0,0,0.12))' // Subtle drop shadow for crispness on white background
                   }}
                 >
                   {w.text}
@@ -331,14 +352,49 @@ export function WordCloudView({ sourceId }: WordCloudViewProps) {
         </div>
       </div>
 
-      {/* Info Badge - Light Mode Data Card */}
-      <div className="absolute bottom-5 right-5 flex justify-between items-end pointer-events-none z-10">
-        <div className="flex flex-col gap-1.5 bg-white/90 backdrop-blur-md rounded-xl border border-slate-200 px-4 py-3 shadow-md">
-          <div className="flex items-center gap-2 text-slate-800 font-bold text-sm tracking-widest uppercase">
-            <Activity className="h-4 w-4 text-blue-500" />
-            <span>{words.length} Words</span>
+      {/* Data Summary (Activity Badge) */}
+      <div className="absolute top-5 left-5 z-10 ui-controls">
+        <div className="flex items-center gap-2.5 bg-white/90 backdrop-blur-md rounded-xl border border-slate-200 px-4 py-3 shadow-md">
+          <Activity className="h-5 w-5 text-blue-500" />
+          <div className="flex flex-col">
+            <span className="text-slate-800 font-bold text-sm tracking-widest uppercase">{words.length} Words</span>
+            <span className="text-xs text-slate-500 font-medium tracking-wide">Size = Frequency</span>
           </div>
-          <span className="text-xs text-slate-500 font-medium tracking-wide">Size = Frequency</span>
+        </div>
+      </div>
+
+      {/* NEW: Color Definition Legend/Key */}
+      <div className="absolute bottom-5 right-5 flex justify-between items-end pointer-events-none z-10">
+        <div className="flex flex-col gap-2.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 p-4 shadow-lg w-64">
+          <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+            <Tag className="h-4 w-4 text-blue-500" />
+            <span>Color Definition Key</span>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-1.5 pt-1">
+            {colorDefinitions.map((def, idx) => (
+              <div key={idx} className="flex items-center gap-2.5">
+                <span 
+                  className="w-4 h-4 rounded shadow-inner border border-black/10 flex-shrink-0" 
+                  style={{ backgroundColor: def.color }}
+                />
+                <div className="flex items-baseline gap-1.5 overflow-hidden">
+                  <span className="text-xs text-slate-950 truncate">{def.name}:</span>
+                  <span 
+                    className="text-xs uppercase tracking-tight" 
+                    style={{ color: def.color, fontFamily: "'Impact', sans-serif" }}
+                  >
+                    {def.word}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-1 flex items-start gap-2 bg-blue-50/50 border border-blue-100 p-2 rounded-lg text-xs text-blue-800">
+            <Info className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+            <p className="leading-normal">Colors distinguish categories like <strong className='font-semibold'>Person</strong>, <strong className='font-semibold'>Location</strong>, or <strong className='font-semibold'>Subject</strong> as shown.</p>
+          </div>
         </div>
       </div>
     </div>
