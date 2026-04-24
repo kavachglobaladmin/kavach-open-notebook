@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class NotebookCreate(BaseModel):
     name: str = Field(..., description="Name of the notebook")
     description: str = Field(default="", description="Description of the notebook")
+    storage_limit_mb: Optional[int] = Field(default=None, description="Storage limit in MB for this notebook")
 
 
 class NotebookUpdate(BaseModel):
@@ -22,6 +23,8 @@ class NotebookResponse(BaseModel):
     name: str
     description: str
     archived: bool
+    storage_limit_mb: Optional[int] = None
+    storage_used_mb: Optional[float] = None
     created: str
     updated: str
     source_count: int

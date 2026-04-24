@@ -3,6 +3,7 @@
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { queryClient } from '@/lib/api/query-client'
 
 export function useAuth() {
   const router = useRouter()
@@ -39,6 +40,10 @@ export function useAuth() {
   }, [hasHydrated, authRequired])
 
   const handleLogin = async (password: string) => {
+    // Clear all cached queries before login so stale data from a previous
+    // user session is never shown to the newly logged-in user.
+    queryClient.clear()
+
     const success = await login(password)
     if (success) {
       // Check if there's a stored redirect path
@@ -54,7 +59,16 @@ export function useAuth() {
   }
 
   const handleLogout = () => {
+    // Clear all cached queries on logout so the next user starts fresh.
+    queryClient.clear()
+
     logout()
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('kavach_session')
+      localStorage.removeItem('kavach_current_user')
+      // Clear any saved redirect path — it belongs to the previous user's session
+      sessionStorage.removeItem('redirectAfterLogin')
+    }
     router.push('/login')
   }
 

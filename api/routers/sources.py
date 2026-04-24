@@ -14,11 +14,14 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from fastapi.responses import FileResponse, Response
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
+
+from api.auth import get_current_user
 
 from api.command_service import CommandService
 from api.models import (
@@ -183,6 +186,7 @@ def _get_spacy_nlp() -> Optional[spacy.language.Language]:
 
     # Try transformer model first (most accurate for person NER)
     for model_name in ("en_core_web_trf", "en_core_web_lg", "en_core_web_md", "en_core_web_sm"):
+    # for model_name in ("en_core_web_trf", "en_core_web_lg", "en_core_web_md", "en_core_web_sm"):
         try:
             _spacy_nlp = spacy.load(model_name)
             logger.info(f"[spaCy] Loaded model: {model_name}")
@@ -1365,6 +1369,7 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
 
 @router.get("/sources", response_model=List[SourceListResponse])
 async def get_sources(
+    request: Request,
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
     limit: int = Query(
         50, ge=1, le=100, description="Number of sources to return (1-100)"
@@ -1374,6 +1379,7 @@ async def get_sources(
         "updated", description="Field to sort by (created or updated)"
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    current_user: Optional[str] = Depends(get_current_user),
 ):
     """Get sources with pagination and sorting support."""
     try:
@@ -1392,10 +1398,12 @@ async def get_sources(
 
         # Build the query
         if notebook_id:
-            # Verify notebook exists first
+            # Verify notebook exists and belongs to current user
             notebook = await Notebook.get(notebook_id)
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
+            if current_user and notebook.owner and notebook.owner != current_user:
+                raise HTTPException(status_code=403, detail="Access denied")
 
             # Query sources for specific notebook - include command field with FETCH
             query = f"""
@@ -1414,6 +1422,24 @@ async def get_sources(
                     "limit": limit,
                     "offset": offset,
                 },
+            )
+        elif current_user:
+            # Return only sources linked to notebooks owned by this user
+            query = f"""
+                SELECT id, asset, created, title, updated, topics, command,
+                (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
+                (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
+                FROM (
+                    SELECT VALUE in FROM reference
+                    WHERE out IN (SELECT VALUE id FROM notebook WHERE owner = $owner)
+                )
+                {order_clause}
+                LIMIT $limit START $offset
+                FETCH command
+            """
+            result = await repo_query(
+                query,
+                {"owner": current_user, "limit": limit, "offset": offset},
             )
         else:
             # Query all sources - include command field with FETCH
@@ -1514,6 +1540,31 @@ async def create_source(
 
         # Handle file upload if provided
         if upload_file and source_data.type == "upload":
+            # Check storage limit for each target notebook before saving
+            if upload_file.size is not None:
+                file_size_mb = upload_file.size / (1024 * 1024)
+            else:
+                # Read to get size, then reset
+                content_bytes = await upload_file.read()
+                file_size_mb = len(content_bytes) / (1024 * 1024)
+                await upload_file.seek(0)
+
+            for notebook_id in source_data.notebooks or []:
+                nb_obj = await Notebook.get(notebook_id)
+                if nb_obj and nb_obj.storage_limit_mb:
+                    from api.routers.notebooks import _get_notebook_storage_used_mb
+                    used_mb = await _get_notebook_storage_used_mb(notebook_id)
+                    if used_mb + file_size_mb > nb_obj.storage_limit_mb:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=(
+                                f"Storage limit exceeded for notebook '{nb_obj.name}'. "
+                                f"Limit: {nb_obj.storage_limit_mb} MB, "
+                                f"Used: {used_mb:.1f} MB, "
+                                f"File: {file_size_mb:.1f} MB."
+                            ),
+                        )
+
             try:
                 file_path = await save_uploaded_file(upload_file)
             except Exception as e:
@@ -2438,6 +2489,7 @@ async def get_source_profile_graph(source_id: str, model_id: Optional[str] = Que
                 result['source_id'] = source_id
                 result['source_title'] = source.title or 'Unknown'
                 logger.info(f"[ProfileGraph] DOCX: {len(result.get('personal',{}))} personal, {len(result.get('family',[]))} family, {len(result.get('associates',[]))} associates")
+                print(result)
                 return result
             except Exception as e:
                 logger.warning(f"[ProfileGraph] DOCX extraction failed: {e}, falling back to text")
@@ -3238,6 +3290,83 @@ async def download_source_file(source_id: str):
     except Exception as e:
         logger.error(f"Error downloading file for source {source_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to download source file")
+
+
+@router.post("/sources/{source_id}/format-html")
+async def format_source_as_html(source_id: str, request: Request):
+    """
+    Use AI to convert source full_text into clean, structured HTML.
+    Works for any file format: CSV, plain text, bank statements, IR docs, etc.
+    """
+    try:
+        source = await Source.get(source_id)
+        if not source or not source.full_text:
+            raise HTTPException(status_code=404, detail="Source or content not found")
+
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        model_id = body.get("model_id") if isinstance(body, dict) else None
+
+        # Auto-select a model if none provided
+        if not model_id:
+            from open_notebook.ai.models import DefaultModels
+            defaults = await DefaultModels.get_instance()
+            model_id = (
+                getattr(defaults, "default_chat_model", None)
+                or getattr(defaults, "default_transformation_model", None)
+            )
+        # Fallback: get first available language model
+        if not model_id:
+            from open_notebook.ai.models import Model
+            models = await Model.get_all()
+            lang_models = [m for m in models if getattr(m, "type", "") == "language"]
+            if lang_models:
+                model_id = lang_models[0].id
+        if not model_id:
+            raise HTTPException(status_code=400, detail="No language model configured. Please add a model in Settings.")
+
+        from open_notebook.ai.provision import provision_langchain_model
+
+        content = source.full_text
+        CHUNK = 12000
+        chunks = [content[i:i+CHUNK] for i in range(0, len(content), CHUNK)]
+
+        system = """You are a document formatter. Convert the raw text below into clean, semantic HTML.
+
+Rules:
+- Detect the document type automatically (CSV, call records, bank statement, report, etc.)
+- For tabular/CSV data: output a proper <table> with <thead> and <tbody>
+- For structured documents: use <h2> for sections, <h3> for sub-sections, <p> for paragraphs, <ul><li> for lists
+- For key-value data: use <dl><dt><dd> or a 2-column table
+- Preserve ALL data — do not summarize or omit anything
+- Output ONLY valid HTML fragment (no <html>, <head>, <body> tags)
+- No markdown, no explanation, no code fences
+
+TEXT:
+"""
+
+        html_parts = []
+        for chunk in chunks:
+            from langchain_core.messages import SystemMessage, HumanMessage
+            from open_notebook.utils import clean_thinking_content
+            from open_notebook.utils.text_utils import extract_text_content
+
+            chain = await provision_langchain_model(
+                system + chunk, model_id, "transformation", max_tokens=4096
+            )
+            payload = [SystemMessage(content=system), HumanMessage(content=chunk)]
+            response = await chain.ainvoke(payload)
+            raw = clean_thinking_content(extract_text_content(response.content))
+            # Strip markdown fences if model added them
+            raw = raw.replace("```html", "").replace("```", "").strip()
+            html_parts.append(raw)
+
+        return {"html": "\n".join(html_parts)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error formatting source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/sources/{source_id}/status", response_model=SourceStatusResponse)

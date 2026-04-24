@@ -147,12 +147,124 @@ function SectionCard({ icon: Icon, title, iconClass = 'text-muted-foreground', b
 // ── detector ─────────────────────────────────────────────────────────────────
 
 export function isBankAnalysisInsight(insightType: string): boolean {
-  return insightType.toLowerCase().includes('bank anal')
+  const t = insightType.toLowerCase()
+  return t.includes('bank anal') || t.includes('bank statement') || t.includes('bank_statement')
 }
 
 // ── main viewer ───────────────────────────────────────────────────────────────
 
+// Try to parse JSON bank statement format from the new extraction prompt
+function tryParseJsonBankStatement(content: string): {
+  account_summary: Record<string, unknown>
+  transactions: Array<Record<string, unknown>>
+} | null {
+  try {
+    // Strip markdown fences if present
+    let cleaned = content
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+
+    // Fix common JSON issues from LLM output:
+    // 1. Numbers with commas: 35,738.00 → 35738.00
+    cleaned = cleaned.replace(/:\s*(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)/g, (_, n) => ': ' + n.replace(/,/g, ''))
+    // 2. Trailing commas before } or ]
+    cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
+    // 3. Missing commas between objects (}\n{)
+    cleaned = cleaned.replace(/\}\s*\n\s*\{/g, '},\n{')
+
+    const parsed = JSON.parse(cleaned)
+    if (parsed && parsed.account_summary && Array.isArray(parsed.transactions)) {
+      return parsed
+    }
+  } catch { /* not JSON */ }
+  return null
+}
+
+function JsonBankStatementViewer({ data }: { data: { account_summary: Record<string, unknown>; transactions: Array<Record<string, unknown>> } }) {
+  const s = data.account_summary
+  const txns = data.transactions
+
+  const totalCredit = txns.reduce((sum, t) => sum + Math.max(Number(t.credit) || 0, 0), 0)
+  const totalDebit  = txns.reduce((sum, t) => sum + Math.max(Number(t.debit)  || 0, 0), 0)
+
+  const fmtAmt = (n: number) => n > 0 ? `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'
+
+  return (
+    <div className="space-y-4 pb-4">
+      {/* Account Summary */}
+      <div className="rounded-xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Wallet className="h-4 w-4 text-blue-300" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Bank Statement</span>
+        </div>
+        <h2 className="text-xl font-black">{String(s.bank_name || s.bank || 'Bank Statement')}</h2>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          {s.account_holder && <div><span className="text-blue-300/60 text-xs">Holder</span><p className="font-medium">{String(s.account_holder)}</p></div>}
+          {s.account_number && <div><span className="text-blue-300/60 text-xs">Account No.</span><p className="font-medium">{String(s.account_number)}</p></div>}
+          {s.statement_period && <div><span className="text-blue-300/60 text-xs">Period</span><p className="font-medium">{String(s.statement_period)}</p></div>}
+          {s.opening_balance != null && <div><span className="text-blue-300/60 text-xs">Opening Balance</span><p className="font-medium">{fmtAmt(Number(s.opening_balance))}</p></div>}
+          {s.closing_balance != null && <div><span className="text-blue-300/60 text-xs">Closing Balance</span><p className="font-medium">{fmtAmt(Number(s.closing_balance))}</p></div>}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-emerald-600/20 border border-emerald-500/30 p-3 text-center">
+            <p className="text-xs text-emerald-300">Total Credits</p>
+            <p className="text-lg font-black text-emerald-300">{fmtAmt(s.total_credits != null ? Number(s.total_credits) : totalCredit)}</p>
+          </div>
+          <div className="rounded-lg bg-rose-600/20 border border-rose-500/30 p-3 text-center">
+            <p className="text-xs text-rose-300">Total Debits</p>
+            <p className="text-lg font-black text-rose-300">{fmtAmt(s.total_debits != null ? Number(s.total_debits) : totalDebit)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Transactions Table */}
+      <div className="rounded-xl border overflow-hidden">
+        <div className="px-4 py-2 bg-muted/50 border-b flex items-center justify-between">
+          <span className="text-sm font-semibold">Transactions</span>
+          <Badge variant="secondary">{txns.length}</Badge>
+        </div>
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/30 sticky top-0">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold">Date</th>
+                <th className="px-3 py-2 text-left font-semibold">Description</th>
+                <th className="px-3 py-2 text-right font-semibold text-rose-600">Debit</th>
+                <th className="px-3 py-2 text-right font-semibold text-emerald-600">Credit</th>
+                <th className="px-3 py-2 text-right font-semibold">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {txns
+                .filter(tx => tx.date && String(tx.date) !== '...')  // skip truncation markers
+                .map((tx, i) => (
+                <tr key={i} className={i % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{String(tx.date || '—')}</td>
+                  <td className="px-3 py-1.5 max-w-[200px] truncate">{String(tx.description || tx.narration || '—')}</td>
+                  <td className="px-3 py-1.5 text-right text-rose-600">{Number(tx.debit) > 0 ? fmtAmt(Number(tx.debit)) : '—'}</td>
+                  <td className="px-3 py-1.5 text-right text-emerald-600">{Number(tx.credit) > 0 ? fmtAmt(Number(tx.credit)) : '—'}</td>
+                  <td className="px-3 py-1.5 text-right">{tx.balance != null ? fmtAmt(Number(tx.balance)) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function BankAnalysisInsightViewer({ content }: BankAnalysisInsightViewerProps) {
+  // Try JSON format first (new extraction prompt)
+  const jsonData = useMemo(() => tryParseJsonBankStatement(content), [content])
+  if (jsonData) {
+    return <JsonBankStatementViewer data={jsonData} />
+  }
+
+  // Fall back to legacy text-based parsing
+  return <LegacyBankAnalysisViewer content={content} />
+}
+
+function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
   const data = useMemo(() => {
     const holder      = extractValue(content, 'Account Holder Name')
                      || extractValue(content, 'Account Holder')

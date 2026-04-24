@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -80,6 +81,37 @@ export function AppSidebar() {
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
+  const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+
+  // Derive display name and initials from localStorage user data.
+  // Use state + effect so it re-reads reactively when currentUserEmail changes.
+  const [displayName, setDisplayName] = useState('')
+  const [initials, setInitials] = useState('')
+
+  useEffect(() => {
+    if (!currentUserEmail) {
+      setDisplayName('')
+      setInitials('')
+      return
+    }
+    try {
+      const users: { email: string; name: string }[] = JSON.parse(
+        localStorage.getItem('kavach_users') ?? '[]'
+      )
+      const user = users.find(u => u.email.toLowerCase() === currentUserEmail.toLowerCase())
+      const name = user?.name ?? currentUserEmail
+      const parts = name.trim().split(/\s+/)
+      const capitalizedName = parts.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      const abbr = parts.length >= 2
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : name.slice(0, 2).toUpperCase()
+      setDisplayName(capitalizedName)
+      setInitials(abbr)
+    } catch {
+      setDisplayName(currentUserEmail)
+      setInitials(currentUserEmail.slice(0, 2).toUpperCase())
+    }
+  }, [currentUserEmail])
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [isMac, setIsMac] = useState(true)
@@ -223,6 +255,7 @@ export function AppSidebar() {
                 >
                    <Book className="h-4 w-4" />
                   {t.common.notebook}
+                  
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={(event) => {
@@ -321,6 +354,33 @@ export function AppSidebar() {
             isCollapsed && 'px-2'
           )}
         >
+          {/* User info — shown above Quick actions */}
+          {currentUserEmail && (
+            isCollapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white mx-auto select-none cursor-default"
+                    style={{ background: 'linear-gradient(135deg, #1a3a8f 0%, #0f2460 100%)' }}
+                  >
+                    {initials}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">{displayName}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30">
+                <div
+                  className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white shrink-0 select-none"
+                  style={{ background: 'linear-gradient(135deg, #1a3a8f 0%, #0f2460 100%)' }}
+                >
+                  {initials}
+                </div>
+                <span className="text-sm font-medium truncate leading-tight">{displayName}</span>
+              </div>
+            )
+          )}
+
           {/* Command Palette hint */}
           {!isCollapsed && (
             <div className="px-3 py-1.5 text-xs text-sidebar-foreground/60">

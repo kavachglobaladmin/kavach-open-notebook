@@ -1,8 +1,9 @@
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
+from api.auth import get_current_user
 from api.models import NoteCreate, NoteResponse, NoteUpdate
 from open_notebook.domain.notebook import Note
 from open_notebook.exceptions import InvalidInputError
@@ -12,20 +13,33 @@ router = APIRouter()
 
 @router.get("/notes", response_model=List[NoteResponse])
 async def get_notes(
+    request: Request,
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
+    current_user: Optional[str] = Depends(get_current_user),
 ):
     """Get all notes with optional notebook filtering."""
     try:
         if notebook_id:
-            # Get notes for a specific notebook
+            # Get notes for a specific notebook — verify ownership first
             from open_notebook.domain.notebook import Notebook
 
             notebook = await Notebook.get(notebook_id)
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
+            # Block access if notebook belongs to a different user
+            if current_user and notebook.owner and notebook.owner != current_user:
+                raise HTTPException(status_code=403, detail="Access denied")
             notes = await notebook.get_notes()
+        elif current_user:
+            # Get notes owned by this user
+            from open_notebook.database.repository import repo_query
+            result = await repo_query(
+                "SELECT * FROM note WHERE owner = $owner ORDER BY updated DESC",
+                {"owner": current_user},
+            )
+            notes = [Note(**n) for n in result]
         else:
-            # Get all notes
+            # No user context — return all notes (auth disabled / legacy)
             notes = await Note.get_all(order_by="updated desc")
 
         return [
@@ -47,7 +61,10 @@ async def get_notes(
 
 
 @router.post("/notes", response_model=NoteResponse)
-async def create_note(note_data: NoteCreate):
+async def create_note(
+    note_data: NoteCreate,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Create a new note."""
     try:
         # Auto-generate title if not provided and it's an AI note
@@ -77,6 +94,7 @@ async def create_note(note_data: NoteCreate):
             title=title,
             content=note_data.content,
             note_type=note_type,
+            owner=current_user,
         )
         command_id = await new_note.save()
 

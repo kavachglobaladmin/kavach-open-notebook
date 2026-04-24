@@ -8,6 +8,20 @@ from starlette.responses import JSONResponse
 
 from open_notebook.utils.encryption import get_secret_from_env
 
+# ── Per-request user identity ─────────────────────────────────────────────────
+
+def get_current_user(request: Request) -> Optional[str]:
+    """
+    Extract the current user's email from the X-User-Email request header.
+
+    The frontend sends this header on every API call, populated from the
+    JWT token's 'sub' claim (the user's email address).
+
+    Returns None when auth is disabled (no password configured) or when
+    the header is absent — callers should treat None as "no user scoping".
+    """
+    return request.headers.get("X-User-Email") or None
+
 
 class PasswordAuthMiddleware(BaseHTTPMiddleware):
     """

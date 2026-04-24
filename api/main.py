@@ -48,6 +48,8 @@ from api.routers import (
 from api.routers import commands as commands_router
 from api.routers import mindmap as mindmap_router
 from api.routers import infographic as infographic_router
+from api.routers import otp as otp_router
+from api.routers import users as users_router
 from open_notebook.database.async_migrate import AsyncMigrationManager
 from open_notebook.utils.encryption import get_secret_from_env
 
@@ -162,6 +164,11 @@ app.add_middleware(
         "/redoc",
         "/api/auth/status",
         "/api/config",
+        "/api/otp/send",
+        "/api/otp/verify",
+        "/api/otp/clear",
+        "/api/users/register",
+        "/api/users/login",
     ],
 )
 
@@ -310,6 +317,8 @@ app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(languages.router, prefix="/api", tags=["languages"])
 app.include_router(mindmap_router.router, prefix="/api", tags=["mindmap"])
 app.include_router(infographic_router.router, prefix="/api", tags=["infographic"])
+app.include_router(otp_router.router, prefix="/api", tags=["otp"])
+app.include_router(users_router.router, prefix="/api", tags=["users"])
 
 
 @app.get("/")

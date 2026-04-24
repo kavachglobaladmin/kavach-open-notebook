@@ -385,7 +385,7 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
     // Clear previous elements
     g.selectAll('*').remove()
 
-    const tree = d3.tree<MindMapNode>().nodeSize([120, 320])
+    const tree = d3.tree<MindMapNode>().nodeSize([180, 340])
     const root = d3.hierarchy(data) as ExtendedHierarchyNode
     root.x0 = height / 2
     root.y0 = 0
@@ -450,10 +450,10 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
 
       // ForeignObject for premium React styling
       nodeEnter.append('foreignObject')
-        .attr('width', 300)
-        .attr('height', 100)
-        .attr('x', 0)
-        .attr('y', -40)
+        .attr('width', 320)
+        .attr('height', 200)
+        .attr('x', 8)
+        .attr('y', -60)
         .style('overflow', 'visible')
         .append('xhtml:div')
         .attr('class', 'node-container')
@@ -461,7 +461,7 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
       const nodeUpdate = node.merge(nodeEnter)
 
       // Update the HTML content for ALL nodes (including rotation toggle)
-      nodeUpdate.select('foreignObject div.node-container')
+        nodeUpdate.select('foreignObject div.node-container')
         .html((d: ExtendedHierarchyNode) => {
           const isRoot = d.depth === 0
           const hasChildren = !!d.children || !!d._children
@@ -470,24 +470,61 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
           // Clean up whitespace in labels
           const displayLabel = (d.data.label || '').replace(/\s+/g, ' ').trim()
           
-          let colorClass = ''
-          if (isRoot) colorClass = 'bg-[#e0e7ff] text-[#4338ca] border-[#c7d2fe] ring-4 ring-indigo-50/50 shadow-md font-bold py-3.5 px-8 text-base ring-offset-2'
-          else if (hasChildren) colorClass = isSelected 
-            ? 'bg-[#dbeafe] text-[#1e40af] border-[#bfdbfe] ring-2 ring-blue-200 shadow-lg font-semibold py-3 px-7 text-sm'
-            : 'bg-[#eff6ff] text-[#1e40af] border-[#dbeafe] hover:bg-[#dbeafe] shadow-sm font-semibold py-3 px-7 text-sm'
-          else colorClass = isSelected
-            ? 'bg-[#d1fae5] text-[#065f46] border-[#a7f3d0] ring-2 ring-emerald-200 shadow-lg font-medium py-2.5 px-6 text-sm'
-            : 'bg-[#f0fdf4] text-[#065f46] border-[#d1fae5] hover:bg-[#d1fae5] shadow-sm font-medium py-2.5 px-6 text-sm'
+          // Inline styles — Tailwind classes don't apply inside D3 foreignObject innerHTML
+          let bgColor = '', textColor = '', borderColor = '', fontWeight = '', fontSize = '13px', padding = '8px 14px'
+          if (isRoot) {
+            bgColor = '#e0e7ff'; textColor = '#4338ca'; borderColor = '#c7d2fe'
+            fontWeight = '700'; fontSize = '15px'; padding = '10px 20px'
+          } else if (hasChildren) {
+            bgColor = isSelected ? '#dbeafe' : '#eff6ff'
+            textColor = '#1e40af'; borderColor = isSelected ? '#bfdbfe' : '#dbeafe'
+            fontWeight = '600'; padding = '8px 16px'
+          } else {
+            bgColor = isSelected ? '#d1fae5' : '#f0fdf4'
+            textColor = '#065f46'; borderColor = isSelected ? '#a7f3d0' : '#d1fae5'
+            fontWeight = '500'; padding = '7px 12px'
+          }
 
-          const rotation = d.children ? 'rotate-90' : ''
+          const nodeStyle = [
+            `background:${bgColor}`,
+            `color:${textColor}`,
+            `border:2px solid ${borderColor}`,
+            `border-radius:12px`,
+            `font-weight:${fontWeight}`,
+            `font-size:${fontSize}`,
+            `padding:${padding}`,
+            `max-width:260px`,
+            `word-break:break-word`,
+            `white-space:normal`,
+            `line-height:1.4`,
+            `cursor:pointer`,
+            `box-shadow:0 1px 4px rgba(0,0,0,0.08)`,
+            `display:inline-block`,
+            isSelected ? `outline:2px solid ${borderColor};outline-offset:2px` : '',
+          ].filter(Boolean).join(';')
+
+          const rotation = d.children ? 'rotate(90deg)' : 'rotate(0deg)'
+          const chevronStyle = `
+            margin-left:6px;
+            flex-shrink:0;
+            width:20px;height:20px;
+            border-radius:50%;
+            background:white;
+            border:2px solid #c7d2fe;
+            display:flex;align-items:center;justify-content:center;
+            box-shadow:0 1px 3px rgba(0,0,0,0.1);
+            cursor:pointer;
+          `
+          const svgStyle = `width:12px;height:12px;color:#6366f1;transform:${rotation};transition:transform 0.3s;`
+
           return `
-            <div class="flex items-center group relative">
-              <div class="node-label border-2 rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${colorClass}">
-                 ${displayLabel}
-              </div>
+            <div style="display:flex;align-items:center;font-family:system-ui,sans-serif;">
+              <div class="node-label" style="${nodeStyle}">${displayLabel}</div>
               ${hasChildren ? `
-                <div class="chevron-toggle ml-[-12px] z-[60] w-6 h-6 rounded-full bg-white border-2 border-indigo-200 flex items-center justify-center shadow-sm hover:scale-110 transition-transform cursor-pointer">
-                   <svg class="w-3 h-3 text-indigo-500 transition-transform duration-300 ${rotation}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 18l6-6-6-6" /></svg>
+                <div class="chevron-toggle" style="${chevronStyle}">
+                  <svg style="${svgStyle}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
                 </div>
               ` : ''}
             </div>
