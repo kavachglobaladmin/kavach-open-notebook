@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   User, AlertTriangle, Shield, MapPin, Calendar,
   Users, FileText, Eye, Target, ChevronRight,
-  BookOpen, Network, Smartphone, TrendingUp, Lock,
+  BookOpen, Network, Smartphone, TrendingUp,
   Search, Crosshair, Brain, Activity,
 } from 'lucide-react'
 
@@ -14,7 +14,14 @@ interface InvestigativeProfileInsightViewerProps {
 }
 
 export function isInvestigativeProfileInsight(insightType: string): boolean {
-  return insightType.toLowerCase().includes('investigat')
+  const type = insightType.toLowerCase()
+  return (
+    type.includes('investigat') ||
+    type.includes('investigation profile') ||
+    type.includes('profile analysis') ||
+    type.includes('criminal profile') ||
+    type.includes('subject profile')
+  )
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -29,16 +36,6 @@ function isInsuff(val: string): boolean {
 }
 
 // Extract a ## or ### section by heading keyword, returns { heading, body }
-function extractSection(content: string, keyword: string): { heading: string; body: string } {
-  const re = new RegExp(
-    `(#{1,3})\\s+(?:\\d+\\.?\\s*)?([^\\n]*${keyword}[^\\n]*)\\n([\\s\\S]*?)(?=\\n#{1,3}\\s|$)`,
-    'i'
-  )
-  const m = content.match(re)
-  if (!m) return { heading: '', body: '' }
-  return { heading: clean(m[2]), body: m[3] }
-}
-
 // Get all top-level sections from markdown
 interface Section { heading: string; level: number; body: string }
 function getAllSections(content: string): Section[] {
@@ -54,6 +51,25 @@ function getAllSections(content: string): Section[] {
     const end = i + 1 < indices.length ? indices[i + 1].idx : content.length
     sections.push({ heading: indices[i].heading, level: indices[i].level, body: content.slice(start, end).trim() })
   }
+  return sections
+}
+
+function getPartSections(content: string): Section[] {
+  const sections: Section[] = []
+  const re = /^\s*(?:\*{0,2})?(PART\s+[-–—]?\s*(?:[IVX]+|\d+)[^:\n]*)(?::)?(?:\*{0,2})?\s*$/gim
+  const matches = Array.from(content.matchAll(re))
+
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i]
+    const start = (match.index ?? 0) + match[0].length
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? content.length) : content.length
+    const heading = clean(match[1])
+    const body = content.slice(start, end).trim()
+    if (body) {
+      sections.push({ heading, level: 2, body })
+    }
+  }
+
   return sections
 }
 
@@ -275,6 +291,30 @@ export function InvestigativeProfileInsightViewer({ content }: InvestigativeProf
   // Pre-process: unescape JSON-encoded string (\\n -> newline, \\" -> ")
   const processedContent = useMemo(() => {
     let c = content
+    const trimmed = c.trim()
+
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (typeof parsed === 'string') {
+          c = parsed
+        } else if (parsed && typeof parsed === 'object') {
+          const record = parsed as Record<string, unknown>
+          const candidate =
+            record.content ??
+            record.markdown ??
+            record.text ??
+            record.profile ??
+            record.output
+          if (typeof candidate === 'string' && candidate.trim()) {
+            c = candidate
+          }
+        }
+      } catch {
+        // Keep original content and continue with string unescaping.
+      }
+    }
+
     // If content looks like an escaped JSON string, unescape it
     if (c.includes('\\n') || c.includes('\\"')) {
       try {
@@ -293,7 +333,8 @@ export function InvestigativeProfileInsightViewer({ content }: InvestigativeProf
     return c
   }, [content])
   const parsed = useMemo(() => {
-    const sections = getAllSections(processedContent)
+    const markdownSections = getAllSections(processedContent)
+    const sections = markdownSections.length > 0 ? markdownSections : getPartSections(processedContent)
     // Use broad name extraction to handle all LLM label variants
     const name        = extractSubjectName(processedContent)
                      || extractInline(processedContent, 'Name')
@@ -316,6 +357,7 @@ export function InvestigativeProfileInsightViewer({ content }: InvestigativeProf
   }, [processedContent])
 
   const { sections, name, prisonerId, dob, address, education, threatLevel, confidence } = parsed
+  const hasStructuredContent = sections.length > 0
 
   const threatColor = threatLevel.toLowerCase().includes('low')
     ? 'from-emerald-600 to-emerald-800'
@@ -442,6 +484,12 @@ export function InvestigativeProfileInsightViewer({ content }: InvestigativeProf
             </SectionCard>
           )
         })}
+
+      {!hasStructuredContent && processedContent.trim() && (
+        <SectionCard icon={FileText} title="Profile Details" iconColor="text-slate-500">
+          <GenericSectionBody body={processedContent} />
+        </SectionCard>
+      )}
 
     </div>
   )

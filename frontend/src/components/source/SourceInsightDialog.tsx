@@ -16,7 +16,6 @@ import { InfographicInsightViewer, isInfographicInsight } from '@/components/sou
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
 import { DenseSummaryViewer, isDenseSummaryInsight } from '@/components/source/DenseSummaryViewer'
-import { sourcesApi } from '@/lib/api/sources'
 import { toast } from 'sonner'
 
 interface SourceInsightDialogProps {
@@ -193,19 +192,19 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
                 />
               ) : isBankAnalysis ? (
                 /* ── Bank Analysis Profile: structured dashboard ── */
-                <BankAnalysisInsightViewer content={displayInsight.content ?? ''} />
+                <BankAnalysisInsightViewer content={displayContent} />
               ) : isInfographic ? (
                 /* ── Infographic: structured card layout ── */
-                <InfographicInsightViewer content={displayInsight.content ?? ''} />
+                <InfographicInsightViewer content={displayContent} />
               ) : isTimeline ? (
                 /* ── Timeline Analysis: communication log dashboard ── */
-                <TimelineAnalysisInsightViewer content={displayInsight.content ?? ''} />
+                <TimelineAnalysisInsightViewer content={displayContent} />
               ) : isInvestigativeProfile ? (
                 /* ── Investigative Profile: structured intelligence dashboard ── */
-                <InvestigativeProfileInsightViewer content={displayInsight.content ?? ''} />
+                <InvestigativeProfileInsightViewer content={displayContent} />
               ) : isDenseSummary ? (
                 /* ── Dense Summary: clean readable paragraph layout ── */
-                <DenseSummaryViewer content={displayInsight.content ?? ''} createdAt={displayInsight.created} />
+                <DenseSummaryViewer content={displayContent} createdAt={displayInsight.created} />
               ) : (
                 /* ── Regular insight: markdown renderer ── */
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
@@ -224,7 +223,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
                       td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
                     }}
                   >
-                    {displayInsight.content}
+                    {displayContent}
                   </ReactMarkdown>
                 </div>
               )
