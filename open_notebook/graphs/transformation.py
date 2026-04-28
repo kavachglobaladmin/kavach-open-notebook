@@ -399,15 +399,22 @@ TEXT:
 # Regular transformations (non-mindmap)
 # =============================================================================
 
-async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str) -> str:
+async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str, transformation_name: str = "") -> str:
     """Single-pass or chunked transformation using the user's prompt."""
     # Bank statement needs larger context to capture all transactions in one pass
-    CHUNK_SIZE = 12000 if ("bank_name" in transformation_prompt or "transactions" in transformation_prompt) else 8000
+    CHUNK_SIZE = 12000 if ("bank_name" in transformation_prompt or "transactions" in transformation_prompt) else 15000
+    # Dense summary needs more output tokens — detect by name or prompt content
+    is_dense = (
+        "dense" in transformation_name.lower()
+        or "dense" in transformation_prompt.lower()
+        or "paragraph" in transformation_prompt.lower()
+    )
+    single_max_tokens = 8000 if is_dense else 4096
 
     if len(content) <= CHUNK_SIZE:
         system = transformation_prompt
         chain = await provision_langchain_model(
-            system + content, model_id, "transformation", max_tokens=4096
+            system + content, model_id, "transformation", max_tokens=single_max_tokens
         )
         return await _invoke_model(chain, system, content)
 
@@ -422,14 +429,22 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
     import asyncio as _asyncio
 
     async def _summarise_chunk(chunk: str) -> str:
-        system = (
-            f"{transformation_prompt}\n\n"
-            "Extract ONLY the key facts, entities, dates, numbers, and events from the text below. "
-            "Output as concise bullet points. Do NOT add commentary, meta-text, or mention 'part' numbers. "
-            "Just the facts.\n\nTEXT:\n"
-        )
+        if is_dense:
+            # For dense summary: write a detailed paragraph directly from this chunk
+            system = (
+                "Read the text below and write a detailed, comprehensive paragraph summarizing ALL the information in it. "
+                "Include every name, date, location, case number, amount, and event. "
+                "Write in flowing prose. Do NOT use bullet points. Do NOT add meta-commentary.\n\nTEXT:\n"
+            )
+        else:
+            system = (
+                f"{transformation_prompt}\n\n"
+                "Extract ONLY the key facts, entities, dates, numbers, and events from the text below. "
+                "Output as concise bullet points. Do NOT add commentary, meta-text, or mention 'part' numbers. "
+                "Just the facts.\n\nTEXT:\n"
+            )
         chain = await provision_langchain_model(
-            system + chunk, model_id, "transformation", max_tokens=1024
+            system + chunk, model_id, "transformation", max_tokens=2048
         )
         return await _invoke_model(chain, system, chunk)
 
@@ -442,10 +457,35 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
     if len(summaries) == 1:
         return summaries[0]
 
+    # For dense summary: join all paragraphs directly — no re-summarization
+    # This preserves all details instead of compressing them again
+    if is_dense:
+        all_paragraphs = "\n\n".join(s.strip() for s in summaries if s.strip())
+        # Final pass: clean up duplicates and flow
+        dedup_system = (
+            f"{transformation_prompt}\n\n"
+            "Below are detailed paragraphs extracted from different sections of a document. "
+            "Combine them into one flowing, comprehensive summary. "
+            "Remove only exact duplicate sentences. Keep ALL unique facts. "
+            "Do NOT shorten or compress — preserve every detail. "
+            "Do NOT mention 'sections' or 'parts'.\n\nPARAGRAPHS:\n"
+        )
+        chain = await provision_langchain_model(
+            dedup_system + all_paragraphs, model_id, "transformation", max_tokens=8000
+        )
+        return await _invoke_model(chain, dedup_system, all_paragraphs)
+
     all_facts = "\n\n".join(s for s in summaries if s.strip())
 
     # For bank statement JSON, merge transaction arrays across chunks
     is_bank_stmt = "transactions" in transformation_prompt and "account_summary" in transformation_prompt
+    # Detect dense summary by name or prompt content
+    is_dense = (
+        "dense" in transformation_name.lower()
+        or "dense" in transformation_prompt.lower()
+        or "paragraph" in transformation_prompt.lower()
+    )
+
     if is_bank_stmt:
         merge_system = (
             "You are given multiple JSON fragments extracted from parts of a bank statement. "
@@ -454,6 +494,16 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
             "Combine ALL transactions from all parts into a single array. "
             "Use account_summary from the first part that has it. "
             "Output ONLY the merged JSON, no explanation.\n\nFRAGMENTS:\n"
+        )
+    elif is_dense:
+        merge_system = (
+            f"{transformation_prompt}\n\n"
+            "Below are facts extracted from different sections of a document. "
+            "Write a COMPREHENSIVE, DETAILED summary in flowing paragraphs covering ALL the facts. "
+            "CRITICAL: Remove any duplicate sentences — each fact must appear only ONCE. "
+            "Do NOT mention 'parts', 'sections', or 'chunks'. "
+            "Write as if you read the complete document at once. "
+            "Include every name, date, location, case number, and detail.\n\nFACTS:\n"
         )
     else:
         merge_system = (
@@ -465,7 +515,7 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         )
 
     chain = await provision_langchain_model(
-        merge_system + all_facts, model_id, "transformation", max_tokens=4096
+        merge_system + all_facts, model_id, "transformation", max_tokens=8000
     )
     return await _invoke_model(chain, merge_system, all_facts)
 
@@ -541,7 +591,10 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
                 transformation_prompt = (
                     f"{default_prompts.transformation_instructions}\n\n{transformation_prompt}"
                 )
-            final_output = await _run_with_prompt(model_id, content_str, transformation_prompt)
+            final_output = await _run_with_prompt(
+                model_id, content_str, transformation_prompt,
+                transformation_name=t_name
+            )
 
         if source:
             await source.add_insight(transformation.title, final_output)

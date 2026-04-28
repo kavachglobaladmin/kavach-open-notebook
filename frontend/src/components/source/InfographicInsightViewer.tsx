@@ -1,8 +1,6 @@
 'use client'
 
-import React, { useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import React, { useMemo, useState } from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -14,712 +12,833 @@ export interface InfographicColumn {
 
 export interface InfographicResponse {
   source_id: string
-  document_type: 'mobile_cdr' | 'bank_statement' | 'ir_document' | 'gangster_profile' | 'general'
+  document_type: string
   header?: { title: string; subtitle: string }
   stat?: { value: string; label: string }
-
-  // Person / Subject
-  subject?: Record<string, string>
+  subject?: unknown
   personal?: Record<string, string>
   account?: Record<string, string>
-
-  // Generic columns
   left_column?: InfographicColumn[]
   right_column?: InfographicColumn[]
-
-  // CDR
   call_summary?: { outgoing?: string; incoming?: string; sms?: string; data?: string }
   top_contacts?: { number: string; type: string; calls: string }[]
   key_locations?: { area?: string; cell_id?: string; count: string }[]
-
-  // Bank
   financial_summary?: Record<string, string>
   key_transactions?: { date: string; description: string; amount: string; type: 'credit' | 'debit'; balance?: string }[]
-
-  // IR / Gangster
   associates?: { name: string; relation: string }[]
   case_details?: { fir_no: string; section: string; date: string; police_station: string; status: string }[]
   timeline_events?: { date: string; event: string }[]
-
-  // Gangster profile specific
-  aliases?: string[]
-  distinct_identifiers?: string
-  syndicate_alliances?: { name: string; color?: string }[]
-  encrypted_comms?: string
-  escape_events?: { year: string; description: string }[]
-  skills?: string[]
-  fir_snapshot?: { year: string; offence: string; jurisdiction: string }[]
-  profile_summary?: Record<string, string>
-
   highlights?: { title: string; subtitle?: string; description: string }[]
+  profile_summary?: Record<string, string>
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function clean(text: string): string {
-  if (!text) return ''
-  return text.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '').replace(/#+\s/g, '').trim()
+function clean(text: unknown): string {
+  if (text === null || text === undefined) return ''
+  const s = String(text)
+  return s.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '').replace(/#+\s/g, '').trim()
 }
 
-function extractJson(raw: string): string {
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fence) return fence[1].trim()
-  const start = raw.indexOf('{'), end = raw.lastIndexOf('}')
-  if (start !== -1 && end > start) return raw.slice(start, end + 1)
-  return raw.trim()
+function repairJson(raw: string): string {
+  // Fix comma-formatted numbers: 15,099.00 → 15099.00 (only when after : or in array)
+  let s = raw
+  // Remove truncation markers like "..." or "…" inside arrays/objects
+  s = s.replace(/,\s*\.\.\.\s*([}\]])/g, '$1')
+  s = s.replace(/\.\.\.\s*([}\]])/g, '$1')
+  // Fix numbers like: "value": 15,099.00 → "value": 15099.00
+  s = s.replace(/:\s*(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)/g, (_, n) => ': ' + n.replace(/,/g, ''))
+  // Fix trailing commas before } or ]
+  s = s.replace(/,\s*([}\]])/g, '$1')
+  // Fix missing commas between } and { (merged objects)
+  s = s.replace(/\}\s*\n\s*\{/g, '},\n{')
+  return s
 }
 
-// ── Shared UI pieces ──────────────────────────────────────────────────────────
+export function extractAndMergeJson(raw: string): InfographicResponse | null {
+  const tryParse = (s: string): InfographicResponse | null => {
+    try { return JSON.parse(s) as InfographicResponse } catch { /* try repair */ }
+    try { return JSON.parse(repairJson(s)) as InfographicResponse } catch { return null }
+  }
 
-const COLORS = {
-  bg: '#0d1117',
-  bgCard: '#1a1f2e',
-  bgCardDark: '#131824',
-  bgCardMid: '#1e2535',
-  border: '#2d3550',
-  red: '#e63946',
-  gold: '#c9a84c',
-  blue: '#4a90d9',
-  text: '#f0f0f0',
-  muted: '#a0aab8',
-  green: '#22c55e',
-  amber: '#f59e0b',
-  purple: '#8b5cf6',
+  const fenceRe = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/g
+  const blocks: InfographicResponse[] = []
+  let m: RegExpExecArray | null
+  while ((m = fenceRe.exec(raw)) !== null) {
+    const parsed = tryParse(m[1])
+    if (parsed) blocks.push(parsed)
+  }
+  if (blocks.length === 0) {
+    const start = raw.indexOf('{'), end = raw.lastIndexOf('}')
+    if (start !== -1 && end > start) {
+      const parsed = tryParse(raw.slice(start, end + 1))
+      if (parsed) blocks.push(parsed)
+    }
+  }
+  if (blocks.length === 0) return null
+  if (blocks.length === 1) return blocks[0]
+
+  // Prefer the most informative block as primary
+  const primary = blocks.find(b => b.document_type === 'ir_document')
+    ?? blocks.find(b => b.document_type === 'bank_statement')
+    ?? blocks.find(b => b.document_type === 'mobile_cdr')
+    ?? blocks.find(b => b.header?.title && b.stat?.value)
+    ?? blocks[0]
+  const merged: InfographicResponse = { ...primary }
+  for (const b of blocks.slice(1)) {
+    if (b.case_details?.length) merged.case_details = [...(merged.case_details ?? []), ...b.case_details]
+    if (b.timeline_events?.length) merged.timeline_events = [...(merged.timeline_events ?? []), ...b.timeline_events]
+    if (b.highlights?.length) merged.highlights = [...(merged.highlights ?? []), ...b.highlights]
+    if (b.associates?.length) merged.associates = [...(merged.associates ?? []), ...b.associates]
+    // Merge CDR-specific fields
+    if (b.top_contacts?.length) {
+      const existing = merged.top_contacts ?? []
+      const nums = new Set(existing.map(c => c.number))
+      merged.top_contacts = [...existing, ...b.top_contacts.filter(c => c.number && !nums.has(c.number))]
+    }
+    // Merge call_summary by summing counts
+    if (b.call_summary && Object.keys(b.call_summary).length > 0) {
+      const cs = merged.call_summary ?? {}
+      const bcs = b.call_summary
+      const sumField = (a?: string, bv?: string) => {
+        const n1 = parseInt(a ?? '0') || 0
+        const n2 = parseInt(bv ?? '0') || 0
+        return n1 + n2 > 0 ? String(n1 + n2) : (a || bv || undefined)
+      }
+      merged.call_summary = {
+        incoming: sumField(cs.incoming, bcs.incoming),
+        outgoing: sumField(cs.outgoing, bcs.outgoing),
+        sms: sumField(cs.sms, bcs.sms),
+        data: sumField(cs.data, bcs.data),
+      }
+    }
+    // Use first non-empty header
+    if (!merged.header?.title && b.header?.title) merged.header = b.header
+    // Use first non-null stat
+    if (!merged.stat?.value && b.stat?.value) merged.stat = b.stat
+  }
+  if (merged.timeline_events) {
+    const seen = new Set<string>()
+    merged.timeline_events = merged.timeline_events
+      .filter(e => { const k = `${e.date}|${e.event?.slice(0, 30)}`; if (seen.has(k)) return false; seen.add(k); return true })
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }
+  return merged
 }
 
-function SectionLabel({ children, color = COLORS.gold }: { children: React.ReactNode; color?: string }) {
+function flattenSubject(subject: unknown): Record<string, string> {
+  if (!subject) return {}
+  if (Array.isArray(subject)) {
+    const result: Record<string, string> = {}
+    for (const item of subject) {
+      if (typeof item !== 'object' || item === null) continue
+      const obj = item as Record<string, unknown>
+      const key = String(obj['Field Name'] ?? obj['field_name'] ?? obj['key'] ?? '')
+      const val = obj['Value'] ?? obj['value'] ?? ''
+      if (!key) continue
+      result[key] = Array.isArray(val)
+        ? val.map(v => typeof v === 'object' ? Object.values(v as object).join(', ') : String(v)).join(' | ')
+        : String(val)
+    }
+    return result
+  }
+  if (typeof subject === 'object') {
+    const obj = subject as Record<string, unknown>
+    const result: Record<string, string> = {}
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === null || v === undefined) continue
+      if (typeof v === 'object') {
+        result[k] = Array.isArray(v)
+          ? (v as unknown[]).map(i => typeof i === 'object' ? Object.values(i as object).join(', ') : String(i)).join(' | ')
+          : Object.keys(v as object).length > 0 ? JSON.stringify(v) : ''
+      } else {
+        result[k] = String(v)
+      }
+    }
+    return result
+  }
+  return {}
+}
+
+function resolveType(data: InfographicResponse): 'cdr' | 'bank' | 'criminal' | 'general' {
+  const raw = (data.document_type ?? '').toLowerCase()
+  if (raw === 'bank_statement' || raw === 'bank') return 'bank'
+  if (raw === 'mobile_cdr' || raw === 'cdr') return 'cdr'
+  if (raw === 'ir_document' || raw === 'gangster_profile' || raw === 'case_details' || raw === 'criminal') return 'criminal'
+  if (raw === 'general') {
+    if (data.case_details?.length || data.timeline_events?.length || data.associates?.length) return 'criminal'
+  }
+  if (data.key_transactions?.length || data.financial_summary) return 'bank'
+  if (data.call_summary || data.top_contacts?.length) return 'cdr'
+  if (data.case_details?.length || data.associates?.length) return 'criminal'
+  return 'general'
+}
+
+// ── Design tokens ─────────────────────────────────────────────────────────────
+
+const DARK_BG = '#0d1117'
+const DARK_CARD = '#1a1f2e'
+const DARK_BORDER = '#2d3550'
+const DARK_TEXT = '#f0f0f0'
+const DARK_MUTED = '#a0aab8'
+
+const BANK_ACCENT = '#059669'
+const CDR_ACCENT = '#0ea5e9'
+const CRIMINAL_ACCENT = '#1e40af'
+const GENERAL_ACCENT = '#7c3aed'
+
+// ── Shared sub-components ─────────────────────────────────────────────────────
+
+function SectionHeader({ label, color }: { label: string; color: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{
-        fontFamily: 'Georgia, serif',
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: 3,
-        color,
-        textTransform: 'uppercase',
-      }}>{children}</span>
-      <div style={{ flex: 1, height: 0.5, background: color, opacity: 0.4 }} />
+    <div style={{ background: '#1e2535', borderBottom: `1px solid ${DARK_BORDER}`, padding: '8px 14px' }}>
+      <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, fontWeight: 700, letterSpacing: 2, color, textTransform: 'uppercase' as const }}>{label}</span>
     </div>
   )
 }
 
-function DarkCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{
-      background: COLORS.bgCard,
-      border: `0.5px solid ${COLORS.border}`,
-      borderRadius: 8,
-      overflow: 'hidden',
-      ...style,
-    }}>
+    <div style={{ background: DARK_CARD, border: `1px solid ${DARK_BORDER}`, borderRadius: 8, overflow: 'hidden', ...style }}>
       {children}
     </div>
   )
 }
 
-function CardHeader({ label, color = COLORS.gold }: { label: string; color?: string }) {
+function KVRow({ label, value, accent, idx }: { label: string; value: string; accent: string; idx: number }) {
   return (
-    <div style={{
-      background: COLORS.bgCardMid,
-      borderBottom: `0.5px solid ${COLORS.border}`,
-      padding: '8px 14px',
-    }}>
-      <span style={{
-        fontFamily: 'Georgia, serif',
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: 2,
-        color,
-        textTransform: 'uppercase',
-      }}>{label}</span>
+    <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `0.5px solid ${DARK_BORDER}` }}>
+      <span style={{ fontFamily: 'Georgia, serif', fontSize: 8, fontWeight: 700, color: accent, width: 140, flexShrink: 0, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, color: DARK_TEXT, flex: 1 }}>{value || '—'}</span>
     </div>
   )
 }
 
-function KVRow({ label, value, valueColor = COLORS.text }: { label: string; value: string; valueColor?: string }) {
+function StatBanner({ stat, accent }: { stat: { value: string; label: string }; accent: string }) {
   return (
-    <div style={{
-      display: 'flex',
-      gap: 12,
-      padding: '5px 0',
-      borderBottom: `0.5px solid ${COLORS.border}`,
-    }}>
-      <span style={{ fontFamily: 'Georgia, serif', fontSize: 8, fontWeight: 700, color: COLORS.red, width: 120, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
-      <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, color: valueColor, flex: 1 }}>{value}</span>
+    <div style={{ background: `${accent}12`, border: `1px solid ${accent}35`, borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ fontSize: 22 }}>📊</span>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: accent }}>{clean(stat.value)}</div>
+        <div style={{ fontSize: 9, color: DARK_MUTED, marginTop: 2 }}>{clean(stat.label)}</div>
+      </div>
     </div>
   )
 }
 
-// ── Gangster / IR Profile View ────────────────────────────────────────────────
-
-export function GangsterProfileView({ data }: { data: InfographicResponse }) {
-  const title = data.header?.title ?? 'Criminal Intelligence Profile'
-  const subtitle = data.header?.subtitle ?? ''
-
-  const aliases = data.aliases ?? Object.values(data.subject ?? {}).slice(0, 1)
-  const primaryAlias = aliases[0] ?? '—'
-  const alliances = data.syndicate_alliances ?? [
-    { name: 'Lawrence Bishnoi Network', color: COLORS.blue },
-    { name: clean(primaryAlias), color: COLORS.red },
-    { name: 'Goldy Brar Criminal Network', color: COLORS.gold },
-  ]
-  const firRows = data.fir_snapshot ?? data.case_details?.map(c => ({
-    year: c.date?.slice(0, 4) ?? '—',
-    offence: `${c.section} — ${c.police_station}`,
-    jurisdiction: c.status,
-  })) ?? []
-
-  const summaryEntries: [string, string][] = Object.entries(data.profile_summary ?? data.subject ?? {})
-  const escapeEvents = data.escape_events ?? data.timeline_events?.slice(0, 2) ?? []
-  const skills = data.skills ?? []
-  const comms = data.encrypted_comms ?? ''
-
+function HighlightCards({ highlights, accent }: { highlights: { title: string; subtitle?: string; description: string }[]; accent: string }) {
+  const icons = ['🔍', '📱', '⚠️', '💡', '🔗', '📋']
+  const accents = [accent, '#dc2626', '#d97706', '#059669', '#7c3aed', accent]
   return (
-    <div style={{
-      fontFamily: 'Georgia, serif',
-      background: COLORS.bg,
-      borderRadius: 12,
-      overflow: 'hidden',
-      color: COLORS.text,
-    }}>
-
-      {/* ── TOP BANNER ── */}
-      <div style={{ background: COLORS.bgCard, borderBottom: `2px solid ${COLORS.red}`, padding: '10px 20px' }}>
-        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 4, color: COLORS.red, textTransform: 'uppercase', marginBottom: 4 }}>
-          Classified — Criminal Intelligence File
-        </div>
-        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 1, color: COLORS.text, textTransform: 'uppercase' }}>
-          {clean(title)}
-        </div>
-        {subtitle && (
-          <div style={{ fontSize: 9, color: COLORS.muted, marginTop: 2 }}>{clean(subtitle)}</div>
-        )}
-      </div>
-
-      {/* ── ROW 1: Face + Alias | Syndicate | High-tech ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 200px', gap: 12, padding: 16 }}>
-
-        {/* Face + Alias */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Face card */}
-          <DarkCard style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-            <svg width="100%" height="140" viewBox="0 0 160 140">
-              {/* Network dots */}
-              {[[20,20],[140,18],[15,120],[148,115],[80,10]].map(([cx,cy],i) => (
-                <circle key={i} cx={cx} cy={cy} r={3} fill={COLORS.blue} opacity={0.5}/>
-              ))}
-              {[[20,20],[80,10],[140,18],[80,10],[20,20],[140,18]].reduce((acc,_,i,arr) => {
-                if(i<arr.length-1) acc.push(<line key={i} x1={arr[i][0]} y1={arr[i][1]} x2={arr[i+1][0]} y2={arr[i+1][1]} stroke={COLORS.blue} strokeWidth={0.5} opacity={0.4}/>)
-                return acc
-              }, [] as React.ReactElement[])}
-              {/* Head silhouette */}
-              <circle cx={80} cy={62} r={32} fill={COLORS.bgCardMid}/>
-              <ellipse cx={80} cy={128} rx={42} ry={22} fill={COLORS.bgCardMid}/>
-              {/* Scar marks */}
-              <line x1={68} y1={52} x2={74} y2={64} stroke={COLORS.red} strokeWidth={2} strokeLinecap="round"/>
-              <line x1={86} y1={52} x2={92} y2={64} stroke={COLORS.red} strokeWidth={2} strokeLinecap="round"/>
-              {/* Corner brackets */}
-              <path d="M4 4 L4 14 M4 4 L14 4" stroke={COLORS.red} strokeWidth={1.5} fill="none"/>
-              <path d="M156 4 L156 14 M156 4 L146 4" stroke={COLORS.red} strokeWidth={1.5} fill="none"/>
-            </svg>
-          </DarkCard>
-
-          {/* Alias box */}
-          <DarkCard style={{ border: `1px solid ${COLORS.red}`, padding: '10px 12px' }}>
-            <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: COLORS.red, textTransform: 'uppercase', marginBottom: 4 }}>High-Profile Alias</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text, lineHeight: 1.2 }}>"{clean(primaryAlias)}"</div>
-          </DarkCard>
-
-          {/* Distinct identifiers */}
-          {data.distinct_identifiers && (
-            <DarkCard style={{ padding: '8px 12px' }}>
-              <div style={{ fontSize: 8, fontWeight: 700, color: COLORS.red, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Distinct Identifiers</div>
-              <div style={{ fontSize: 8, color: COLORS.muted, lineHeight: 1.5 }}>{data.distinct_identifiers}</div>
-            </DarkCard>
-          )}
-        </div>
-
-        {/* Syndicate Alliances */}
-        <div>
-          <SectionLabel>Strategic Syndicate Alliances</SectionLabel>
-          <DarkCard style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 170 }}>
-            <svg width="100%" height="160" viewBox="0 0 300 160">
-              {alliances.map((a, i) => {
-                const cx = 60 + i * 90
-                const color = a.color ?? [COLORS.blue, COLORS.red, COLORS.gold][i] ?? COLORS.muted
-                const parts = a.name.split(' ')
-                return (
-                  <g key={i}>
-                    <ellipse cx={cx} cy={80} rx={58} ry={42}
-                      fill={i === 1 ? `${COLORS.red}22` : 'none'}
-                      stroke={color} strokeWidth={i === 1 ? 2.5 : 2} opacity={0.9}/>
-                    {parts.map((p, pi) => (
-                      <text key={pi} x={cx} y={72 + pi * 14} textAnchor="middle"
-                        fontFamily="Georgia, serif" fontSize={8} fontWeight={700} fill={color}>
-                        {p}
-                      </text>
-                    ))}
-                    {i < alliances.length - 1 && (
-                      <circle cx={cx + 68} cy={80} r={3} fill="#fff" opacity={0.6}/>
-                    )}
-                  </g>
-                )
-              })}
-            </svg>
-          </DarkCard>
-        </div>
-
-        {/* High-tech coordination */}
-        <div>
-          <SectionLabel>High-Tech Coordination</SectionLabel>
-          <DarkCard style={{ padding: 12 }}>
-            <svg width="100%" height="120" viewBox="0 0 200 120">
-              {/* Phone */}
-              <rect x={120} y={8} width={52} height={84} fill={COLORS.bgCardMid} rx={8} stroke={COLORS.blue} strokeWidth={1.5}/>
-              <rect x={126} y={14} width={40} height={66} fill={COLORS.bg} rx={4}/>
-              <rect x={130} y={20} width={32} height={14} fill={COLORS.blue} rx={3} opacity={0.8}/>
-              <rect x={130} y={40} width={24} height={10} fill={COLORS.border} rx={3} opacity={0.9}/>
-              <rect x={130} y={56} width={28} height={10} fill={COLORS.blue} rx={3} opacity={0.5}/>
-              <text x={146} y={106} textAnchor="middle" fontFamily="Georgia, serif" fontSize={9} fontWeight={700} fill={COLORS.blue}>WICKR</text>
-              {/* Globe */}
-              <circle cx={30} cy={55} r={18} fill="none" stroke={COLORS.blue} strokeWidth={1} opacity={0.6}/>
-              <ellipse cx={30} cy={55} rx={9} ry={18} fill="none" stroke={COLORS.blue} strokeWidth={0.5} opacity={0.5}/>
-              <line x1={12} y1={55} x2={48} y2={55} stroke={COLORS.blue} strokeWidth={0.5} opacity={0.5}/>
-              {/* Lock */}
-              <rect x={75} y={42} width={24} height={20} fill={COLORS.gold} rx={4} opacity={0.85}/>
-              <path d="M79 42 Q79 32 87 32 Q95 32 95 42" fill="none" stroke={COLORS.gold} strokeWidth={2} opacity={0.9}/>
-              <circle cx={87} cy={52} r={4} fill={COLORS.bg}/>
-              {/* Users */}
-              <circle cx={72} cy={20} r={10} fill={COLORS.bgCardMid} stroke={COLORS.blue} strokeWidth={1}/>
-              <circle cx={72} cy={16} r={4} fill={COLORS.blue} opacity={0.7}/>
-              <ellipse cx={72} cy={28} rx={6} ry={3} fill={COLORS.blue} opacity={0.5}/>
-              {/* Lines */}
-              <line x1={48} y1={55} x2={75} y2={52} stroke={COLORS.blue} strokeWidth={0.5} opacity={0.4} strokeDasharray="3,3"/>
-              <line x1={99} y1={52} x2={120} y2={55} stroke={COLORS.gold} strokeWidth={0.5} opacity={0.5}/>
-              <line x1={82} y1={20} x2={120} y2={40} stroke={COLORS.blue} strokeWidth={0.5} opacity={0.4} strokeDasharray="3,3"/>
-            </svg>
-            {comms && (
-              <div style={{ marginTop: 4 }}>
-                <span style={{ fontSize: 8, fontWeight: 700, color: COLORS.gold }}>Encrypted Comms: </span>
-                <span style={{ fontSize: 8, color: COLORS.muted }}>{comms}</span>
-              </div>
-            )}
-          </DarkCard>
-        </div>
-      </div>
-
-      {/* ── DIVIDER ── */}
-      <div style={{ height: 0.5, background: COLORS.border, margin: '0 16px' }}/>
-
-      {/* ── ROW 2: Jailbreak | Dozens | Tactical ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 220px', gap: 12, padding: 16 }}>
-
-        {/* Jailbreak / Escape Events */}
-        <div>
-          <SectionLabel color={COLORS.gold}>
-            {escapeEvents.length > 0 ? `${escapeEvents[0]?.year ?? '2020'} Jailbreak` : 'Key Events'}
-          </SectionLabel>
-          <DarkCard style={{ padding: 12 }}>
-            <svg width="100%" height="90" viewBox="0 0 180 90">
-              {/* Pin */}
-              <circle cx={20} cy={20} r={12} fill={COLORS.red}/>
-              <circle cx={20} cy={18} r={5} fill="#fff"/>
-              <polygon points="20,32 15,22 25,22" fill={COLORS.red}/>
-              {/* Timeline line */}
-              <line x1={20} y1={35} x2={20} y2={75} stroke={COLORS.red} strokeWidth={1.5}/>
-              <circle cx={20} cy={77} r={4} fill={COLORS.red}/>
-              {/* Van */}
-              <rect x={40} y={35} width={80} height={38} fill={COLORS.bgCardMid} rx={4} stroke={COLORS.border} strokeWidth={0.5}/>
-              <rect x={46} y={40} width={50} height={24} fill={COLORS.border} rx={3}/>
-              <rect x={68} y={40} width={32} height={16} fill="#3a4560" rx={2}/>
-              <circle cx={56} cy={74} r={6} fill={COLORS.bg} stroke={COLORS.blue} strokeWidth={1}/>
-              <circle cx={102} cy={74} r={6} fill={COLORS.bg} stroke={COLORS.blue} strokeWidth={1}/>
-              {/* Running figure */}
-              <circle cx={136} cy={38} r={5} fill={COLORS.muted}/>
-              <line x1={136} y1={43} x2={133} y2={56} stroke={COLORS.muted} strokeWidth={1.5}/>
-              <line x1={133} y1={56} x2={129} y2={66} stroke={COLORS.muted} strokeWidth={1.5}/>
-              <line x1={133} y1={56} x2={138} y2={66} stroke={COLORS.muted} strokeWidth={1.5}/>
-              {/* Explosion */}
-              <circle cx={125} cy={35} r={3} fill={COLORS.red} opacity={0.8}/>
-              <circle cx={130} cy={28} r={2} fill={COLORS.gold} opacity={0.8}/>
-              <circle cx={135} cy={32} r={2} fill={COLORS.red} opacity={0.6}/>
-            </svg>
-            {escapeEvents.map((e, i) => (
-              <div key={i} style={{ marginTop: 6 }}>
-                <span style={{ fontSize: 8, fontWeight: 700, color: COLORS.red }}>Daring Escape: </span>
-                <span style={{ fontSize: 8, color: COLORS.muted }}>{e.description}</span>
-              </div>
-            ))}
-          </DarkCard>
-        </div>
-
-        {/* Violent Portfolio */}
-        <div>
-          <SectionLabel>Extensive Violent Portfolio</SectionLabel>
-          <DarkCard style={{ padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              background: COLORS.red,
-              borderRadius: 6,
-              padding: '12px 24px',
-              width: '100%',
-              textAlign: 'center',
-              border: '1.5px solid rgba(255,255,255,0.3)',
-              boxSizing: 'border-box',
-            }}>
-              <div style={{ fontSize: 28, fontWeight: 700, color: '#fff', letterSpacing: 4 }}>
-                {data.stat?.value ?? 'DOZENS'}
-              </div>
-              <div style={{ fontSize: 10, color: 'rgba(255,200,200,0.9)', letterSpacing: 2, marginTop: 2 }}>
-                {data.stat?.label ?? 'OF CASES'}
+    <Card>
+      <SectionHeader label="Key Findings" color={accent} />
+      <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {highlights.map((h, i) => {
+          const c = accents[i % accents.length]
+          return (
+            <div key={i} style={{ display: 'flex', gap: 10, borderLeft: `3px solid ${c}`, paddingLeft: 10 }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{icons[i % icons.length]}</span>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: DARK_TEXT, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>{clean(h.title)}</div>
+                {h.subtitle && <div style={{ fontSize: 9, color: c, fontWeight: 600, marginTop: 2 }}>{h.subtitle}</div>}
+                <div style={{ fontSize: 9, color: DARK_MUTED, marginTop: 4, lineHeight: 1.5 }}>{clean(h.description ?? '')}</div>
               </div>
             </div>
-            {data.highlights?.[0] && (
-              <div style={{ fontSize: 8, color: COLORS.muted, textAlign: 'center' }}>
-                <span style={{ color: COLORS.red, fontWeight: 700 }}>Involved in: </span>
-                {data.highlights[0].description}
-              </div>
-            )}
-          </DarkCard>
-        </div>
-
-        {/* Tactical Expertise */}
-        <div>
-          <SectionLabel>Expertise in Tactical Operations</SectionLabel>
-          <DarkCard style={{ padding: 12 }}>
-            <svg width="100%" height="70" viewBox="0 0 200 70">
-              {/* Gun */}
-              <rect x={10} y={22} width={40} height={12} fill="#3a4560" rx={3}/>
-              <rect x={18} y={16} width={8} height={6} fill="#3a4560" rx={1}/>
-              <rect x={10} y={32} width={10} height={8} fill={COLORS.bgCardMid} rx={1}/>
-              <circle cx={8} cy={27} r={4} fill="none" stroke={COLORS.red} strokeWidth={1.5}/>
-              <line x1={0} y1={27} x2={4} y2={27} stroke={COLORS.red} strokeWidth={1.5}/>
-              {/* Car */}
-              <rect x={65} y={26} width={50} height={20} fill="#3a4560" rx={4}/>
-              <rect x={72} y={20} width={34} height={14} fill={COLORS.bgCardMid} rx={3}/>
-              <circle cx={75} cy={47} r={6} fill={COLORS.bg} stroke={COLORS.blue} strokeWidth={1}/>
-              <circle cx={106} cy={47} r={6} fill={COLORS.bg} stroke={COLORS.blue} strokeWidth={1}/>
-              {/* People */}
-              {[140, 158, 176].map((x, i) => (
-                <g key={i} opacity={1 - i * 0.25}>
-                  <circle cx={x} cy={22} r={7} fill={['#3a4560','#2d3550','#1e2535'][i]}/>
-                  <ellipse cx={x} cy={36} rx={9} ry={5} fill={['#3a4560','#2d3550','#1e2535'][i]}/>
-                </g>
-              ))}
-            </svg>
-            {skills.length > 0 && (
-              <div style={{ marginTop: 6 }}>
-                <span style={{ fontSize: 8, fontWeight: 700, color: COLORS.gold }}>Highly Skilled: </span>
-                <span style={{ fontSize: 8, color: COLORS.muted }}>{skills.join(', ')}</span>
-              </div>
-            )}
-          </DarkCard>
-        </div>
+          )
+        })}
       </div>
+    </Card>
+  )
+}
 
-      {/* ── DIVIDER ── */}
-      <div style={{ height: 0.5, background: COLORS.border, margin: '0 16px' }}/>
-
-      {/* ── ROW 3: Profile Summary | FIR Snapshot ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: 16 }}>
-
-        {/* Criminal Profile Summary */}
-        <DarkCard>
-          <CardHeader label="Criminal Profile Summary" color={COLORS.gold}/>
-          <div style={{ padding: '8px 14px' }}>
-            {summaryEntries.map(([k, v], i) => (
-              <KVRow key={i} label={k} value={v}
-                valueColor={k.toLowerCase().includes('status') ? COLORS.red : COLORS.text}/>
-            ))}
-            {summaryEntries.length === 0 && (
-              <div style={{ fontSize: 9, color: COLORS.muted }}>No profile data available.</div>
-            )}
-          </div>
-        </DarkCard>
-
-        {/* FIR Snapshot */}
-        <DarkCard>
-          <CardHeader label="Key FIR Snapshot (First Information Reports)" color={COLORS.gold}/>
-          <div style={{ padding: '8px 14px', overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
-              <thead>
-                <tr>
-                  {['Year', 'Offence Type', 'Jurisdiction'].map(h => (
-                    <th key={h} style={{
-                      textAlign: 'left', padding: '4px 6px 4px 0',
-                      fontFamily: 'Georgia, serif', fontSize: 8, fontWeight: 700,
-                      color: COLORS.red, textTransform: 'uppercase', letterSpacing: 0.5,
-                      borderBottom: `0.5px solid ${COLORS.border}`,
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {firRows.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: `0.5px solid ${COLORS.border}` }}>
-                    <td style={{ padding: '5px 6px 5px 0', color: COLORS.gold, fontFamily: 'Georgia, serif' }}>
-                      ● {r.year}
-                    </td>
-                    <td style={{ padding: '5px 6px 5px 0', color: COLORS.text, fontFamily: 'Georgia, serif' }}>
-                      {r.offence}
-                    </td>
-                    <td style={{ padding: '5px 6px 5px 0', color: COLORS.muted, fontFamily: 'Georgia, serif' }}>
-                      📍 {r.jurisdiction}
-                    </td>
-                  </tr>
-                ))}
-                {firRows.length === 0 && (
-                  <tr><td colSpan={3} style={{ color: COLORS.muted, padding: '8px 0', fontFamily: 'Georgia, serif', fontSize: 9 }}>No FIR records available.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </DarkCard>
-      </div>
-
-      {/* ── Highlights / Key Findings ── */}
-      {data.highlights && data.highlights.length > 1 && (
-        <div style={{ padding: '0 16px 16px' }}>
-          <SectionLabel>Key Findings</SectionLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-            {data.highlights.map((h, i) => (
-              <DarkCard key={i} style={{ padding: '10px 14px', borderLeft: `2px solid ${COLORS.red}`, borderRadius: 0 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: COLORS.text, textTransform: 'uppercase', letterSpacing: 1 }}>{clean(h.title)}</div>
-                {h.subtitle && <div style={{ fontSize: 8, color: COLORS.muted, marginTop: 2 }}>{h.subtitle}</div>}
-                <div style={{ fontSize: 8, color: COLORS.muted, marginTop: 6, lineHeight: 1.5 }}>{clean(h.description)}</div>
-              </DarkCard>
+function TimelineSection({ events, accent }: { events: { date: string; event: string }[]; accent: string }) {
+  const dotColors = [accent, '#d97706', '#dc2626', accent, '#d97706', '#dc2626']
+  const isLong = events.length > 6
+  return (
+    <Card>
+      <SectionHeader label={`📅 Timeline of Events (${events.length})`} color={accent} />
+      {isLong ? (
+        <div style={{ padding: '8px 14px', maxHeight: 280, overflowY: 'auto' }}>
+          {events.map((e, i) => (
+            <div key={i} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `0.5px solid ${DARK_BORDER}` }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColors[i % dotColors.length], flexShrink: 0, marginTop: 2 }} />
+              <span style={{ fontSize: 9, color: accent, fontFamily: 'monospace', width: 140, flexShrink: 0 }}>{e.date}</span>
+              <span style={{ fontSize: 9, color: DARK_TEXT, lineHeight: 1.4 }}>{e.event}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: '12px 16px', overflowX: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: events.length * 160 }}>
+            {events.map((e, i) => (
+              <div key={i} style={{ flex: 1, minWidth: 150, position: 'relative', paddingTop: 22 }}>
+                <div style={{ position: 'absolute', top: 9, left: i === 0 ? '50%' : 0, right: i === events.length - 1 ? '50%' : 0, height: 2, background: DARK_BORDER }} />
+                <div style={{ position: 'absolute', top: 5, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, borderRadius: '50%', background: dotColors[i % dotColors.length], border: `2px solid ${DARK_BG}`, boxShadow: `0 0 0 1px ${DARK_BORDER}` }} />
+                <div style={{ paddingLeft: 8, paddingRight: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: dotColors[i % dotColors.length], marginBottom: 4 }}>{e.date}</div>
+                  <div style={{ fontSize: 9, color: DARK_MUTED, lineHeight: 1.4 }}>{e.event}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       )}
-
-      {/* ── FOOTER ── */}
-      <div style={{
-        background: COLORS.bgCard,
-        borderTop: `2px solid ${COLORS.red}`,
-        padding: '8px 20px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <span style={{ fontSize: 8, color: COLORS.muted, letterSpacing: 1 }}>Intelligence File — Restricted</span>
-        <span style={{ fontSize: 8, color: COLORS.border, letterSpacing: 1 }}>DO NOT DISTRIBUTE</span>
-      </div>
-    </div>
+    </Card>
   )
 }
 
-// ── Mobile CDR View ───────────────────────────────────────────────────────────
-
-function MobileCDRView({ data }: { data: InfographicResponse }) {
-  const color = '#0ea5e9'
-  const cs = data.call_summary ?? {}
-
-  const summaryItems = [
-    { label: 'Outgoing', value: cs.outgoing ?? '—', color: '#ef4444' },
-    { label: 'Incoming', value: cs.incoming ?? '—', color: '#22c55e' },
-    { label: 'SMS', value: cs.sms ?? '—', color: '#f59e0b' },
-    { label: 'Data', value: cs.data ?? '—', color: '#8b5cf6' },
-  ]
-
+function CaseDetailsTable({ cases, accent }: { cases: { fir_no: string; section: string; date: string; police_station: string; status: string }[]; accent: string }) {
   return (
-    <div style={{ background: COLORS.bg, borderRadius: 12, overflow: 'hidden', color: COLORS.text, fontFamily: 'Georgia, serif' }}>
-      <div style={{ background: COLORS.bgCard, borderBottom: `2px solid ${color}`, padding: '10px 20px' }}>
-        <div style={{ fontSize: 9, color, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Mobile CDR Analysis</div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>{clean(data.header?.title ?? 'CDR Report')}</div>
-        {data.header?.subtitle && <div style={{ fontSize: 9, color: COLORS.muted }}>{clean(data.header.subtitle)}</div>}
-      </div>
-
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-          {summaryItems.map(({ label, value, color: c }) => (
-            <div key={label} style={{ background: `${c}10`, border: `1px solid ${c}30`, borderRadius: 6, padding: '10px 6px', textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: c }}>{value}</div>
-              <div style={{ fontSize: 9, color: COLORS.muted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 }}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {data.top_contacts && data.top_contacts.length > 0 && (
-            <DarkCard>
-              <CardHeader label="Top Contacts" color={color}/>
-              <div style={{ padding: '8px 12px' }}>
-                {data.top_contacts.slice(0, 8).map((c, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', borderBottom: `0.5px solid ${COLORS.border}` }}>
-                    <span style={{ fontSize: 9, color: COLORS.text, fontFamily: 'monospace' }}>{c.number}</span>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span style={{ fontSize: 8, color: COLORS.muted }}>{c.type}</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: COLORS.text, background: COLORS.bgCardMid, padding: '2px 6px', borderRadius: 4 }}>{c.calls}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </DarkCard>
-          )}
-
-          {data.key_locations && data.key_locations.length > 0 && (
-            <DarkCard>
-              <CardHeader label="Key Locations" color={color}/>
-              <div style={{ padding: '8px 12px' }}>
-                {data.key_locations.slice(0, 6).map((l, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: `0.5px solid ${COLORS.border}` }}>
-                    <span style={{ fontSize: 9, color: COLORS.muted }}>{l.area ?? l.cell_id}</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: COLORS.text, background: COLORS.bgCardMid, padding: '2px 6px', borderRadius: 4 }}>{l.count}×</span>
-                  </div>
-                ))}
-              </div>
-            </DarkCard>
-          )}
-        </div>
-
-        {data.timeline_events && data.timeline_events.length > 0 && (
-          <DarkCard>
-            <CardHeader label="Timeline Events" color={color}/>
-            <div style={{ padding: '8px 12px' }}>
-              {data.timeline_events.map((e, i) => (
-                <div key={i} style={{ display: 'flex', gap: 12, padding: '4px 0', borderBottom: `0.5px solid ${COLORS.border}` }}>
-                  <span style={{ fontSize: 9, color: COLORS.muted, fontFamily: 'monospace', width: 90, flexShrink: 0 }}>{e.date}</span>
-                  <span style={{ fontSize: 9, color: COLORS.text }}>{e.event}</span>
-                </div>
+    <Card>
+      <SectionHeader label="📋 FIR / Case Details" color={accent} />
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+          <thead>
+            <tr style={{ background: '#1e2535' }}>
+              {['FIR No.', 'Section', 'Date', 'Police Station', 'Status'].map(h => (
+                <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 8, fontWeight: 700, color: DARK_MUTED, textTransform: 'uppercase' as const, letterSpacing: 0.5, borderBottom: `1px solid ${DARK_BORDER}` }}>{h}</th>
               ))}
-            </div>
-          </DarkCard>
-        )}
+            </tr>
+          </thead>
+          <tbody>
+            {cases.map((c, i) => {
+              const sl = (c.status ?? '').toLowerCase()
+              const sBg = sl.includes('trial') ? '#450a0a' : sl.includes('bail') ? '#451a03' : '#052e16'
+              const sCol = sl.includes('trial') ? '#fca5a5' : sl.includes('bail') ? '#fcd34d' : '#86efac'
+              return (
+                <tr key={i} style={{ borderBottom: `1px solid ${DARK_BORDER}` }}>
+                  <td style={{ padding: '6px 10px', color: DARK_TEXT, fontWeight: 500 }}>{c.fir_no || '—'}</td>
+                  <td style={{ padding: '6px 10px', color: DARK_MUTED }}>{c.section || '—'}</td>
+                  <td style={{ padding: '6px 10px', color: DARK_MUTED, fontFamily: 'monospace', fontSize: 9 }}>{c.date || '—'}</td>
+                  <td style={{ padding: '6px 10px', color: DARK_MUTED }}>{c.police_station || '—'}</td>
+                  <td style={{ padding: '6px 10px' }}>
+                    <span style={{ background: sBg, color: sCol, fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 3 }}>{c.status || '—'}</span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
-    </div>
+    </Card>
   )
 }
 
-// ── Bank Statement View ───────────────────────────────────────────────────────
+// ── BankStatementView ─────────────────────────────────────────────────────────
 
 function BankStatementView({ data }: { data: InfographicResponse }) {
-  const color = '#059669'
-  const fs = data.financial_summary ?? {}
+  const accent = BANK_ACCENT
+  const subjectMap = flattenSubject(data.subject)
+  const hasSubject = Object.keys(subjectMap).length > 0
+  const hasFinancial = !!(data.financial_summary && Object.keys(data.financial_summary).length > 0)
+  const hasTransactions = !!(data.key_transactions?.length)
+  const hasTimeline = !!(data.timeline_events?.length)
+  const hasHighlights = !!(data.highlights?.length)
 
   return (
-    <div style={{ background: COLORS.bg, borderRadius: 12, overflow: 'hidden', color: COLORS.text, fontFamily: 'Georgia, serif' }}>
-      <div style={{ background: COLORS.bgCard, borderBottom: `2px solid ${color}`, padding: '10px 20px' }}>
-        <div style={{ fontSize: 9, color, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Bank Statement Analysis</div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>{clean(data.header?.title ?? 'Bank Statement')}</div>
+    <div style={{ background: DARK_BG, color: DARK_TEXT, fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 11, borderRadius: 12, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ background: DARK_CARD, borderBottom: `2px solid ${accent}`, padding: '12px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span style={{ background: accent, color: '#fff', fontSize: 8, fontWeight: 700, letterSpacing: 2, padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase' as const }}>
+            🏦 BANK STATEMENT ANALYSIS
+          </span>
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: DARK_TEXT, lineHeight: 1.3 }}>
+          {clean(data.header?.title ?? 'Bank Statement')}
+        </div>
+        {data.header?.subtitle && (
+          <div style={{ fontSize: 10, color: DARK_MUTED, marginTop: 3 }}>{clean(data.header.subtitle)}</div>
+        )}
       </div>
 
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {data.account && (
-            <DarkCard>
-              <CardHeader label="Account Details" color={color}/>
-              <div style={{ padding: '8px 14px' }}>
-                {Object.entries(data.account).map(([k, v]) => <KVRow key={k} label={k} value={v}/>)}
-              </div>
-            </DarkCard>
-          )}
-          {Object.keys(fs).length > 0 && (
-            <DarkCard>
-              <CardHeader label="Financial Summary" color={color}/>
-              <div style={{ padding: '8px 14px' }}>
-                {Object.entries(fs).map(([k, v]) => <KVRow key={k} label={k} value={v}/>)}
-              </div>
-            </DarkCard>
-          )}
-        </div>
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Stat banner */}
+        {data.stat && <StatBanner stat={data.stat} accent={accent} />}
 
-        {data.key_transactions && data.key_transactions.length > 0 && (
-          <DarkCard>
-            <CardHeader label="Key Transactions" color={color}/>
-            <div style={{ padding: '8px 14px', overflowX: 'auto' }}>
+        {/* Account Details + Financial Summary side by side */}
+        {(hasSubject || hasFinancial) && (
+          <div style={{ display: 'grid', gridTemplateColumns: hasSubject && hasFinancial ? '1fr 1fr' : '1fr', gap: 10 }}>
+            {hasSubject && (
+              <Card>
+                <SectionHeader label="Account Details" color={accent} />
+                <div style={{ padding: '8px 14px' }}>
+                  {Object.entries(subjectMap).map(([k, v], i) => (
+                    <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+                  ))}
+                </div>
+              </Card>
+            )}
+            {hasFinancial && (
+              <Card>
+                <SectionHeader label="Financial Summary" color={accent} />
+                <div style={{ padding: '8px 14px' }}>
+                  {Object.entries(data.financial_summary!).map(([k, v], i) => (
+                    <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Transactions table */}
+        {hasTransactions && (
+          <Card>
+            <SectionHeader label="Key Transactions" color={accent} />
+            <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
                 <thead>
-                  <tr>
+                  <tr style={{ background: '#1e2535' }}>
                     {['Date', 'Description', 'Amount', 'Balance'].map(h => (
-                      <th key={h} style={{
-                        textAlign: h === 'Amount' || h === 'Balance' ? 'right' : 'left',
-                        padding: '4px 8px 4px 0',
-                        fontFamily: 'Georgia, serif', fontSize: 8, fontWeight: 700,
-                        color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5,
-                        borderBottom: `0.5px solid ${COLORS.border}`,
-                      }}>{h}</th>
+                      <th key={h} style={{ textAlign: (h === 'Amount' || h === 'Balance') ? 'right' as const : 'left' as const, padding: '6px 10px', fontSize: 8, fontWeight: 700, color: DARK_MUTED, textTransform: 'uppercase' as const, letterSpacing: 0.5, borderBottom: `1px solid ${DARK_BORDER}` }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {data.key_transactions.slice(0, 15).map((t, i) => (
-                    <tr key={i} style={{ borderBottom: `0.5px solid ${COLORS.border}` }}>
-                      <td style={{ padding: '4px 8px 4px 0', color: COLORS.muted, fontFamily: 'monospace', fontSize: 9 }}>{t.date}</td>
-                      <td style={{ padding: '4px 8px 4px 0', color: COLORS.text, fontSize: 9, maxWidth: 180 }}>{t.description}</td>
-                      <td style={{ padding: '4px 8px 4px 0', textAlign: 'right', fontWeight: 700, color: t.type === 'credit' ? '#22c55e' : '#ef4444' }}>
+                  {data.key_transactions!.slice(0, 20).map((t, i) => (
+                    <tr key={i} style={{ borderBottom: `0.5px solid ${DARK_BORDER}` }}>
+                      <td style={{ padding: '5px 10px', color: DARK_MUTED, fontFamily: 'monospace' }}>{t.date}</td>
+                      <td style={{ padding: '5px 10px', color: DARK_TEXT, maxWidth: 220 }}>{t.description}</td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right' as const, fontWeight: 700, color: t.type === 'credit' ? '#22c55e' : '#ef4444' }}>
                         {t.type === 'credit' ? '+' : '-'}{t.amount}
                       </td>
-                      <td style={{ padding: '4px 0', textAlign: 'right', color: COLORS.muted }}>{t.balance ?? '—'}</td>
+                      <td style={{ padding: '5px 10px', textAlign: 'right' as const, color: DARK_MUTED }}>{t.balance ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </DarkCard>
+          </Card>
         )}
+
+        {/* Timeline */}
+        {hasTimeline && <TimelineSection events={data.timeline_events!} accent={accent} />}
+
+        {/* Key Findings */}
+        {hasHighlights && <HighlightCards highlights={data.highlights!} accent={accent} />}
+      </div>
+
+      <div style={{ background: DARK_CARD, borderTop: `1px solid ${DARK_BORDER}`, padding: '6px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 8, color: DARK_MUTED, letterSpacing: 1 }}>🏦 Bank Statement Analysis — Restricted</span>
+        <span style={{ fontSize: 8, color: DARK_MUTED, letterSpacing: 1 }}>DO NOT DISTRIBUTE</span>
       </div>
     </div>
   )
 }
 
-// ── Generic View ──────────────────────────────────────────────────────────────
+// ── MobileCDRView ─────────────────────────────────────────────────────────────
 
-function GenericView({ data }: { data: InfographicResponse }) {
-  const color = '#7c3aed'
-
-  const renderCol = (items?: InfographicColumn[]) =>
-    items?.map((item, i) => (
-      <DarkCard key={i}>
-        <CardHeader label={clean(item.title)} color={color}/>
-        <div style={{ padding: '8px 14px', fontSize: 9, color: COLORS.muted, lineHeight: 1.6 }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.description}</ReactMarkdown>
-        </div>
-      </DarkCard>
-    ))
+function MobileCDRView({ data }: { data: InfographicResponse }) {
+  const accent = CDR_ACCENT
+  const subjectMap = flattenSubject(data.subject)
+  const hasSubject = Object.keys(subjectMap).length > 0
+  const hasCallSummary = !!(data.call_summary && (data.call_summary.outgoing || data.call_summary.incoming || data.call_summary.sms || data.call_summary.data))
+  const hasTopContacts = !!(data.top_contacts?.length)
+  const hasKeyLocations = !!(data.key_locations?.length)
+  const hasTimeline = !!(data.timeline_events?.length)
+  const hasHighlights = !!(data.highlights?.length)
+  const hasCaseDetails = !!(data.case_details?.length)
 
   return (
-    <div style={{ background: COLORS.bg, borderRadius: 12, overflow: 'hidden', color: COLORS.text, fontFamily: 'Georgia, serif' }}>
-      <div style={{ background: COLORS.bgCard, borderBottom: `2px solid ${color}`, padding: '10px 20px' }}>
-        <div style={{ fontSize: 9, color, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Document Analysis</div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>{clean(data.header?.title ?? 'Analysis')}</div>
-        {data.header?.subtitle && <div style={{ fontSize: 9, color: COLORS.muted }}>{clean(data.header.subtitle)}</div>}
+    <div style={{ background: DARK_BG, color: DARK_TEXT, fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 11, borderRadius: 12, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ background: DARK_CARD, borderBottom: `2px solid ${accent}`, padding: '12px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span style={{ background: accent, color: '#fff', fontSize: 8, fontWeight: 700, letterSpacing: 2, padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase' as const }}>
+            📡 MOBILE CDR / NETWORK ANALYSIS
+          </span>
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: DARK_TEXT, lineHeight: 1.3 }}>
+          {clean(data.header?.title ?? 'Mobile CDR Analysis')}
+        </div>
+        {data.header?.subtitle && (
+          <div style={{ fontSize: 10, color: DARK_MUTED, marginTop: 3 }}>{clean(data.header.subtitle)}</div>
+        )}
       </div>
 
-      <div style={{ padding: 16 }}>
-        {data.personal && (
-          <DarkCard style={{ marginBottom: 12 }}>
-            <CardHeader label="Personal Details" color={color}/>
-            <div style={{ padding: '8px 14px' }}>
-              {Object.entries(data.personal).map(([k, v]) => <KVRow key={k} label={k} value={v}/>)}
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Stat banner */}
+        {data.stat && <StatBanner stat={data.stat} accent={accent} />}
+
+        {/* 4-box call summary */}
+        {hasCallSummary && (() => {
+          const cs = data.call_summary!
+          const items = [
+            { label: 'Outgoing', value: cs.outgoing, color: '#ef4444' },
+            { label: 'Incoming', value: cs.incoming, color: '#22c55e' },
+            { label: 'SMS', value: cs.sms, color: '#f59e0b' },
+            { label: 'Data', value: cs.data, color: '#8b5cf6' },
+          ].filter(i => i.value)
+          return items.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 8 }}>
+              {items.map(({ label, value, color }) => (
+                <div key={label} style={{ background: `${color}12`, border: `1px solid ${color}30`, borderRadius: 6, padding: '10px 6px', textAlign: 'center' as const }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+                  <div style={{ fontSize: 9, color: DARK_MUTED, marginTop: 2, textTransform: 'uppercase' as const, letterSpacing: 1 }}>{label}</div>
+                </div>
+              ))}
             </div>
-          </DarkCard>
+          ) : null
+        })()}
+
+        {/* Subject details */}
+        {hasSubject && (
+          <Card>
+            <SectionHeader label="Subject Details" color={accent} />
+            <div style={{ padding: '8px 14px' }}>
+              {Object.entries(subjectMap).map(([k, v], i) => (
+                <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+              ))}
+            </div>
+          </Card>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{renderCol(data.left_column)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{renderCol(data.right_column)}</div>
-        </div>
+        {/* Top Contacts + Key Locations */}
+        {(hasTopContacts || hasKeyLocations) && (
+          <div style={{ display: 'grid', gridTemplateColumns: hasTopContacts && hasKeyLocations ? '1fr 1fr' : '1fr', gap: 10 }}>
+            {hasTopContacts && (
+              <Card>
+                <SectionHeader label="Top Contacts" color={accent} />
+                <div style={{ padding: '8px 12px' }}>
+                  {data.top_contacts!.slice(0, 8).map((c, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', borderBottom: `0.5px solid ${DARK_BORDER}` }}>
+                      <span style={{ fontSize: 9, color: DARK_TEXT, fontFamily: 'monospace' }}>{c.number}</span>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 8, color: DARK_MUTED }}>{c.type}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: accent, background: `${accent}15`, padding: '2px 6px', borderRadius: 4 }}>{c.calls}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+            {hasKeyLocations && (
+              <Card>
+                <SectionHeader label="Key Locations" color={accent} />
+                <div style={{ padding: '8px 12px' }}>
+                  {data.key_locations!.slice(0, 8).map((l, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: `0.5px solid ${DARK_BORDER}` }}>
+                      <span style={{ fontSize: 9, color: DARK_MUTED }}>{l.area ?? l.cell_id}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: accent, background: `${accent}15`, padding: '2px 6px', borderRadius: 4 }}>{l.count}×</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
 
-        {data.highlights && data.highlights.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <SectionLabel color={color}>Key Findings</SectionLabel>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {data.highlights.map((h, i) => (
-                <DarkCard key={i} style={{ padding: '10px 14px', borderLeft: `2px solid ${color}`, borderRadius: 0 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: COLORS.text, textTransform: 'uppercase' }}>{clean(h.title)}</div>
-                  {h.subtitle && <div style={{ fontSize: 8, color: COLORS.muted, marginTop: 2 }}>{h.subtitle}</div>}
-                  <div style={{ fontSize: 8, color: COLORS.muted, marginTop: 4, lineHeight: 1.5 }}>{clean(h.description)}</div>
-                </DarkCard>
+        {/* Key Findings */}
+        {hasHighlights && <HighlightCards highlights={data.highlights!} accent={accent} />}
+
+        {/* Timeline */}
+        {hasTimeline && <TimelineSection events={data.timeline_events!} accent={accent} />}
+
+        {/* Case details if present */}
+        {hasCaseDetails && <CaseDetailsTable cases={data.case_details!} accent={accent} />}
+      </div>
+
+      <div style={{ background: DARK_CARD, borderTop: `1px solid ${DARK_BORDER}`, padding: '6px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 8, color: DARK_MUTED, letterSpacing: 1 }}>📡 Mobile CDR / Network Analysis — Restricted</span>
+        <span style={{ fontSize: 8, color: DARK_MUTED, letterSpacing: 1 }}>DO NOT DISTRIBUTE</span>
+      </div>
+    </div>
+  )
+}
+
+// ── GangsterProfileView ───────────────────────────────────────────────────────
+
+export function GangsterProfileView({ data }: { data: InfographicResponse }) {
+  const accent = CRIMINAL_ACCENT
+  const subjectMap = flattenSubject(data.subject)
+  const profileMap = data.profile_summary ? flattenSubject(data.profile_summary) : {}
+  const allSubject = { ...subjectMap, ...profileMap }
+  const hasSubject = Object.keys(allSubject).length > 0
+  const hasHighlights = !!(data.highlights?.length)
+  const hasTimeline = !!(data.timeline_events?.length)
+  const hasCaseDetails = !!(data.case_details?.length)
+  const hasAssociates = !!(data.associates?.length)
+  const highlightAccents = [accent, '#dc2626', '#d97706', '#059669', '#7c3aed', accent]
+  const icons = ['🔍', '⚠️', '🔗', '💡', '📋', '🛡️']
+
+  // Light theme for criminal profile
+  const bg = '#f8fafc'
+  const cardBg = '#ffffff'
+  const cardBorder = '#e2e8f0'
+  const textColor = '#1e293b'
+  const mutedColor = '#64748b'
+
+  return (
+    <div style={{ background: bg, color: textColor, fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 11, borderRadius: 12, overflow: 'hidden' }}>
+      {/* Dark navy header */}
+      <div style={{ background: '#1e293b', borderBottom: `2px solid ${accent}`, padding: '12px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span style={{ background: accent, color: '#fff', fontSize: 8, fontWeight: 700, letterSpacing: 2, padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase' as const }}>
+            🛡️ CRIMINAL INTELLIGENCE FILE
+          </span>
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#ffffff', lineHeight: 1.3 }}>
+          {clean(data.header?.title ?? 'Criminal Profile')}
+        </div>
+        {data.header?.subtitle && (
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 3 }}>{clean(data.header.subtitle)}</div>
+        )}
+      </div>
+
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Stat banner */}
+        {data.stat && (
+          <div style={{ background: `${accent}10`, border: `1px solid ${accent}30`, borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 22 }}>📊</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: accent }}>{clean(data.stat.value)}</div>
+              <div style={{ fontSize: 9, color: mutedColor, marginTop: 2 }}>{clean(data.stat.label)}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Subject Details — all key-value pairs */}
+        {hasSubject && (
+          <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ background: '#f1f5f9', borderBottom: `1px solid ${cardBorder}`, padding: '8px 14px' }}>
+              <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, fontWeight: 700, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const }}>Subject Details</span>
+            </div>
+            <div style={{ padding: '8px 14px' }}>
+              {Object.entries(allSubject).map(([k, v], i) => (
+                <div key={i} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `0.5px solid ${cardBorder}` }}>
+                  <span style={{ fontFamily: 'Georgia, serif', fontSize: 8, fontWeight: 700, color: accent, width: 160, flexShrink: 0, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>{k}</span>
+                  <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, color: textColor, flex: 1 }}>{v || '—'}</span>
+                </div>
               ))}
             </div>
           </div>
         )}
+
+        {/* Associates */}
+        {hasAssociates && (
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: accent, textTransform: 'uppercase' as const, marginBottom: 8 }}>Strategic Syndicate Alliances</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+              {data.associates!.map((item, i) => {
+                const c = highlightAccents[i % highlightAccents.length]
+                return (
+                  <div key={i} style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderTop: `3px solid ${c}`, borderRadius: 8, overflow: 'hidden', padding: 10 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: `${c}20`, border: `2px solid ${c}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 14 }}>👤</span>
+                    </div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: c, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 3 }}>{item.relation}</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: textColor, lineHeight: 1.3 }}>{item.name}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Key Findings with emoji icons */}
+        {hasHighlights && (
+          <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ background: '#f1f5f9', borderBottom: `1px solid ${cardBorder}`, padding: '8px 14px' }}>
+              <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, fontWeight: 700, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const }}>Key Findings</span>
+            </div>
+            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {data.highlights!.map((h, i) => {
+                const c = highlightAccents[i % highlightAccents.length]
+                return (
+                  <div key={i} style={{ display: 'flex', gap: 10, borderLeft: `3px solid ${c}`, paddingLeft: 10 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>{icons[i % icons.length]}</span>
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: textColor, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>{clean(h.title)}</div>
+                      {h.subtitle && <div style={{ fontSize: 9, color: c, fontWeight: 600, marginTop: 2 }}>{h.subtitle}</div>}
+                      <div style={{ fontSize: 9, color: mutedColor, marginTop: 4, lineHeight: 1.5 }}>{clean(h.description ?? '')}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Timeline — horizontal scrollable with colored dots */}
+        {hasTimeline && (() => {
+          const events = data.timeline_events!
+          const dotColors = [accent, '#d97706', '#dc2626', accent, '#d97706', '#dc2626']
+          const isLong = events.length > 6
+          return (
+            <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ background: '#f1f5f9', borderBottom: `1px solid ${cardBorder}`, padding: '8px 14px' }}>
+                <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, fontWeight: 700, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const }}>📅 Timeline of Events ({events.length})</span>
+              </div>
+              {isLong ? (
+                <div style={{ padding: '8px 14px', maxHeight: 280, overflowY: 'auto' }}>
+                  {events.map((e, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `0.5px solid ${cardBorder}` }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColors[i % dotColors.length], flexShrink: 0, marginTop: 2 }} />
+                      <span style={{ fontSize: 9, color: accent, fontFamily: 'monospace', width: 140, flexShrink: 0 }}>{e.date}</span>
+                      <span style={{ fontSize: 9, color: textColor, lineHeight: 1.4 }}>{e.event}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '12px 16px', overflowX: 'auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: events.length * 160 }}>
+                    {events.map((e, i) => (
+                      <div key={i} style={{ flex: 1, minWidth: 150, position: 'relative', paddingTop: 22 }}>
+                        <div style={{ position: 'absolute', top: 9, left: i === 0 ? '50%' : 0, right: i === events.length - 1 ? '50%' : 0, height: 2, background: cardBorder }} />
+                        <div style={{ position: 'absolute', top: 5, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, borderRadius: '50%', background: dotColors[i % dotColors.length], border: `2px solid ${bg}`, boxShadow: `0 0 0 1px ${cardBorder}` }} />
+                        <div style={{ paddingLeft: 8, paddingRight: 8 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: dotColors[i % dotColors.length], marginBottom: 4 }}>{e.date}</div>
+                          <div style={{ fontSize: 9, color: mutedColor, lineHeight: 1.4 }}>{e.event}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* FIR / Case Details table with status badges */}
+        {hasCaseDetails && (
+          <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ background: '#f1f5f9', borderBottom: `1px solid ${cardBorder}`, padding: '8px 14px' }}>
+              <span style={{ fontFamily: 'Georgia, serif', fontSize: 9, fontWeight: 700, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const }}>📋 FIR / Case Details</span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9' }}>
+                    {['FIR No.', 'Section', 'Date', 'Police Station', 'Status'].map(h => (
+                      <th key={h} style={{ padding: '6px 10px', textAlign: 'left' as const, fontSize: 8, fontWeight: 700, color: mutedColor, textTransform: 'uppercase' as const, letterSpacing: 0.5, borderBottom: `1px solid ${cardBorder}` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.case_details!.map((c, i) => {
+                    const sl = (c.status ?? '').toLowerCase()
+                    const sBg = sl.includes('trial') ? '#fef2f2' : sl.includes('bail') ? '#fffbeb' : '#f0fdf4'
+                    const sCol = sl.includes('trial') ? '#dc2626' : sl.includes('bail') ? '#d97706' : '#16a34a'
+                    return (
+                      <tr key={i} style={{ borderBottom: `1px solid ${cardBorder}` }}>
+                        <td style={{ padding: '6px 10px', color: textColor, fontWeight: 500 }}>{c.fir_no || '—'}</td>
+                        <td style={{ padding: '6px 10px', color: mutedColor }}>{c.section || '—'}</td>
+                        <td style={{ padding: '6px 10px', color: mutedColor, fontFamily: 'monospace', fontSize: 9 }}>{c.date || '—'}</td>
+                        <td style={{ padding: '6px 10px', color: mutedColor }}>{c.police_station || '—'}</td>
+                        <td style={{ padding: '6px 10px' }}>
+                          <span style={{ background: sBg, color: sCol, fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 3 }}>{c.status || '—'}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Dark footer */}
+      <div style={{ background: '#1e293b', borderTop: `1px solid #334155`, padding: '6px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 8, color: '#94a3b8', letterSpacing: 1 }}>🛡️ Criminal Intelligence File — Restricted</span>
+        <span style={{ fontSize: 8, color: '#94a3b8', letterSpacing: 1 }}>DO NOT DISTRIBUTE</span>
       </div>
     </div>
   )
 }
 
-// ── Fallback parser ───────────────────────────────────────────────────────────
+// ── GenericView ───────────────────────────────────────────────────────────────
+
+function GenericView({ data }: { data: InfographicResponse }) {
+  const accent = GENERAL_ACCENT
+  const hasHighlights = !!(data.highlights?.length)
+  const hasLeft = !!(data.left_column?.length)
+  const hasRight = !!(data.right_column?.length)
+  const hasTimeline = !!(data.timeline_events?.length)
+  const subjectMap = flattenSubject(data.subject)
+  const hasSubject = Object.keys(subjectMap).length > 0
+
+  return (
+    <div style={{ background: DARK_BG, color: DARK_TEXT, fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 11, borderRadius: 12, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ background: DARK_CARD, borderBottom: `2px solid ${accent}`, padding: '12px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span style={{ background: accent, color: '#fff', fontSize: 8, fontWeight: 700, letterSpacing: 2, padding: '2px 8px', borderRadius: 2, textTransform: 'uppercase' as const }}>
+            📄 DOCUMENT ANALYSIS
+          </span>
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: DARK_TEXT, lineHeight: 1.3 }}>
+          {clean(data.header?.title ?? 'Document Analysis')}
+        </div>
+        {data.header?.subtitle && (
+          <div style={{ fontSize: 10, color: DARK_MUTED, marginTop: 3 }}>{clean(data.header.subtitle)}</div>
+        )}
+      </div>
+
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {data.stat && <StatBanner stat={data.stat} accent={accent} />}
+
+        {hasSubject && (
+          <Card>
+            <SectionHeader label="Details" color={accent} />
+            <div style={{ padding: '8px 14px' }}>
+              {Object.entries(subjectMap).map(([k, v], i) => (
+                <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Left / Right columns */}
+        {(hasLeft || hasRight) && (
+          <div style={{ display: 'grid', gridTemplateColumns: hasLeft && hasRight ? '1fr 1fr' : '1fr', gap: 10 }}>
+            {hasLeft && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {data.left_column!.map((item, i) => (
+                  <Card key={i}>
+                    <SectionHeader label={clean(item.title)} color={accent} />
+                    <div style={{ padding: '8px 14px', fontSize: 9, color: DARK_MUTED, lineHeight: 1.6 }}>{item.description}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {hasRight && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {data.right_column!.map((item, i) => (
+                  <Card key={i}>
+                    <SectionHeader label={clean(item.title)} color={accent} />
+                    <div style={{ padding: '8px 14px', fontSize: 9, color: DARK_MUTED, lineHeight: 1.6 }}>{item.description}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasHighlights && <HighlightCards highlights={data.highlights!} accent={accent} />}
+        {hasTimeline && <TimelineSection events={data.timeline_events!} accent={accent} />}
+      </div>
+
+      <div style={{ background: DARK_CARD, borderTop: `1px solid ${DARK_BORDER}`, padding: '6px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 8, color: DARK_MUTED, letterSpacing: 1 }}>📄 Document Analysis — Restricted</span>
+        <span style={{ fontSize: 8, color: DARK_MUTED, letterSpacing: 1 }}>DO NOT DISTRIBUTE</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Router ────────────────────────────────────────────────────────────────────
+
+function InfographicRouter({ data }: { data: InfographicResponse }) {
+  const type = resolveType(data)
+  if (type === 'bank') return <BankStatementView data={data} />
+  if (type === 'cdr') return <MobileCDRView data={data} />
+  if (type === 'criminal') return <GangsterProfileView data={data} />
+  return <GenericView data={data} />
+}
+
+// ── Fallback markdown parser ───────────────────────────────────────────────────
 
 function parseMarkdownToInfographic(raw: string): InfographicResponse {
   const lines = raw.split('\n')
@@ -731,7 +850,7 @@ function parseMarkdownToInfographic(raw: string): InfographicResponse {
   const finalizeSection = () => {
     const desc = currentContent.join('\n').trim()
     if (!desc) return
-    sections.push({ title: currentHeader, description: desc, icon: 'info' })
+    sections.push({ title: currentHeader || 'Section', description: desc, icon: 'info' })
     currentContent = []
   }
 
@@ -739,9 +858,12 @@ function parseMarkdownToInfographic(raw: string): InfographicResponse {
     const t = line.trim()
     if (!t) continue
     if (!firstHeading && t.length > 5) firstHeading = t
-    const isSectionStart = t.startsWith('**') && t.endsWith('**') && t.length > 5
-    if (isSectionStart) { finalizeSection(); currentHeader = t }
-    else currentContent.push(line)
+    if (t.startsWith('**') && t.endsWith('**') && t.length > 5) {
+      finalizeSection()
+      currentHeader = t
+    } else {
+      currentContent.push(line)
+    }
   }
   finalizeSection()
 
@@ -760,22 +882,36 @@ export function isInfographicInsight(insightType: string): boolean {
   return insightType.toLowerCase().includes('infographic')
 }
 
-export function InfographicInsightViewer({ content }: { content: string }) {
-  const data = useMemo<InfographicResponse>(() => {
-    try {
-      const jsonStr = extractJson(content)
-      const parsed = JSON.parse(jsonStr) as InfographicResponse
-      if (parsed && (parsed.header || parsed.document_type)) return parsed
-      throw new Error('invalid')
-    } catch {
-      return parseMarkdownToInfographic(content)
-    }
+export function InfographicInsightViewer({ content }: { content?: string }) {
+  const [uploadedData, setUploadedData] = useState<InfographicResponse | null>(null)
+
+  const staticData = useMemo<InfographicResponse | null>(() => {
+    if (!content) return null
+    const merged = extractAndMergeJson(content)
+    if (merged && (merged.header || merged.document_type)) return merged
+    return parseMarkdownToInfographic(content)
   }, [content])
 
-  const type = data.document_type ?? 'general'
+  const data = staticData ?? uploadedData
 
-  if (type === 'gangster_profile' || type === 'ir_document') return <GangsterProfileView data={data}/>
-  if (type === 'mobile_cdr') return <MobileCDRView data={data}/>
-  if (type === 'bank_statement') return <BankStatementView data={data}/>
-  return <GenericView data={data}/>
+  return (
+    <div>
+      {!staticData && !uploadedData && (
+        <div style={{ padding: '20px', textAlign: 'center', color: DARK_MUTED, fontSize: 12 }}>
+          No infographic data available.
+        </div>
+      )}
+      {!staticData && uploadedData && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            onClick={() => setUploadedData(null)}
+            style={{ fontSize: 11, padding: '4px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid #334155', borderRadius: 6, color: DARK_MUTED, cursor: 'pointer' }}
+          >
+            ↩ Upload another file
+          </button>
+        </div>
+      )}
+      {data && <InfographicRouter data={data} />}
+    </div>
+  )
 }

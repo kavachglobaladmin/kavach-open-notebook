@@ -123,11 +123,24 @@ class InfographicRequest(BaseModel):
 
 class InfographicResponse(BaseModel):
     source_id: str
+    document_type: str = "general"
     header: dict = {}
     left_column: list = []
     right_column: list = []
     stat: dict = {}
     highlights: list = []
+    # Type-specific fields
+    subject: Optional[Any] = None
+    account: Optional[dict] = None
+    personal: Optional[dict] = None
+    financial_summary: Optional[dict] = None
+    key_transactions: list = []
+    call_summary: Optional[dict] = None
+    top_contacts: list = []
+    key_locations: list = []
+    case_details: list = []
+    associates: list = []
+    timeline_events: list = []
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -158,11 +171,24 @@ async def generate_infographic(source_id: str, request: InfographicRequest):
 
         return InfographicResponse(
             source_id=source_id,
+            document_type=_safe_str(result.get("document_type", "general")),
             header=result.get("header", {}),
             left_column=_safe_list(result.get("left_column", result.get("left", []))),
             right_column=_safe_list(result.get("right_column", result.get("right", []))),
             stat=result.get("stat", {}) if isinstance(result.get("stat"), dict) else {},
             highlights=_safe_list(result.get("highlights", result.get("cases", []))),
+            # Type-specific fields
+            subject=result.get("subject"),
+            account=result.get("account"),
+            personal=result.get("personal"),
+            financial_summary=result.get("financial_summary"),
+            key_transactions=_safe_list(result.get("key_transactions", [])),
+            call_summary=result.get("call_summary"),
+            top_contacts=_safe_list(result.get("top_contacts", [])),
+            key_locations=_safe_list(result.get("key_locations", [])),
+            case_details=_safe_list(result.get("case_details", [])),
+            associates=_safe_list(result.get("associates", [])),
+            timeline_events=_safe_list(result.get("timeline_events", [])),
         )
 
     except HTTPException:

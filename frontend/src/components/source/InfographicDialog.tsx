@@ -6,6 +6,7 @@ import {
   InfographicResponse,
   loadCachedInfographic,
   saveCachedInfographic,
+  clearCachedInfographic,
 } from '@/lib/api/infographic'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -69,8 +70,8 @@ export function InfographicDialog({ sourceId, sourceTitle, open, onOpenChange }:
   const generate = useCallback((forceRegenerate = false) => {
     if (!forceRegenerate) {
       const cached = loadCachedInfographic(sourceId)
-      // Only use cache if html is actually present
-      if (cached && cached.html) {
+      // Use cache if it has valid data (header or document_type present)
+      if (cached && (cached.header || cached.document_type)) {
         setData(cached)
         setError(null)
         setFromCache(true)
@@ -85,6 +86,8 @@ export function InfographicDialog({ sourceId, sourceTitle, open, onOpenChange }:
     setFromCache(false)
     setLoading(true)
     loadedSourceIdRef.current = sourceId
+
+    if (forceRegenerate) clearCachedInfographic(sourceId)
 
     if (abortRef.current) abortRef.current.abort()
     abortRef.current = new AbortController()

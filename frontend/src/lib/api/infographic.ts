@@ -61,6 +61,12 @@ export function loadCachedInfographic(sourceId: string): InfographicResponse | n
   }
 }
 
+export function clearCachedInfographic(sourceId: string): void {
+  try {
+    localStorage.removeItem(CACHE_PREFIX + sourceId)
+  } catch { /* ignore */ }
+}
+
 export function saveCachedInfographic(sourceId: string, data: InfographicResponse) {
   try {
     const key = CACHE_PREFIX + sourceId
