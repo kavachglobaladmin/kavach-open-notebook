@@ -56,6 +56,7 @@ import { Credential, CreateCredentialRequest, UpdateCredentialRequest, Discovere
 import { Model, ModelDefaults } from '@/lib/types/models'
 import { MigrationBanner, ModelTestResultDialog } from '@/components/settings'
 import { EmbeddingModelChangeDialog } from '@/components/settings/EmbeddingModelChangeDialog'
+import { PageHeader } from '@/components/layout/PageHeader'
 
 type ModelType = 'language' | 'embedding' | 'text_to_speech' | 'speech_to_text'
 
@@ -784,30 +785,30 @@ function CredentialItem({
 
   return (
     <>
-      <div className="border rounded-lg p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-medium truncate">{credential.name}</span>
-            <div className="flex gap-1">
+      <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 space-y-2">
+        {/* Header row: name + modality badges + action buttons */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="font-semibold text-sm text-slate-800 truncate">{credential.name}</span>
+            <div className="flex gap-1 flex-wrap">
               {credential.modalities.map(mod => (
-                <Badge
+                <span
                   key={mod}
-                  variant="secondary"
-                  className={`text-[10px] gap-0.5 px-1 py-0 ${activeTypes.has(mod as ModelType) ? (TYPE_COLORS[mod as ModelType] || '') : TYPE_COLOR_INACTIVE}`}
+                  className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${activeTypes.has(mod as ModelType) ? (TYPE_COLORS[mod as ModelType] || '') : TYPE_COLOR_INACTIVE}`}
                 >
                   {TYPE_ICONS[mod as ModelType]}
-                  <span className="hidden sm:inline">{TYPE_LABELS[mod as ModelType] || mod}</span>
-                </Badge>
+                  <span>{TYPE_LABELS[mod as ModelType] || mod}</span>
+                </span>
               ))}
             </div>
             {credential.has_api_key && (
-              <Badge variant="outline" className="text-[10px]">
-                <Key className="h-2.5 w-2.5 mr-0.5" />
+              <span className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <Key className="h-2.5 w-2.5" />
                 Key
-              </Badge>
+              </span>
             )}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             {testResult && (
               testResult.success
                 ? <Check className="h-4 w-4 text-emerald-500" />
@@ -818,57 +819,62 @@ function CredentialItem({
               onClick={() => testCredential(credential.id)}
               disabled={isTestPending}
               title={t.apiKeys.testConnection}
+              className="h-7 px-2 text-slate-500 hover:text-[#FF7043] hover:bg-orange-50"
             >
-              {isTestPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-              <span className="hidden sm:inline text-xs">Test</span>
+              {isTestPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline text-xs ml-1">Test</span>
             </Button>
             <Button
               variant="ghost" size="sm"
               onClick={() => setDiscoverOpen(true)}
               title={t.apiKeys.syncModels}
+              className="h-7 px-2 text-slate-500 hover:text-[#FF7043] hover:bg-orange-50"
             >
-              <Bot className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs">Models</span>
+              <Bot className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline text-xs ml-1">Models</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)} title={t.common.edit}>
-              <Edit className="h-4 w-4" />
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => setEditOpen(true)}
+              title={t.common.edit}
+              className="h-7 px-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+            >
+              <Edit className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost" size="sm"
               onClick={() => setDeleteOpen(true)}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="h-7 px-2 text-slate-400 hover:text-destructive hover:bg-destructive/10"
               title={t.common.delete}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
 
         {/* Linked models grouped by type */}
         {linkedModels.length > 0 && (
-          <div className="space-y-1.5 pt-1">
+          <div className="space-y-1.5 pt-1 border-t border-slate-100">
             {(['language', 'embedding', 'text_to_speech', 'speech_to_text'] as ModelType[])
               .filter(type => linkedModels.some(m => m.type === type))
               .map(type => (
-                <div key={type} className="flex items-start gap-1.5">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] gap-0.5 px-1 py-0 shrink-0 mt-0.5 ${TYPE_COLORS[type]}`}
+                <div key={type} className="flex items-start gap-1.5 flex-wrap">
+                  <span
+                    className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0 mt-0.5 ${TYPE_COLORS[type]}`}
                   >
                     {TYPE_ICONS[type]}
                     {TYPE_LABELS[type]}
-                  </Badge>
+                  </span>
                   <div className="flex flex-wrap gap-1">
                     {linkedModels.filter(m => m.type === type).map(model => {
                       const defaultSlot = defaultSlots[model.id]
                       return (
-                        <Badge
+                        <span
                           key={model.id}
-                          variant={defaultSlot ? 'default' : 'secondary'}
-                          className="text-xs gap-1 pr-0.5 group/model"
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium group/model ${defaultSlot ? 'bg-[#FF7043] text-white' : 'bg-slate-100 text-slate-700'}`}
                         >
                           {model.name}
-                          {defaultSlot && <span className="ml-0.5 opacity-75">({defaultSlot})</span>}
+                          {defaultSlot && <span className="ml-0.5 opacity-80 text-[10px]">({defaultSlot})</span>}
                           <button
                             className="ml-0.5 opacity-0 group-hover/model:opacity-60 hover:!opacity-100 transition-opacity"
                             onClick={() => testModel(model.id, model.name)}
@@ -881,13 +887,13 @@ function CredentialItem({
                             }
                           </button>
                           <button
-                            className="opacity-0 group-hover/model:opacity-60 hover:!opacity-100 hover:text-destructive transition-opacity"
+                            className="opacity-0 group-hover/model:opacity-60 hover:!opacity-100 hover:text-red-200 transition-opacity"
                             onClick={() => deleteModel.mutate(model.id)}
                             title={deleteModelLabel}
                           >
                             <X className="h-3 w-3" />
                           </button>
-                        </Badge>
+                        </span>
                       )
                     })}
                   </div>
@@ -895,8 +901,6 @@ function CredentialItem({
               ))}
           </div>
         )}
-
-
       </div>
 
       {/* Edit dialog */}
@@ -972,61 +976,64 @@ function ProviderSection({
   const activeTypes = new Set(providerModels.map(m => m.type))
 
   return (
-    <Card className={!hasCredentials ? 'opacity-80' : undefined}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-wrap">
-            <CardTitle className="text-lg capitalize">{displayName}</CardTitle>
-            <div className="flex items-center gap-1">
-              {modalities.map((type) => (
-                <Badge
-                  key={type}
-                  variant="secondary"
-                  className={`text-xs gap-1 ${activeTypes.has(type) ? TYPE_COLORS[type] : TYPE_COLOR_INACTIVE}`}
-                >
-                  {TYPE_ICONS[type]}
-                  <span className="hidden sm:inline">{TYPE_LABELS[type]}</span>
-                </Badge>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasCredentials ? (
-              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300">
-                <Check className="mr-1 h-3 w-3" />
-                {t.apiKeys.configured}
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-muted-foreground border-dashed">
-                <X className="mr-1 h-3 w-3" />
-                {t.apiKeys.notConfigured}
-              </Badge>
-            )}
+    <div className={`rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col${!hasCredentials ? ' opacity-80' : ''}`}>
+      {/* Card header */}
+      <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <span className="font-bold text-base text-slate-900">{displayName}</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            {modalities.map((type) => (
+              <span
+                key={type}
+                className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${activeTypes.has(type) ? TYPE_COLORS[type] : TYPE_COLOR_INACTIVE}`}
+              >
+                {TYPE_ICONS[type]}
+                <span>{TYPE_LABELS[type]}</span>
+              </span>
+            ))}
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {credentials.map(cred => (
-          <CredentialItem
-            key={cred.id}
-            credential={cred}
-            models={models}
-            defaults={defaults}
-            allCredentials={allCredentials}
-          />
-        ))}
+        <div className="shrink-0 mt-0.5">
+          {hasCredentials ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-medium">
+              <Check className="h-3 w-3" />
+              {t.apiKeys.configured}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 text-slate-400 px-2.5 py-1 text-xs font-medium">
+              <X className="h-3 w-3" />
+              {t.apiKeys.notConfigured}
+            </span>
+          )}
+        </div>
+      </div>
 
-        <Button
-          variant="outline"
-          size="sm"
+      {/* Credential items */}
+      {credentials.length > 0 && (
+        <div className="px-4 space-y-2 pb-2">
+          {credentials.map(cred => (
+            <CredentialItem
+              key={cred.id}
+              credential={cred}
+              models={models}
+              defaults={defaults}
+              allCredentials={allCredentials}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Add configuration button */}
+      <div className="px-4 pb-4 mt-auto pt-2">
+        <button
           onClick={() => setAddOpen(true)}
-          className="w-full gap-2"
           disabled={!encryptionReady}
+          className="w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold tracking-wide uppercase text-white bg-[#FF7043] hover:bg-[#f4622e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           {t.apiKeys.addConfig}
-        </Button>
-      </CardContent>
+        </button>
+      </div>
 
       {addOpen && (
         <CredentialFormDialog
@@ -1035,7 +1042,7 @@ function ProviderSection({
           provider={provider}
         />
       )}
-    </Card>
+    </div>
   )
 }
 
@@ -1124,10 +1131,14 @@ function DefaultModelSelectors({
     .map(c => c.label)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t.models.defaultAssignments}</CardTitle>
-        <CardDescription>{t.models.defaultAssignmentsDesc}</CardDescription>
+    <Card className="rounded-2xl border border-slate-100 shadow-sm bg-white">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle className="text-lg font-bold text-slate-900">{t.models.defaultAssignments}</CardTitle>
+            <CardDescription className="text-slate-500 mt-0.5">{t.models.defaultAssignmentsDesc}</CardDescription>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {missingRequired.length > 0 && (
@@ -1139,7 +1150,7 @@ function DefaultModelSelectors({
                 variant="outline" size="sm"
                 onClick={() => autoAssign.mutate()}
                 disabled={autoAssign.isPending}
-                className="shrink-0 gap-1.5"
+                className="shrink-0 gap-1.5 border-[#FF7043] text-[#FF7043] hover:bg-orange-50"
               >
                 {autoAssign.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                 {autoAssign.isPending ? t.models.autoAssigning : t.models.autoAssign}
@@ -1149,17 +1160,17 @@ function DefaultModelSelectors({
         )}
 
         {/* Primary models: Chat, Embedding, TTS, STT */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {primaryConfigs.map(config => {
             const available = getModelsForType(config.modelType)
             const currentValue = watch(config.key) || undefined
             const isValid = currentValue && available.some(m => m.id === currentValue)
 
             return (
-              <div key={config.key} className="space-y-1">
-                <Label htmlFor={config.id} className="text-xs">
+              <div key={config.key} className="space-y-1.5">
+                <Label htmlFor={config.id} className="text-xs font-semibold text-slate-700">
                   {config.label}
-                  {config.required && <span className="text-destructive ml-0.5">*</span>}
+                  {config.required && <span className="text-[#FF7043] ml-0.5">*</span>}
                 </Label>
                 <div className="flex gap-1">
                   <Select
@@ -1168,7 +1179,7 @@ function DefaultModelSelectors({
                   >
                     <SelectTrigger
                       id={config.id}
-                      className={`h-8 text-xs ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
+                      className={`h-9 text-xs rounded-lg border-slate-200 focus:ring-[#FF7043] focus:border-[#FF7043] ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
                     >
                       <SelectValue placeholder={
                         config.required && !isValid && available.length > 0
@@ -1179,16 +1190,16 @@ function DefaultModelSelectors({
                     <SelectContent>
                       {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
                         <SelectItem key={model.id} value={model.id}>
-                          <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center justify-between w-full gap-2">
                             <span>{model.name}</span>
-                            <span className="text-xs text-muted-foreground ml-2">{model.provider}</span>
+                            <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{model.provider}</span>
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {!config.required && currentValue && (
-                    <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-8 w-8 shrink-0">
+                    <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-9 w-9 shrink-0 text-slate-400 hover:text-slate-700">
                       <X className="h-3 w-3" />
                     </Button>
                   )}
@@ -1199,19 +1210,19 @@ function DefaultModelSelectors({
         </div>
 
         {/* Advanced models: Transformation, Tools, Large Context */}
-        <div className="border-t pt-3">
-          <p className="text-xs text-muted-foreground mb-3">{t.navigation.advanced}</p>
-            <div className="grid gap-3 sm:grid-cols-3">
+        <div className="border-t border-slate-100 pt-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{t.navigation.advanced}</p>
+            <div className="grid gap-4 sm:grid-cols-3">
               {advancedConfigs.map(config => {
                 const available = getModelsForType(config.modelType)
                 const currentValue = watch(config.key) || undefined
                 const isValid = currentValue && available.some(m => m.id === currentValue)
 
                 return (
-                  <div key={config.key} className="space-y-1">
-                    <Label htmlFor={config.id} className="text-xs">
+                  <div key={config.key} className="space-y-1.5">
+                    <Label htmlFor={config.id} className="text-xs font-semibold text-slate-700">
                       {config.label}
-                      {config.required && <span className="text-destructive ml-0.5">*</span>}
+                      {config.required && <span className="text-[#FF7043] ml-0.5">*</span>}
                     </Label>
                     <div className="flex gap-1">
                       <Select
@@ -1220,7 +1231,7 @@ function DefaultModelSelectors({
                       >
                         <SelectTrigger
                           id={config.id}
-                          className={`h-8 text-xs ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
+                          className={`h-9 text-xs rounded-lg border-slate-200 focus:ring-[#FF7043] focus:border-[#FF7043] ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
                         >
                           <SelectValue placeholder={
                             config.required && !isValid && available.length > 0
@@ -1231,21 +1242,21 @@ function DefaultModelSelectors({
                         <SelectContent>
                           {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
                             <SelectItem key={model.id} value={model.id}>
-                              <div className="flex items-center justify-between w-full">
+                              <div className="flex items-center justify-between w-full gap-2">
                                 <span>{model.name}</span>
-                                <span className="text-xs text-muted-foreground ml-2">{model.provider}</span>
+                                <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{model.provider}</span>
                               </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       {!config.required && currentValue && (
-                        <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-8 w-8 shrink-0">
+                        <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-9 w-9 shrink-0 text-slate-400 hover:text-slate-700">
                           <X className="h-3 w-3" />
                         </Button>
                       )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-tight">{config.description}</p>
+                    <p className="text-[10px] text-slate-400 leading-tight">{config.description}</p>
                   </div>
                 )
               })}
@@ -1316,6 +1327,8 @@ export default function ApiKeysPage() {
     })
   }, [credentialsByProvider])
 
+  const [searchTerm, setSearchTerm] = useState('')
+
   const isLoading = credentialsLoading || modelsLoading || defaultsLoading
 
   if (isLoading) {
@@ -1330,16 +1343,24 @@ export default function ApiKeysPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          {/* Header */}
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Key className="h-6 w-6" />
-              {t.apiKeys.title}
-            </h1>
-            <p className="text-muted-foreground mt-1">{t.apiKeys.description}</p>
-          </div>
+      <div className="flex-1 flex flex-col min-h-0 bg-white">
+        {/* Shared page header */}
+        <PageHeader
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search..."
+          hideNew
+        />
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-8 space-y-8">
+            {/* Page title */}
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 leading-tight">
+                Configure Your AI With Your Own API Keys
+              </h1>
+              <p className="text-slate-500 mt-2 text-base">{t.apiKeys.description}</p>
+            </div>
 
           {/* Encryption warning */}
           {!encryptionReady && (
@@ -1362,8 +1383,8 @@ export default function ApiKeysPage() {
             <DefaultModelSelectors models={models} defaults={defaults} />
           )}
 
-          {/* Provider Cards */}
-          <div className="grid gap-4">
+          {/* Provider Cards — 3-column grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedProviders.map(provider => (
               <ProviderSection
                 key={provider}
@@ -1378,16 +1399,17 @@ export default function ApiKeysPage() {
           </div>
 
           {/* Help link */}
-          <div className="border-t pt-4">
+          <div className="border-t border-slate-100 pt-4">
             <a
               href="https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-primary hover:underline"
+              className="text-sm text-[#FF7043] hover:underline"
             >
               {t.apiKeys.learnMore}
             </a>
           </div>
+        </div>
         </div>
       </div>
     </AppShell>

@@ -1,16 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { ChevronDown, ChevronRight, Trash2, Wand2, Edit } from 'lucide-react'
+import { ChevronRight, Trash2 } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
 import { useDeleteTransformation } from '@/lib/hooks/use-transformations'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { cn } from '@/lib/utils'
 
 interface TransformationCardProps {
   transformation: Transformation
@@ -32,76 +28,89 @@ export function TransformationCard({ transformation, onPlayground, onEdit }: Tra
   return (
     <>
       <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <CollapsibleTrigger className="flex-1 text-left">
-                <div className={cn('flex items-center gap-3', isExpanded ? 'mb-2' : '')}>
-                  {isExpanded ? (
-                    <ChevronDown className="h-5 w-5" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5" />
-                  )}
-                  <div className="flex flex-col">
-                    <span className="font-semibold">{transformation.name}</span>
-                    {!isExpanded && transformation.description && (
-                      <span className="text-sm text-muted-foreground">{transformation.description}</span>
-                    )}
-                  </div>
-                  {transformation.apply_default && (
-                    <Badge variant="secondary">{t.common.default}</Badge>
-                  )}
-                </div>
-              </CollapsibleTrigger>
-
-              <div className="flex items-center gap-2">
-                {onPlayground && (
-                  <Button variant="outline" size="sm" onClick={onPlayground}>
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    {t.transformations.playground}
-                  </Button>
-                )}
-                {onEdit && (
-                  <Button variant="outline" size="sm" onClick={onEdit}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    {t.common.edit}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+          {/* Row: trigger (name+desc) + action buttons side by side */}
+          <div className="flex items-center gap-4 px-6 py-4">
+            {/* Left: CollapsibleTrigger wraps ONLY the chevron + text — no nested buttons */}
+            <CollapsibleTrigger className="flex items-center gap-3 flex-1 min-w-0 text-left">
+              <ChevronRight
+                className={`h-5 w-5 text-slate-400 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+              />
+              <div className="min-w-0">
+                <p className="font-bold text-slate-900 text-[15px] truncate">
+                  {transformation.name}
+                </p>
+                <p className="text-slate-500 text-sm truncate">
+                  {transformation.description || t.chat.noDescription}
+                </p>
               </div>
-            </div>
-          </CardHeader>
+            </CollapsibleTrigger>
 
+            {/* Right: action buttons — outside CollapsibleTrigger, no nesting issue */}
+            <div className="flex items-center gap-2 shrink-0">
+              {onPlayground && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onPlayground() }}
+                  className="px-4 py-2 rounded-lg bg-[#FF7043] hover:bg-[#f4622e] text-white text-xs font-semibold transition-colors"
+                >
+                  {t.transformations.playground}
+                </button>
+              )}
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onEdit() }}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors"
+                >
+                  {t.common.edit}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowDeleteDialog(true) }}
+                className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title={t.common.delete}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Expanded content */}
           <CollapsibleContent>
-            <CardContent className="space-y-4">
+            <div className="px-6 pb-5 pt-2 space-y-4 border-t border-slate-100">
               <div>
-                <p className="text-sm text-muted-foreground">{t.common.title}</p>
-                <p className="text-sm font-medium">{transformation.title || t.sources.untitledSource}</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  {t.common.title}
+                </p>
+                <p className="text-sm font-medium text-slate-800">
+                  {transformation.title || t.sources.untitledSource}
+                </p>
               </div>
 
               {transformation.description && (
                 <div>
-                  <p className="text-sm text-muted-foreground">{t.common.description}</p>
-                  <p className="text-sm leading-6">{transformation.description}</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                    {t.common.description}
+                  </p>
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    {transformation.description}
+                  </p>
                 </div>
               )}
 
               <div>
-                <p className="text-sm text-muted-foreground">{t.transformations.systemPrompt}</p>
-                <pre className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-3 text-sm font-mono">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                  {t.transformations.systemPrompt}
+                </p>
+                <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs font-mono text-slate-700 leading-relaxed">
                   {transformation.prompt}
                 </pre>
               </div>
-            </CardContent>
+            </div>
           </CollapsibleContent>
-        </Card>
+        </div>
       </Collapsible>
 
       <ConfirmDialog

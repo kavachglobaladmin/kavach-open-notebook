@@ -2,24 +2,39 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, AlertCircle, CheckCircle2, XCircle, Clock } from 'lucide-react'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+import { Loader2, AlertCircle, CheckCircle2, XCircle, Clock, ChevronDown } from 'lucide-react'
 import { embeddingApi } from '@/lib/api/embedding'
 import type { RebuildEmbeddingsRequest, RebuildStatusResponse } from '@/lib/api/embedding'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
+// ── Simple FAQ accordion item ─────────────────────────────────────────────────
+function FaqItem({ question, answer }: { question: string; answer: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-b border-slate-100 last:border-0">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between py-3 text-left text-sm font-medium text-slate-700 hover:text-slate-900 transition-colors"
+      >
+        {question}
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <p className="pb-3 text-sm text-slate-500 leading-relaxed">{answer}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export function RebuildEmbeddings() {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'existing' | 'all'>('existing')
@@ -30,42 +45,33 @@ export function RebuildEmbeddings() {
   const [status, setStatus] = useState<RebuildStatusResponse | null>(null)
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
 
-  // Rebuild mutation
+  // Rebuild mutation — logic preserved exactly
   const rebuildMutation = useMutation({
     mutationFn: async (request: RebuildEmbeddingsRequest) => {
       return embeddingApi.rebuildEmbeddings(request)
     },
     onSuccess: (data) => {
       setCommandId(data.command_id)
-      // Start polling for status
       startPolling(data.command_id)
-    }
+    },
   })
 
-  // Start polling for rebuild status
   const startPolling = (cmdId: string) => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
-    }
-
+    if (pollingInterval) clearInterval(pollingInterval)
     const interval = setInterval(async () => {
       try {
         const statusData = await embeddingApi.getRebuildStatus(cmdId)
         setStatus(statusData)
-
-        // Stop polling if completed or failed
         if (statusData.status === 'completed' || statusData.status === 'failed') {
           stopPolling()
         }
       } catch (error) {
         console.error('Failed to fetch rebuild status:', error)
       }
-    }, 5000) // Poll every 5 seconds
-
+    }, 5000)
     setPollingInterval(interval)
   }
 
-  // Stop polling
   const stopPolling = useCallback(() => {
     if (pollingInterval) {
       clearInterval(pollingInterval)
@@ -73,22 +79,17 @@ export function RebuildEmbeddings() {
     }
   }, [pollingInterval])
 
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      stopPolling()
-    }
+    return () => { stopPolling() }
   }, [stopPolling])
 
   const handleStartRebuild = () => {
-    const request: RebuildEmbeddingsRequest = {
+    rebuildMutation.mutate({
       mode,
       include_sources: includeSources,
       include_notes: includeNotes,
-      include_insights: includeInsights
-    }
-
-    rebuildMutation.mutate(request)
+      include_insights: includeInsights,
+    })
   }
 
   const handleReset = () => {
@@ -120,23 +121,27 @@ export function RebuildEmbeddings() {
   const processingTimeSeconds = stats?.processing_time ?? computedDuration
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {t.advanced.rebuildEmbeddings}
-        </CardTitle>
-        <CardDescription>
-          {t.advanced.rebuildEmbeddingsDesc}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Configuration Form */}
+    <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+      {/* Card header */}
+      <div className="px-6 pt-6 pb-4 border-b border-slate-50">
+        <h2 className="text-lg font-bold text-slate-900">{t.advanced.rebuildEmbeddings}</h2>
+        <p className="text-sm text-slate-500 mt-0.5">{t.advanced.rebuildEmbeddingsDesc}</p>
+      </div>
+
+      <div className="px-6 py-5 space-y-6">
+        {/* Configuration form */}
         {!isRebuildActive && (
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <Label htmlFor="mode">{t.advanced.rebuild.mode}</Label>
+          <div className="space-y-5">
+            {/* Rebuild Mode */}
+            <div className="space-y-2">
+              <Label htmlFor="mode" className="text-sm font-semibold text-slate-700">
+                {t.advanced.rebuild.mode}
+              </Label>
               <Select value={mode} onValueChange={(value) => setMode(value as 'existing' | 'all')}>
-                <SelectTrigger id="mode">
+                <SelectTrigger
+                  id="mode"
+                  className="w-40 h-9 text-sm rounded-lg border-slate-200 focus:ring-[#FF7043] focus:border-[#FF7043]"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -144,71 +149,62 @@ export function RebuildEmbeddings() {
                   <SelectItem value="all">{t.advanced.rebuild.all}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground">
-                {mode === 'existing'
-                  ? t.advanced.rebuild.existingDesc
-                  : t.advanced.rebuild.allDesc}
+              <p className="text-xs text-slate-400">
+                {mode === 'existing' ? t.advanced.rebuild.existingDesc : t.advanced.rebuild.allDesc}
               </p>
             </div>
 
-            <div className="space-y-3" role="group" aria-labelledby="include-label">
-              <span id="include-label" className="text-sm font-medium leading-none">{t.advanced.rebuild.include}</span>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="sources"
-                    checked={includeSources}
-                    onCheckedChange={(checked) => setIncludeSources(checked === true)}
-                  />
-                  <Label htmlFor="sources" className="font-normal cursor-pointer">
-                    {t.navigation.sources}
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="notes"
-                    checked={includeNotes}
-                    onCheckedChange={(checked) => setIncludeNotes(checked === true)}
-                  />
-                  <Label htmlFor="notes" className="font-normal cursor-pointer">
-                    {t.common.notes}
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="insights"
-                    checked={includeInsights}
-                    onCheckedChange={(checked) => setIncludeInsights(checked === true)}
-                  />
-                  <Label htmlFor="insights" className="font-normal cursor-pointer">
-                    {t.common.insights}
-                  </Label>
-                </div>
+            {/* Include in Rebuild */}
+            <div className="space-y-2" role="group" aria-labelledby="include-label">
+              <span id="include-label" className="text-sm font-semibold text-slate-700">
+                {t.advanced.rebuild.include}
+              </span>
+              <div className="space-y-2 pt-1">
+                {[
+                  { id: 'sources', checked: includeSources, onChange: setIncludeSources, label: t.navigation.sources },
+                  { id: 'notes',   checked: includeNotes,   onChange: setIncludeNotes,   label: t.common.notes },
+                  { id: 'insights',checked: includeInsights,onChange: setIncludeInsights,label: t.common.insights },
+                ].map(item => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <Checkbox
+                      id={item.id}
+                      checked={item.checked}
+                      onCheckedChange={(checked) => item.onChange(checked === true)}
+                      className="accent-[#FF7043] data-[state=checked]:bg-[#FF7043] data-[state=checked]:border-[#FF7043]"
+                    />
+                    <Label htmlFor={item.id} className="font-normal cursor-pointer text-sm text-slate-700">
+                      {item.label}
+                    </Label>
+                  </div>
+                ))}
               </div>
               {!isAnyTypeSelected && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="mt-2">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {t.advanced.rebuild.selectOneError}
-                  </AlertDescription>
+                  <AlertDescription>{t.advanced.rebuild.selectOneError}</AlertDescription>
                 </Alert>
               )}
             </div>
 
-            <Button
+            {/* Start Rebuild button — blue, full-width, matches reference */}
+            <button
+              type="button"
               onClick={handleStartRebuild}
               disabled={!isAnyTypeSelected || rebuildMutation.isPending}
-              className="w-full"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors shadow-sm"
             >
               {rebuildMutation.isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   {t.advanced.rebuild.starting}
                 </>
               ) : (
-                t.advanced.rebuild.startBtn
+                <>
+                  <span>⚡</span>
+                  {t.advanced.rebuild.startBtn}
+                </>
               )}
-            </Button>
+            </button>
 
             {rebuildMutation.isError && (
               <Alert variant="destructive">
@@ -221,39 +217,41 @@ export function RebuildEmbeddings() {
           </div>
         )}
 
-        {/* Status Display */}
+        {/* Status display — logic preserved exactly */}
         {status && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {status.status === 'queued' && <Clock className="h-5 w-5 text-yellow-500" />}
-                {status.status === 'running' && <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />}
+                {status.status === 'queued'    && <Clock        className="h-5 w-5 text-yellow-500" />}
+                {status.status === 'running'   && <Loader2      className="h-5 w-5 text-blue-500 animate-spin" />}
                 {status.status === 'completed' && <CheckCircle2 className="h-5 w-5 text-green-500" />}
-                {status.status === 'failed' && <XCircle className="h-5 w-5 text-red-500" />}
+                {status.status === 'failed'    && <XCircle      className="h-5 w-5 text-red-500" />}
                 <div className="flex flex-col">
-                  <span className="font-medium">
-                    {status.status === 'queued' && t.advanced.rebuild.queued}
-                    {status.status === 'running' && t.advanced.rebuild.running}
+                  <span className="font-medium text-sm">
+                    {status.status === 'queued'    && t.advanced.rebuild.queued}
+                    {status.status === 'running'   && t.advanced.rebuild.running}
                     {status.status === 'completed' && t.advanced.rebuild.completed}
-                    {status.status === 'failed' && t.advanced.rebuild.failed}
+                    {status.status === 'failed'    && t.advanced.rebuild.failed}
                   </span>
                   {status.status === 'running' && (
-                    <span className="text-sm text-muted-foreground">
-                      {t.advanced.rebuild.leavePageHint}
-                    </span>
+                    <span className="text-xs text-slate-400">{t.advanced.rebuild.leavePageHint}</span>
                   )}
                 </div>
               </div>
               {(status.status === 'completed' || status.status === 'failed') && (
-                <Button variant="outline" size="sm" onClick={handleReset}>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium transition-colors"
+                >
                   {t.advanced.rebuild.startNew}
-                </Button>
+                </button>
               )}
             </div>
 
             {progressData && (
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs text-slate-500">
                   <span>{t.common.progress}</span>
                   <span className="font-medium">
                     {t.advanced.rebuild.itemsProcessed
@@ -264,33 +262,26 @@ export function RebuildEmbeddings() {
                 </div>
                 <Progress value={progressPercent} className="h-2" />
                 {failedItems > 0 && (
-                  <p className="text-sm text-yellow-600">
+                  <p className="text-xs text-yellow-600">
                     ⚠️ {t.advanced.rebuild.failedItems.replace('{count}', failedItems.toString())}
                   </p>
                 )}
               </div>
             )}
 
-             {stats && (
+            {stats && (
               <div className="grid grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">{t.navigation.sources}</p>
-                  <p className="text-2xl font-bold">{sourcesProcessed}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">{t.common.notes}</p>
-                  <p className="text-2xl font-bold">{notesProcessed}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">{t.common.insights}</p>
-                  <p className="text-2xl font-bold">{insightsProcessed}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">{t.advanced.rebuild.time}</p>
-                  <p className="text-2xl font-bold">
-                    {processingTimeSeconds !== undefined ? `${processingTimeSeconds.toFixed(1)}s` : '—'}
-                  </p>
-                </div>
+                {[
+                  { label: t.navigation.sources, value: sourcesProcessed },
+                  { label: t.common.notes,        value: notesProcessed },
+                  { label: t.common.insights,     value: insightsProcessed },
+                  { label: t.advanced.rebuild.time, value: processingTimeSeconds !== undefined ? `${processingTimeSeconds.toFixed(1)}s` : '—' },
+                ].map(item => (
+                  <div key={item.label} className="space-y-1">
+                    <p className="text-xs text-slate-400">{item.label}</p>
+                    <p className="text-2xl font-bold text-slate-900">{item.value}</p>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -302,7 +293,7 @@ export function RebuildEmbeddings() {
             )}
 
             {status.started_at && (
-              <div className="text-sm text-muted-foreground space-y-1">
+              <div className="text-xs text-slate-400 space-y-0.5">
                 <p>{t.common.created.replace('{time}', new Date(status.started_at).toLocaleString())}</p>
                 {status.completed_at && (
                   <p>{t.notebooks.updated}: {new Date(status.completed_at).toLocaleString()}</p>
@@ -312,30 +303,13 @@ export function RebuildEmbeddings() {
           </div>
         )}
 
-        {/* Help Section */}
-         <Accordion type="single" collapsible className="w-full">
-          <AccordionItem value="when">
-            <AccordionTrigger>{t.advanced.rebuild.whenToRebuild}</AccordionTrigger>
-            <AccordionContent className="space-y-2 text-sm">
-              <p>{t.advanced.rebuild.whenToRebuildAns}</p>
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="time">
-            <AccordionTrigger>{t.advanced.rebuild.howLong}</AccordionTrigger>
-            <AccordionContent className="space-y-2 text-sm">
-              <p>{t.advanced.rebuild.howLongAns}</p>
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="safe">
-            <AccordionTrigger>{t.advanced.rebuild.isSafe}</AccordionTrigger>
-            <AccordionContent className="space-y-2 text-sm">
-              <p>{t.advanced.rebuild.isSafeAns}</p>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </CardContent>
-    </Card>
+        {/* FAQ accordion — simple chevron rows matching reference */}
+        <div className="border-t border-slate-100 pt-4 space-y-0">
+          <FaqItem question={t.advanced.rebuild.whenToRebuild} answer={t.advanced.rebuild.whenToRebuildAns} />
+          <FaqItem question={t.advanced.rebuild.howLong}       answer={t.advanced.rebuild.howLongAns} />
+          <FaqItem question={t.advanced.rebuild.isSafe}        answer={t.advanced.rebuild.isSafeAns} />
+        </div>
+      </div>
+    </div>
   )
 }

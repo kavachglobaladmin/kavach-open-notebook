@@ -5,19 +5,57 @@ import { useToast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 import { CreateNotebookRequest, UpdateNotebookRequest } from '@/lib/types/api'
+import { useAuthStore } from '@/lib/stores/auth-store'
+
+/**
+ * Include the logged-in user's email in every notebook query key so that
+ * React Query maintains a separate cache per user.  This prevents user A's
+ * notebooks from being served to user B when they share the same browser
+ * session (e.g. after a logout/login without a full page reload).
+ *
+ * The backend already filters by `owner = X-User-Email`, so the data
+ * returned is always scoped to the current user — the query key just
+ * ensures the client-side cache is also scoped correctly.
+ */
+function useCurrentUserEmail(): string | null {
+  return useAuthStore(s => s.currentUserEmail)
+}
+
+/**
+ * Returns true when it is safe to fire notebook queries:
+ * - Auth is not required (token = 'not-required') → always safe
+ * - Auth is required AND we have a real user email → safe
+ * - Auth is required but email is still null (store not hydrated yet) → wait
+ */
+function useNotebooksEnabled(): boolean {
+  const token = useAuthStore(s => s.token)
+  const hasHydrated = useAuthStore(s => s.hasHydrated)
+  const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+
+  if (!hasHydrated) return false
+  // Auth not required — fetch without user scoping
+  if (token === 'not-required') return true
+  // Auth required — only fetch once we know who the user is
+  return currentUserEmail !== null
+}
 
 export function useNotebooks(archived?: boolean) {
+  const userEmail = useCurrentUserEmail()
+  const canFetch = useNotebooksEnabled()
   return useQuery({
-    queryKey: [...QUERY_KEYS.notebooks, { archived }],
+    queryKey: [...QUERY_KEYS.notebooks, { archived, user: userEmail }],
     queryFn: () => notebooksApi.list({ archived, order_by: 'updated desc' }),
+    enabled: canFetch,
   })
 }
 
 export function useNotebook(id: string) {
+  const userEmail = useCurrentUserEmail()
+  const canFetch = useNotebooksEnabled()
   return useQuery({
-    queryKey: QUERY_KEYS.notebook(id),
+    queryKey: [...QUERY_KEYS.notebook(id), { user: userEmail }],
     queryFn: () => notebooksApi.get(id),
-    enabled: !!id,
+    enabled: !!id && canFetch,
   })
 }
 
@@ -29,6 +67,7 @@ export function useCreateNotebook() {
   return useMutation({
     mutationFn: (data: CreateNotebookRequest) => notebooksApi.create(data),
     onSuccess: () => {
+      // Invalidate all notebook queries (covers all users' cache buckets)
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
       toast({
         title: t.common.success,
@@ -72,10 +111,12 @@ export function useUpdateNotebook() {
 }
 
 export function useNotebookDeletePreview(id: string, enabled: boolean = false) {
+  const userEmail = useCurrentUserEmail()
+  const canFetch = useNotebooksEnabled()
   return useQuery({
-    queryKey: [...QUERY_KEYS.notebook(id), 'delete-preview'],
+    queryKey: [...QUERY_KEYS.notebook(id), 'delete-preview', { user: userEmail }],
     queryFn: () => notebooksApi.deletePreview(id),
-    enabled: !!id && enabled,
+    enabled: !!id && enabled && canFetch,
   })
 }
 

@@ -54,17 +54,36 @@ async def get_notebooks(
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
-        # Build the query with counts, filtered by owner when a user is present
+        # Build the query with counts, filtered by owner when a user is present.
+        # Also include legacy notebooks that have no owner (owner IS NULL) so that
+        # notebooks created before user-scoping was introduced are still visible.
+        # On first access by a logged-in user, those legacy notebooks are claimed
+        # (owner is set) so they become properly scoped going forward.
         if current_user:
             query = f"""
                 SELECT *,
                 count(<-reference.in) as source_count,
                 count(<-artifact.in) as note_count
                 FROM notebook
-                WHERE owner = $owner
+                WHERE owner = $owner OR owner IS NULL
                 ORDER BY {order_by}
             """
             result = await repo_query(query, {"owner": current_user})
+
+            # Claim any legacy notebooks (owner IS NULL) for this user so they
+            # are properly scoped on subsequent requests.
+            for nb in result:
+                if nb.get("owner") is None:
+                    nb_id = str(nb.get("id", ""))
+                    if nb_id:
+                        try:
+                            await repo_query(
+                                "UPDATE $nb_id SET owner = $owner",
+                                {"nb_id": ensure_record_id(nb_id), "owner": current_user},
+                            )
+                            nb["owner"] = current_user
+                        except Exception as claim_err:
+                            logger.warning(f"Could not claim notebook {nb_id}: {claim_err}")
         else:
             query = f"""
                 SELECT *,
@@ -108,14 +127,19 @@ async def get_notebooks(
 @router.post("/notebooks", response_model=NotebookResponse)
 async def create_notebook(
     notebook: NotebookCreate,
+    request: Request,
     current_user: Optional[str] = Depends(get_current_user),
 ):
     """Create a new notebook."""
     try:
+        # Ensure owner is always set — fall back to X-User-Email header directly
+        # in case get_current_user() returns None due to a timing issue.
+        owner = current_user or request.headers.get("X-User-Email") or None
+
         new_notebook = Notebook(
             name=notebook.name,
             description=notebook.description,
-            owner=current_user,
+            owner=owner,
             storage_limit_mb=notebook.storage_limit_mb,
         )
         await new_notebook.save()
