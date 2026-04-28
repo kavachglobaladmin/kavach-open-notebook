@@ -10,83 +10,53 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
-import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { LanguageToggle } from '@/components/common/LanguageToggle'
-import { TranslationKeys } from '@/lib/locales'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { Separator } from '@/components/ui/separator'
 import {
-  Book,
   Search,
-  Mic,
-  Bot,
-  Shuffle,
-  Settings,
   LogOut,
   ChevronLeft,
   Menu,
   FileText,
-  Plus,
-  Wrench,
-  Command,
-  GitBranch,
-  Newspaper,
+  Clipboard,
+  Scissors,
+  BrainCircuit,
+  Settings2,
+  Sparkles,
 } from 'lucide-react'
 import { SourcePickerDialog } from '@/components/studio/SourcePickerDialog'
 
-const getNavigation = (t: TranslationKeys) => [
-  {
-    title: t.navigation.collect,
-    items: [
-      { name: t.navigation.sources, href: '/sources', icon: FileText, studio: null },
-    ],
-  },
-  {
-    title: t.navigation.process,
-    items: [
-      { name: t.navigation.notebooks, href: '/notebooks', icon: Book, studio: null },
-      { name: t.navigation.askAndSearch, href: '/search', icon: Search, studio: null },
-    ],
-  },
-  {
-    title: t.navigation.manage,
-    items: [
-      { name: t.navigation.models, href: '/settings/api-keys', icon: Bot, studio: null },
-      { name: t.navigation.transformations, href: '/transformations', icon: Shuffle, studio: null },
-      { name: t.navigation.settings, href: '/settings', icon: Settings, studio: null },
-      { name: t.navigation.advanced, href: '/advanced', icon: Wrench, studio: null },
-    ],
-  },
+// Navigation items matching the provided reference image icons
+const navigation = [
+  { name: 'Sources', href: '/sources', icon: FileText, studio: null },
+  { name: 'Cases', href: '/notebooks', icon: Clipboard, studio: null },
+  { name: 'Ask And Search', href: '/search', icon: Search, studio: null },
+  { name: 'Models', href: '/settings/api-keys', icon: BrainCircuit, studio: null },
+  { name: 'Transformations', href: '/transformations', icon: Scissors, studio: null },
+  { name: 'Settings', href: '/settings', icon: Settings2, studio: null },
+  { name: 'Advances', href: '/advanced', icon: Sparkles, studio: null },
 ]
-
-type CreateTarget = 'source' | 'notebook' | 'podcast'
 
 export function AppSidebar() {
   const { t } = useTranslation()
-  const navigation = getNavigation(t)
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
-  const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
 
-  // Derive display name and initials from localStorage user data.
-  // Use state + effect so it re-reads reactively when currentUserEmail changes.
   const [displayName, setDisplayName] = useState('')
   const [initials, setInitials] = useState('')
+  
+  const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false)
+  const [infographicPickerOpen, setInfographicPickerOpen] = useState(false)
+  const [summaryPickerOpen, setSummaryPickerOpen] = useState(false)
 
   useEffect(() => {
     if (!currentUserEmail) {
@@ -113,368 +83,130 @@ export function AppSidebar() {
     }
   }, [currentUserEmail])
 
-  const [createMenuOpen, setCreateMenuOpen] = useState(false)
-  const [isMac, setIsMac] = useState(true)
-  const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false)
-  const [infographicPickerOpen, setInfographicPickerOpen] = useState(false)
-  const [summaryPickerOpen, setSummaryPickerOpen] = useState(false)
-
-  // Detect platform for keyboard shortcut display
-  useEffect(() => {
-    setIsMac(navigator.platform.toLowerCase().includes('mac'))
-  }, [])
-
-  const handleCreateSelection = (target: CreateTarget) => {
-    setCreateMenuOpen(false)
-
-    if (target === 'source') {
-      openSourceDialog()
-    } else if (target === 'notebook') {
-      openNotebookDialog()
-    } else if (target === 'podcast') {
-      openPodcastDialog()
-    }
-  }
-
   return (
     <TooltipProvider delayDuration={0}>
       <div
         className={cn(
-          'app-sidebar flex h-full flex-col bg-sidebar border-sidebar-border border-r transition-all duration-300',
-          isCollapsed ? 'w-16' : 'w-64'
+          'app-sidebar flex h-full flex-col bg-[#FFF0EC] transition-all duration-300 border-none relative',
+          isCollapsed ? 'w-16' : 'w-[280px]'
         )}
       >
+        {/* Header Section */}
         <div
           className={cn(
-            'flex h-16 items-center group',
-            isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
+            'flex h-24 items-center mb-2',
+            isCollapsed ? 'justify-center px-2' : 'justify-between pl-8 pr-6'
           )}
         >
-          {isCollapsed ? (
-            <div className="relative flex items-center justify-center w-full">
-              <Image
-                src="/logo(1).svg"
-                alt="Kavach"
-                width={32}
-                height={32}
-                className="transition-opacity group-hover:opacity-0 object-contain"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleCollapse}
-                className="absolute text-sidebar-foreground hover:bg-sidebar-accent opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
+          {!isCollapsed ? (
             <>
               <div className="flex items-center gap-2">
-                <Image src="/logo(1).svg" alt="Kavach" width={50} height={36} className="object-contain w-[50px] h-[36px]" />
-                <p className="font-semibold text-sm tracking-wide">NOTEBOOKS</p>
+                <Image src="/logo(1).svg" alt="Kavach" width={32} height={32} className="object-contain" />
+                <p className="font-bold text-[18px] tracking-[0.1em] text-[#1E293B]">NOTEBOOKS</p>
               </div>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon"
                 onClick={toggleCollapse}
-                className="text-sidebar-foreground hover:bg-sidebar-accent"
-                data-testid="sidebar-toggle"
+                className="text-[#E8694F] border border-[#E8694F]/30 hover:bg-[#E8694F] hover:text-white rounded-full h-7 w-7"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             </>
-          )}
-        </div>
-
-        <nav
-          className={cn(
-            'flex-1 space-y-1 py-4',
-            isCollapsed ? 'px-2' : 'px-3'
-          )}
-        >
-          <div
-            className={cn(
-              'mb-4',
-              isCollapsed ? 'px-0' : 'px-3'
-            )}
-          >
-            <DropdownMenu open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
-              {isCollapsed ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        onClick={() => setCreateMenuOpen(true)}
-                        variant="default"
-                        size="sm"
-                        className="w-full justify-center px-2 bg-primary hover:bg-primary/90 text-primary-foreground border-0"
-                        aria-label={t.common.create}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                   <TooltipContent side="right">{t.common.create}</TooltipContent>
-                </Tooltip>
-              ) : (
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    onClick={() => setCreateMenuOpen(true)}
-                    variant="default"
-                    size="sm"
-                    className="w-full justify-start bg-primary hover:bg-primary/90 text-primary-foreground border-0"
-                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    {t.common.create}
-                  </Button>
-                </DropdownMenuTrigger>
-              )}
-
-              <DropdownMenuContent
-                align={isCollapsed ? 'end' : 'start'}
-                side={isCollapsed ? 'right' : 'bottom'}
-                className="w-48"
-              >
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('source')
-                  }}
-                  className="gap-2"
-                >
-                   <FileText className="h-4 w-4" />
-                  {t.common.source}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('notebook')
-                  }}
-                  className="gap-2"
-                >
-                   <Book className="h-4 w-4" />
-                  {t.common.notebook}
-                  
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('podcast')
-                  }}
-                  className="gap-2"
-                >
-                   <Mic className="h-4 w-4" />
-                  {t.common.podcast}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {navigation.map((section, index) => (
-            <div key={section.title}>
-              {index > 0 && (
-                <Separator className="my-3" />
-              )}
-              <div className="space-y-1">
-                {!isCollapsed && (
-                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
-                    {section.title}
-                  </h3>
-                )}
-
-                {section.items.map((item) => {
-                  const isActive = item.href ? (pathname?.startsWith(item.href) || false) : false
-                  const button = (
-                    <Button
-                      variant={isActive ? 'secondary' : 'ghost'}
-                      className={cn(
-                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
-                        isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                        isCollapsed ? 'justify-center px-2' : 'justify-start'
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.name}</span>}
-                    </Button>
-                  )
-
-                  // Studio items open a source picker dialog
-                  if (item.studio) {
-                    const studioKey = item.studio
-                    const openPicker = () => {
-                      if (studioKey === 'mindmap') setMindMapPickerOpen(true)
-                      else if (studioKey === 'infographic') setInfographicPickerOpen(true)
-                      else setSummaryPickerOpen(true)
-                    }
-                    if (isCollapsed) {
-                      return (
-                        <Tooltip key={item.name}>
-                          <TooltipTrigger asChild>
-                            <div onClick={openPicker}>{button}</div>
-                          </TooltipTrigger>
-                          <TooltipContent side="right">{item.name}</TooltipContent>
-                        </Tooltip>
-                      )
-                    }
-                    return (
-                      <div key={item.name} onClick={openPicker}>
-                        {button}
-                      </div>
-                    )
-                  }
-
-                  if (isCollapsed) {
-                    return (
-                      <Tooltip key={item.name}>
-                        <TooltipTrigger asChild>
-                          <Link href={item.href!}>
-                            {button}
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">{item.name}</TooltipContent>
-                      </Tooltip>
-                    )
-                  }
-
-                  return (
-                    <Link key={item.name} href={item.href!}>
-                      {button}
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        <div
-          className={cn(
-            'border-t border-sidebar-border p-3 space-y-2',
-            isCollapsed && 'px-2'
-          )}
-        >
-          {/* User info — shown above Quick actions */}
-          {currentUserEmail && (
-            isCollapsed ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white mx-auto select-none cursor-default"
-                    style={{ background: 'linear-gradient(135deg, #1a3a8f 0%, #0f2460 100%)' }}
-                  >
-                    {initials}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">{displayName}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30">
-                <div
-                  className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white shrink-0 select-none"
-                  style={{ background: 'linear-gradient(135deg, #1a3a8f 0%, #0f2460 100%)' }}
-                >
-                  {initials}
-                </div>
-                <span className="text-sm font-medium truncate leading-tight">{displayName}</span>
-              </div>
-            )
-          )}
-
-          {/* Command Palette hint */}
-          {!isCollapsed && (
-            <div className="px-3 py-1.5 text-xs text-sidebar-foreground/60">
-              <div className="flex items-center justify-between">
-                 <span className="flex items-center gap-1.5">
-                  <Command className="h-3 w-3" />
-                  {t.common.quickActions}
-                </span>
-                <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                  {isMac ? <span className="text-xs">⌘</span> : <span>Ctrl+</span>}K
-                </kbd>
-              </div>
-               <p className="mt-1 text-[10px] text-sidebar-foreground/40">
-                {t.common.quickActionsDesc}
-              </p>
-            </div>
-          )}
-
-           <div
-            className={cn(
-              'flex flex-col gap-2',
-              isCollapsed ? 'items-center' : 'items-stretch'
-            )}
-          >
-            {isCollapsed ? (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <ThemeToggle iconOnly />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{t.common.theme}</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <LanguageToggle iconOnly />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{t.common.language}</TooltipContent>
-                </Tooltip>
-              </>
-            ) : (
-              <>
-                <ThemeToggle />
-                <LanguageToggle />
-              </>
-            )}
-          </div>
-
-          {isCollapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-center sidebar-menu-item"
-                  onClick={logout}
-                  aria-label={t.common.signOut}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-               <TooltipContent side="right">{t.common.signOut}</TooltipContent>
-            </Tooltip>
           ) : (
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3 sidebar-menu-item"
-              onClick={logout}
-              aria-label={t.common.signOut}
-             >
-              <LogOut className="h-4 w-4" />
-              {t.common.signOut}
+            <Button variant="ghost" size="sm" onClick={toggleCollapse} className="text-[#E8694F]">
+              <Menu className="h-5 w-5" />
             </Button>
           )}
         </div>
+
+        {/* Navigation Items */}
+        <nav className="flex-1 space-y-1">
+          {navigation.map((item) => {
+            // Enhanced logic: Matches exactly for specific sub-routes, 
+            // or handles prefix matching only if it's not a generic parent route
+            const isActive = item.href === '/settings' 
+                ? pathname === '/settings' // Exact match for settings to prevent collision with Models
+                : (item.href ? pathname?.startsWith(item.href) : false)
+
+            const buttonContent = (
+              <div
+                className={cn(
+                  'flex items-center gap-4 w-full transition-all duration-200 relative z-10',
+                  isCollapsed ? 'justify-center py-3' : 'pl-8 py-4',
+                  isActive 
+                    ? 'bg-white text-slate-900 rounded-l-[30px] ml-4' 
+                    : 'text-[#334155] bg-transparent'
+                )}
+              >
+                <item.icon className={cn("h-[20px] w-[20px]", isActive ? "text-[#E8694F]" : "text-slate-600")} />
+                {!isCollapsed && <span className="font-semibold text-[15px]">{item.name}</span>}
+              </div>
+            )
+
+            const itemNode = (
+              <div className="relative w-full cursor-pointer group pr-0">
+                {item.studio ? (
+                  <div onClick={() => {
+                    if (item.studio === 'mindmap') setMindMapPickerOpen(true)
+                    else if (item.studio === 'infographic') setInfographicPickerOpen(true)
+                    else setSummaryPickerOpen(true)
+                  }}>
+                    {buttonContent}
+                  </div>
+                ) : (
+                  <Link href={item.href!}>{buttonContent}</Link>
+                )}
+
+                {/* Curved Connector Effect for Active Tab */}
+                {isActive && !isCollapsed && (
+                  <>
+                    <div className="absolute right-0 -top-6 w-6 h-6 bg-transparent rounded-br-[24px] shadow-[8px_8px_0_0_#ffffff] pointer-events-none z-0" />
+                    <div className="absolute right-0 -bottom-6 w-6 h-6 bg-transparent rounded-tr-[24px] shadow-[8px_-8px_0_0_#ffffff] pointer-events-none z-0" />
+                  </>
+                )}
+              </div>
+            )
+
+            return isCollapsed ? (
+              <Tooltip key={item.name}>
+                <TooltipTrigger asChild>{itemNode}</TooltipTrigger>
+                <TooltipContent side="right">{item.name}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <div key={item.name}>{itemNode}</div>
+            )
+          })}
+        </nav>
+
+        {/* Bottom Actions Container */}
+        <div className="mt-auto mb-8 px-5">
+          <div className="bg-[#FDE4DE] rounded-[24px] p-2 flex flex-col overflow-hidden">
+            <div className="flex flex-col">
+              <div className="hover:bg-white/40 transition-colors rounded-xl">
+                 <ThemeToggle className="w-full justify-start gap-4 px-4 py-4 text-slate-800 font-semibold text-[15px]" />
+              </div>
+              <div className="h-[1px] bg-[#E8694F]/10 mx-4" />
+              <div className="hover:bg-white/40 transition-colors rounded-xl">
+                <LanguageToggle className="w-full justify-start gap-4 px-4 py-4 text-slate-800 font-semibold text-[15px]" />
+              </div>
+              <div className="h-[1px] bg-[#E8694F]/10 mx-4" />
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-4 px-4 py-4 text-slate-800 font-semibold text-[15px] hover:bg-white/40 h-auto"
+                onClick={logout}
+              >
+                <LogOut className="h-[20px] w-[20px] text-slate-600" />
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
-      {/* Studio source pickers — always mounted so result dialogs survive picker close */}
-      <SourcePickerDialog
-        open={summaryPickerOpen}
-        onOpenChange={setSummaryPickerOpen}
-        mode="summary"
-      />
-      <SourcePickerDialog
-        open={mindMapPickerOpen}
-        onOpenChange={setMindMapPickerOpen}
-        mode="mindmap"
-      />
-      <SourcePickerDialog
-        open={infographicPickerOpen}
-        onOpenChange={setInfographicPickerOpen}
-        mode="infographic"
-      />
+      
+      <SourcePickerDialog open={summaryPickerOpen} onOpenChange={setSummaryPickerOpen} mode="summary" />
+      <SourcePickerDialog open={mindMapPickerOpen} onOpenChange={setMindMapPickerOpen} mode="mindmap" />
+      <SourcePickerDialog open={infographicPickerOpen} onOpenChange={setInfographicPickerOpen} mode="infographic" />
     </TooltipProvider>
   )
 }

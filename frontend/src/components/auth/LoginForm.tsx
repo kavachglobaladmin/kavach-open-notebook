@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
-import { getConfig } from '@/lib/config'
-import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react'
+import { getConfig, getApiUrl } from '@/lib/config'
+import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, Sparkles } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import Image from 'next/image'
 import { ForgotPasswordModal } from './ForgotPasswordModal'
@@ -14,6 +14,7 @@ import { ForgotPasswordModal } from './ForgotPasswordModal'
 import KavachLogo from '@/assets/kavach_logo.png'
 import signInIllustration from '@/assets/10241279-01.png'
 import signUpIllustration from '@/assets/Data_security_011.png'
+import forgotIllustration from '@/assets/Hand.png'
 
 // ── Local user store ──────────────────────────────────────────────────────────
 interface LocalUser { name: string; email: string; password: string }
@@ -21,33 +22,58 @@ interface LocalUser { name: string; email: string; password: string }
 function getUsers(): LocalUser[] {
   try { return JSON.parse(localStorage.getItem('kavach_users') || '[]') } catch { return [] }
 }
-function saveUser(u: LocalUser) {
-  const users = getUsers(); users.push(u)
+function saveUserLocally(u: LocalUser) {
+  const users = getUsers()
+  const idx = users.findIndex(x => x.email.toLowerCase() === u.email.toLowerCase())
+  if (idx >= 0) users[idx] = u; else users.push(u)
   localStorage.setItem('kavach_users', JSON.stringify(users))
 }
-function findUser(email: string, password: string): LocalUser | null {
+function findUserLocally(email: string, password: string): LocalUser | null {
   return getUsers().find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password) ?? null
 }
-function emailExists(email: string): boolean {
+function emailExistsLocally(email: string): boolean {
   return getUsers().some(u => u.email.toLowerCase() === email.toLowerCase())
 }
 
-// ── Email validation ──────────────────────────────────────────────────────────
+// ── Backend user API helpers ──────────────────────────────────────────────────
+async function registerUserBackend(name: string, email: string, password: string): Promise<{ ok: boolean; conflict: boolean }> {
+  try {
+    const apiUrl = await getApiUrl()
+    const res = await fetch(`${apiUrl}/api/users/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    })
+    if (res.ok) return { ok: true, conflict: false }
+    if (res.status === 409) return { ok: false, conflict: true }
+    return { ok: false, conflict: false }
+  } catch { return { ok: false, conflict: false } }
+}
+
+async function loginUserBackend(email: string, password: string): Promise<{ name: string } | null> {
+  try {
+    const apiUrl = await getApiUrl()
+    const res = await fetch(`${apiUrl}/api/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return { name: data.name ?? '' }
+    }
+    return null
+  } catch { return null }
+}
+
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
-
 type EmailState = 'empty' | 'invalid' | 'valid'
-
 function getEmailState(email: string): EmailState {
   if (!email) return 'empty'
   return EMAIL_REGEX.test(email.trim()) ? 'valid' : 'invalid'
 }
 
-// ── Password validation ───────────────────────────────────────────────────────
-interface PasswordCheck {
-  label: string
-  pass: boolean
-}
-
+interface PasswordCheck { label: string; pass: boolean }
 function getPasswordChecks(pw: string): PasswordCheck[] {
   return [
     { label: 'At least 8 characters',            pass: pw.length >= 8 },
@@ -56,67 +82,63 @@ function getPasswordChecks(pw: string): PasswordCheck[] {
     { label: 'At least 1 special character',      pass: /[^a-zA-Z0-9]/.test(pw) },
   ]
 }
-
 function isPasswordValid(pw: string): boolean {
   return getPasswordChecks(pw).every(c => c.pass)
 }
-
 function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
   const passed = getPasswordChecks(pw).filter(c => c.pass).length
   return passed as 0 | 1 | 2 | 3 | 4
 }
-
 const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
-const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#22c55e']
+const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#FF7043']
 
-// ── Blue panel (Overlay Card) ─────────────────────────────────────────────────
-function BluePanel({ mode, onSwitch }: { mode: 'signin' | 'signup'; onSwitch: () => void }) {
+// ── Themed Panel (Updated for Minimalist Logo & Switch) ───────────────────────
+function ThemedPanel({ mode, onSwitch, illustration }: { mode: 'signin' | 'signup' | 'forgot'; onSwitch: () => void; illustration?: typeof signInIllustration }) {
   const isSignIn = mode === 'signin'
   const switchButtonText = isSignIn ? 'Sign Up' : 'Sign In'
-  
-  const bgImage = isSignIn ? signInIllustration : signUpIllustration
+  // Use provided illustration, or fall back to mode-based default
+  const bgImage = illustration ?? (isSignIn ? signInIllustration : signUpIllustration)
 
   return (
     <div
-      className="flex flex-col relative overflow-hidden w-1/2 flex-shrink-0"
-      style={{ backgroundColor: '#4e78b3ff' }}
+      className="flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 animate-in fade-in duration-700"
+      style={{ backgroundColor: '#FFF0EC' }}
     >
+      {/* Decorative Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#FF7043]/10 blur-[80px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#FF7043]/10 blur-[80px]" />
+
       <div className="absolute inset-0 z-0 flex items-center justify-center p-8 pointer-events-none">
-        <div className="relative w-full h-full flex items-center justify-center">
+        <div className="relative w-full h-full flex items-center justify-center scale-110">
           <Image 
             src={bgImage} 
             alt={`${mode} illustration`} 
             fill 
-            className="object-contain object-center" 
+            className="object-contain object-center drop-shadow-2xl" 
             quality={100}
             priority
           />
         </div>
       </div>
 
-      <div className="relative z-10 flex w-full justify-center pt-5">
-        <Image 
-          src={KavachLogo} 
-          alt="Kavach Logo" 
-          width={175} 
-          height={65} 
-          className="object-contain" 
-        />
+      {/* Transparent Logo Container */}
+      <div className="relative z-10 flex w-full justify-center pt-10">
+        <Image src={KavachLogo} alt="Kavach Logo" width={160} height={60} className="object-contain" />
       </div>
 
       <div className="flex-1" />
 
-      <div className="relative z-10 flex w-full justify-center pb-10">
+      {/* Simplified Switch Button */}
+      {/* <div className="relative z-10 flex w-full justify-center pb-12">
         <button
           onClick={onSwitch}
-          className="px-16 py-3 rounded-md text-white text-sm font-bold transition-all active:scale-95"
-          style={{
-            background: 'rgba(31, 31, 31, 0.65)',
-          }}
+          className="group px-14 py-3 rounded-xl text-white text-[15px] font-bold transition-all active:scale-95 flex items-center gap-2 hover:brightness-110"
+          style={{ background: '#FF7043' }}
         >
+          <Sparkles className="w-4 h-4 text-orange-100" />
           {switchButtonText}
         </button>
-      </div>
+      </div> */}
     </div>
   )
 }
@@ -159,7 +181,7 @@ export function LoginForm() {
           if (hasSession) router.push('/notebooks')
           else setIsCheckingAuth(false)
         }
-      } catch { /* ignore */ }
+      } catch { setIsCheckingAuth(false) }
       finally { setIsCheckingAuth(false) }
     }
     if (authRequired !== null) {
@@ -167,20 +189,12 @@ export function LoginForm() {
         const hasSession = localStorage.getItem('kavach_session') === 'true'
         if (hasSession && isAuthenticated) router.push('/notebooks')
         else setIsCheckingAuth(false)
-      } else {
-        setIsCheckingAuth(false)
-      }
-    } else {
-      void checkAuth()
-    }
+      } else { setIsCheckingAuth(false) }
+    } else { void checkAuth() }
   }, [hasHydrated, authRequired, checkAuthRequired, router, isAuthenticated])
 
   if (!hasHydrated || isCheckingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#e8eef8]">
-        <LoadingSpinner />
-      </div>
-    )
+    return <div className="fixed inset-0 flex items-center justify-center bg-[#FFF0EC]"><LoadingSpinner /></div>
   }
 
   const switchMode = (m: 'signin' | 'signup') => {
@@ -196,47 +210,42 @@ export function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLocalError('')
-
     if (mode === 'signup') {
-      if (!name.trim())                          { setLocalError('Name is required.'); return }
-      if (!email.trim())                         { setLocalError('Email is required.'); return }
-      if (emailState !== 'valid')                { setLocalError('Enter a valid email address.'); return }
-      if (!password.trim())                      { setLocalError('Password is required.'); return }
-      if (!isPasswordValid(password))            { setLocalError('Password must have 8+ chars, 1 uppercase, 1 lowercase, and 1 special character.'); return }
-      if (!agreed)                               { setLocalError('Please agree to Terms & Conditions.'); return }
-      if (emailExists(email))                    { setLocalError('Account already exists. Please sign in.'); return }
-
+      if (!name.trim()) { setLocalError('Name is required.'); return }
+      if (!email.trim()) { setLocalError('Email is required.'); return }
+      if (emailState !== 'valid') { setLocalError('Enter a valid email address.'); return }
+      if (!password.trim()) { setLocalError('Password is required.'); return }
+      if (!isPasswordValid(password)) { setLocalError('Password must have 8+ chars, 1 uppercase, 1 lowercase, and 1 special character.'); return }
+      if (!agreed) { setLocalError('Please agree to Terms & Conditions.'); return }
+      if (emailExistsLocally(email)) { setLocalError('Account already exists. Please sign in.'); return }
       setLocalLoading(true)
-      // Save locally
-      saveUser({ name: name.trim(), email: email.trim().toLowerCase(), password })
-      
-      // Simulate registration delay
-      await new Promise(resolve => setTimeout(resolve, 800))
-      
+      const backendResult = await registerUserBackend(name.trim(), email.trim().toLowerCase(), password)
+      if (backendResult.conflict) {
+        setLocalError('Account already exists. Please sign in.')
+        setLocalLoading(false)
+        return
+      }
+      saveUserLocally({ name: name.trim(), email: email.trim().toLowerCase(), password })
+      await new Promise(resolve => setTimeout(resolve, 400))
       setLocalLoading(false)
-      // Redirect to Sign In after successful signup
       switchMode('signin')
       return
     }
-
-    // Sign in flow
-    if (!email.trim())      { setLocalError('Email is required.'); return }
+    if (!email.trim()) { setLocalError('Email is required.'); return }
     if (emailState !== 'valid') { setLocalError('Enter a valid email address.'); return }
-    if (!password.trim())   { setLocalError('Password is required.'); return }
-
-    const user = findUser(email.trim(), password)
-    if (!user) { setLocalError('Invalid email or password.'); return }
-
+    if (!password.trim()) { setLocalError('Password is required.'); return }
+    const normalizedEmail = email.trim().toLowerCase()
     setLocalLoading(true)
     // Set current user BEFORE login() so auth-store can read the email + name
     localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
     // Perform actual login
     const ok = await login(password)
-    
     if (ok) {
       localStorage.setItem('kavach_session', 'true')
       router.push('/notebooks')
     } else {
+      localStorage.removeItem('kavach_current_user')
+      setLocalError('Authentication failed. Please try again.')
       localStorage.removeItem('kavach_current_user')
       setLocalError('Authentication failed. Please try again.')
     }
@@ -245,242 +254,123 @@ export function LoginForm() {
 
   const isSignIn = mode === 'signin'
 
+  // When forgotOpen is true, the ForgotPasswordModal renders its own
+  // two-panel layout (illustration + form) — no outer ThemedPanel needed.
   if (forgotOpen) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#e8eef8] p-4 sm:p-8">
-        <div className="flex w-full max-w-[1000px] h-[650px] bg-white rounded-2xl shadow-2xl overflow-hidden">
-          <BluePanel mode="signin" onSwitch={() => switchMode('signup')} />
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#FFF0EC] p-4 sm:p-8 relative overflow-hidden">
+        <div className="flex w-full max-w-[1100px] min-h-[720px] bg-white rounded-[40px] shadow-[0_32px_64px_-12px_rgba(255,112,67,0.15)] overflow-hidden border border-white z-10">
           <ForgotPasswordModal
             open={forgotOpen}
             onClose={() => setForgotOpen(false)}
-            onSignIn={() => { setForgotOpen(false); setMode('signin') }}
+            onSignIn={() => {
+              setForgotOpen(false)
+              switchMode('signin')
+            }}
           />
         </div>
+        <p className="absolute bottom-6 right-8 text-slate-300 text-[11px] font-bold tracking-widest uppercase">v{configInfo?.version ?? '1.8.1'} • SECURE</p>
       </div>
     )
   }
 
-  const emailField = (
-    <div className="space-y-1">
-      <label className="text-xs font-semibold text-gray-700">Email Address</label>
-      <div className="relative">
-        <input
-          type="email"
-          placeholder="Enter Your Registered Email"
-          value={email}
-          onChange={e => { setEmail(e.target.value); setEmailTouched(true) }}
-          onBlur={() => setEmailTouched(true)}
-          disabled={isLoading}
-          className={[
-            'w-full px-3 py-3 pr-10 text-sm rounded-lg bg-gray-50 focus:outline-none focus:bg-white transition-colors placeholder:text-gray-400 border',
-            emailTouched && email
-              ? emailState === 'valid'
-                ? 'border-green-400 focus:border-green-500'
-                : 'border-red-400 focus:border-red-500'
-              : 'border-gray-200 focus:border-blue-400',
-          ].join(' ')}
-        />
-        {emailTouched && email && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            {emailState === 'valid'
-              ? <CheckCircle2 className="h-4 w-4 text-green-500" />
-              : <XCircle className="h-4 w-4 text-red-400" />
-            }
-          </span>
-        )}
-      </div>
-      {emailTouched && email && emailState === 'invalid' && (
-        <p className="text-xs text-red-500 flex items-center gap-1 mt-0.5">
-          <AlertCircle className="h-3 w-3 shrink-0" />
-          Please enter a valid email (e.g. name@example.com)
-        </p>
-      )}
-    </div>
-  )
-
-  const formPanel = (
-    <div
-      className="flex flex-col justify-center bg-white px-10 sm:px-14 py-12 relative w-1/2"
-      style={{
-        opacity: animating ? 0 : 1,
-        transition: 'opacity 0.2s ease',
-      }}
-    >
-      <div className="mb-8 text-center">
-        <h2 className="font-extrabold text-gray-900 text-[26px] mb-2 tracking-tight">
-          {isSignIn ? 'Welcome Back' : 'Create Your Account'}
-        </h2>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {!isSignIn && (
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-gray-700">Name</label>
-            <input
-              type="text"
-              placeholder="Please enter your name"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              disabled={isLoading}
-              className="w-full px-3 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors placeholder:text-gray-400"
-            />
-          </div>
-        )}
-
-        {emailField}
-
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-gray-700">Password</label>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Enter Your Password"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setPasswordTouched(true) }}
-              onBlur={() => setPasswordTouched(true)}
-              disabled={isLoading}
-              className={[
-                'w-full px-3 py-3 pr-10 text-sm rounded-lg bg-gray-50 focus:outline-none focus:bg-white transition-colors placeholder:text-gray-400 border',
-                !isSignIn && passwordTouched && password
-                  ? isPasswordValid(password)
-                    ? 'border-green-400 focus:border-green-500'
-                    : 'border-red-400 focus:border-red-500'
-                  : 'border-gray-200 focus:border-blue-400',
-              ].join(' ')}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-
-          {isSignIn && (
-            <div className="flex justify-end pt-1">
-              <button
-                type="button"
-                onClick={() => setForgotOpen(true)}
-                className="text-xs text-blue-600 hover:underline font-medium"
-              >
-                Forgot Password?
-              </button>
-            </div>
-          )}
-
-          {!isSignIn && passwordTouched && password && (() => {
-            const checks = getPasswordChecks(password)
-            const strength = getStrengthLevel(password)
-            return (
-              <div className="mt-2 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1 flex-1">
-                    {[1, 2, 3, 4].map(i => (
-                      <div
-                        key={i}
-                        className="h-1.5 flex-1 rounded-full transition-all duration-300"
-                        style={{ background: i <= strength ? STRENGTH_COLOR[strength] : '#e5e7eb' }}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs font-semibold w-12 text-right" style={{ color: STRENGTH_COLOR[strength] }}>
-                    {STRENGTH_LABEL[strength]}
-                  </span>
-                </div>
-                <ul className="space-y-1">
-                  {checks.map(c => (
-                    <li key={c.label} className="flex items-center gap-1.5 text-xs">
-                      {c.pass
-                        ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                        : <XCircle     className="h-3.5 w-3.5 text-red-400   shrink-0" />
-                      }
-                      <span className={c.pass ? 'text-green-600' : 'text-red-400'}>{c.label}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )
-          })()}
-        </div>
-
-        {!isSignIn && (
-          <label className="flex items-start gap-2 cursor-pointer select-none pt-2">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={e => setAgreed(e.target.checked)}
-              className="rounded accent-blue-600 w-3.5 h-3.5 shrink-0 mt-0.5 border-gray-300"
-            />
-            <span className="text-xs text-gray-600 font-medium">
-              I Agree To The{' '}
-              <span className="text-gray-800 hover:text-blue-600 transition-colors cursor-pointer">
-                Terms &amp; Conditions And Privacy Policy
-              </span>
-            </span>
-          </label>
-        )}
-
-        {localError && (
-          <div className="flex items-start gap-2 text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            {localError}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full py-3 mt-4 rounded-xl text-white text-sm font-semibold transition-all hover:bg-blue-600 active:scale-[0.98] disabled:opacity-60"
-          style={{ background: '#2563eb' }}
-        >
-          {isLoading
-            ? <span className="flex items-center justify-center gap-2"><LoadingSpinner />{isSignIn ? 'Signing In...' : 'Signing Up...'}</span>
-            : (isSignIn ? 'Sign In' : 'Sign Up')
-          }
-        </button>
-
-        <p className="text-xs text-gray-900 font-medium text-center pt-2">
-          {isSignIn ? (
-            <>Don&apos;t Have An Account?{' '}
-              <button type="button" onClick={() => switchMode('signup')} className="text-blue-600 font-bold hover:underline">
-                Sign Up
-              </button>
-            </>
-          ) : (
-            <>Remember Your Password?{' '}
-              <button type="button" onClick={() => switchMode('signin')} className="text-blue-600 font-bold hover:underline">
-                Sign In
-              </button>
-            </>
-          )}
-        </p>
-      </form>
-
-      <p className="absolute bottom-4 right-6 text-gray-300 text-[10px]">v{configInfo?.version ?? '1.0'}</p>
-    </div>
-  )
-
-  const bluePanel = (
-    <BluePanel mode={mode} onSwitch={() => switchMode(isSignIn ? 'signup' : 'signin')} />
-  )
-
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#e8eef8] p-4 sm:p-8 ">
-      <div className="flex w-full max-w-[1090px] min-h-[710px] bg-white rounded-4xl shadow-2xl overflow-hidden">
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#FFF0EC] p-4 sm:p-8 relative overflow-hidden">
+      <div className="flex w-full max-w-[1100px] min-h-[720px] bg-white rounded-[40px] shadow-[0_32px_64px_-12px_rgba(255,112,67,0.15)] overflow-hidden border border-white z-10">
         {isSignIn ? (
           <>
-            {bluePanel}
-            {formPanel}
+            <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />
+            <div className="flex flex-col justify-center bg-white px-12 sm:px-16 py-12 relative w-1/2" style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}>
+                <div className="mb-10">
+                    <h2 className="font-black text-slate-900 text-[32px] mb-2 tracking-tight">Welcome Back</h2>
+                    <div className="h-1.5 w-12 bg-[#FF7043] rounded-full" />
+                </div>
+                {/* Sign In Form Logic Here */}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
+                        <input
+                            type="email"
+                            placeholder="Enter Your Registered Email"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
+                        <div className="relative">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                placeholder="Enter Your Password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all"
+                            />
+                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
+                        </div>
+                        <div className="flex justify-end pt-1">
+                            <button type="button" onClick={() => setForgotOpen(true)} className="text-[12px] text-[#FF7043] font-bold uppercase">Forgot Password?</button>
+                        </div>
+                    </div>
+                    <button type="submit" disabled={isLoading} className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98]" style={{ background: '#FF7043' }}>
+                        {isLoading ? <LoadingSpinner /> : 'SIGN IN'}
+                    </button>
+                </form>
+                <p className="text-sm text-slate-400 font-bold text-center pt-6">New to Kavach? <button onClick={() => switchMode('signup')} className="text-[#FF7043]">Create an Account</button></p>
+            </div>
           </>
         ) : (
           <>
-            {formPanel}
-            {bluePanel}
+            <div className="flex flex-col justify-center bg-white px-12 sm:px-16 py-12 relative w-1/2" style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}>
+                <div className="mb-10">
+                    <h2 className="font-black text-slate-900 text-[28px] mb-2 tracking-tight">Welcome To Open NoteBook</h2>
+                    <div className="h-1.5 w-12 bg-[#FF7043] rounded-full" />
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-700 ml-1">Name</label>
+                        <input
+                            type="text"
+                            placeholder="Please enter your name"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
+                        <input
+                            type="email"
+                            placeholder="Enter Your Registered Email"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Enter Your Password"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all"
+                        />
+                    </div>
+                    <button type="submit" disabled={isLoading} className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98]" style={{ background: '#FF7043' }}>
+                        {isLoading ? <LoadingSpinner /> : 'CREATE ACCOUNT'}
+                    </button>
+                </form>
+                <p className="text-sm text-slate-400 font-bold text-center pt-6">Already have an account? <button onClick={() => switchMode('signin')} className="text-[#FF7043]">Sign In</button></p>
+            </div>
+            <ThemedPanel mode="signup" onSwitch={() => switchMode('signin')} />
           </>
         )}
       </div>
+      <p className="absolute bottom-6 right-8 text-slate-300 text-[11px] font-bold tracking-widest uppercase">v{configInfo?.version ?? '1.8.1'} • SECURE</p>
     </div>
   )
 }

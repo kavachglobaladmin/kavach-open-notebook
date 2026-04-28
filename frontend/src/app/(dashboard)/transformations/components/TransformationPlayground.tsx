@@ -1,13 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Play, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
 import { useExecuteTransformation } from '@/lib/hooks/use-transformations'
 import { ModelSelector } from '@/components/common/ModelSelector'
@@ -26,18 +22,16 @@ export function TransformationPlayground({ transformations, selectedTransformati
   const [inputText, setInputText] = useState('')
   const [modelId, setModelId] = useState('')
   const [output, setOutput] = useState('')
-  
+
   const executeTransformation = useExecuteTransformation()
 
   const handleExecute = async () => {
-    if (!selectedId || !modelId || !inputText.trim()) {
-      return
-    }
+    if (!selectedId || !modelId || !inputText.trim()) return
 
     const result = await executeTransformation.mutateAsync({
       transformation_id: selectedId,
       input_text: inputText,
-      model_id: modelId
+      model_id: modelId,
     })
 
     setOutput(result.output)
@@ -47,108 +41,119 @@ export function TransformationPlayground({ transformations, selectedTransformati
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t.transformations.playground}</CardTitle>
-          <CardDescription>
-            {t.transformations.desc}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="transformation">{t.navigation.transformation}</Label>
-              <Select name="transformation" value={selectedId} onValueChange={setSelectedId}>
-                <SelectTrigger id="transformation">
-                  <SelectValue placeholder={t.transformations.selectToStart} />
-                </SelectTrigger>
-                <SelectContent>
-                  {transformations?.map((transformation) => (
-                    <SelectItem key={transformation.id} value={transformation.id}>
-                      {transformation.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Page-level heading — centered, matches reference */}
+      <div className="text-center py-6">
+        <h2 className="text-3xl font-bold text-slate-900">{t.transformations.playground}</h2>
+        <p className="text-slate-500 mt-2 text-sm max-w-xl mx-auto">{t.transformations.desc}</p>
+      </div>
 
-            <div>
-              <ModelSelector
-                label={t.transformations.model}
-                name="model"
-                modelType="language"
-                value={modelId}
-                onChange={setModelId}
-                placeholder={t.transformations.selectModel}
-              />
-            </div>
+      {/* Main playground card */}
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+        {/* Input area — large textarea at top */}
+        <div className="p-6 border-b border-slate-100">
+          <textarea
+            id="input"
+            name="input"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder={t.transformations.inputPlaceholder}
+            rows={5}
+            className="w-full resize-none text-slate-800 text-[15px] placeholder:text-slate-400 focus:outline-none bg-transparent font-medium leading-relaxed"
+          />
+        </div>
+
+        {/* Controls row — Transformation + Model dropdowns + RUN button */}
+        <div className="px-6 py-4 flex items-center gap-4 flex-wrap">
+          {/* Transformation selector */}
+          <div className="flex flex-col gap-1 min-w-[160px]">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {t.navigation.transformation}
+            </label>
+            <Select name="transformation" value={selectedId} onValueChange={setSelectedId}>
+              <SelectTrigger
+                id="transformation"
+                className="h-9 text-sm rounded-lg border-slate-200 focus:ring-[#FF7043] focus:border-[#FF7043] min-w-[160px]"
+              >
+                <SelectValue placeholder={t.transformations.selectToStart} />
+              </SelectTrigger>
+              <SelectContent>
+                {transformations?.map((transformation) => (
+                  <SelectItem key={transformation.id} value={transformation.id}>
+                    {transformation.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div>
-            <Label htmlFor="input">{t.transformations.inputLabel}</Label>
-            <Textarea
-              id="input"
-              name="input"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={t.transformations.inputPlaceholder}
-              rows={8}
-              className="font-mono text-sm"
+          {/* Model selector */}
+          <div className="flex flex-col gap-1 min-w-[160px]">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {t.transformations.model}
+            </label>
+            <ModelSelector
+              label=""
+              name="model"
+              modelType="language"
+              value={modelId}
+              onChange={setModelId}
+              placeholder={t.transformations.selectModel}
             />
           </div>
 
-          <div className="flex justify-center">
-            <Button 
-              onClick={handleExecute}
-              disabled={!canExecute}
-              size="lg"
-            >
-              {executeTransformation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {t.transformations.running}
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  {t.transformations.runTest}
-                </>
-              )}
-            </Button>
-          </div>
+          {/* Spacer */}
+          <div className="flex-1" />
 
-          {output && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium leading-none">{t.transformations.outputLabel}</span>
-              <Card>
-                <ScrollArea className="h-[400px]">
-                  <CardContent className="pt-6">
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          table: ({ children }) => (
-                            <div className="my-4 overflow-x-auto">
-                              <table className="min-w-full border-collapse border border-border">{children}</table>
-                            </div>
-                          ),
-                          thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-                          tbody: ({ children }) => <tbody>{children}</tbody>,
-                          tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
-                          th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
-                          td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
-                        }}
-                      >
-                        {output}
-                      </ReactMarkdown>
-                    </div>
-                  </CardContent>
-                </ScrollArea>
-              </Card>
+          {/* RUN TRANSFORMATION button */}
+          <button
+            type="button"
+            onClick={handleExecute}
+            disabled={!canExecute}
+            className="px-6 py-2.5 rounded-lg bg-[#FF7043] hover:bg-[#f4622e] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold uppercase tracking-wide transition-colors flex items-center gap-2 shadow-sm"
+          >
+            {executeTransformation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t.transformations.running}
+              </>
+            ) : (
+              t.transformations.runTest
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Output area — shown when result is available */}
+      {output && (
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <p className="text-sm font-semibold text-slate-700">{t.transformations.outputLabel}</p>
+          </div>
+          <ScrollArea className="h-[400px]">
+            <div className="p-6">
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ children }) => (
+                      <div className="my-4 overflow-x-auto">
+                        <table className="min-w-full border-collapse border border-border">{children}</table>
+                      </div>
+                    ),
+                    thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+                    tbody: ({ children }) => <tbody>{children}</tbody>,
+                    tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+                    th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
+                    td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
+                  }}
+                >
+                  {output}
+                </ReactMarkdown>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </ScrollArea>
+        </div>
+      )}
     </div>
   )
 }

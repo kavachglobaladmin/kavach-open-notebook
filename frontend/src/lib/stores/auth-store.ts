@@ -89,7 +89,9 @@ export const useAuthStore = create<AuthState>()(
           const apiUrl = await getApiUrl()
 
           // Get the email that's about to log in (set by LoginForm before calling login())
-          const email = localStorage.getItem('kavach_current_user') ?? 'user'
+          // Never fall back to the string 'user' — use null so no X-User-Email header
+          // is sent when the email is unknown, avoiding cross-user data leakage.
+          const email = localStorage.getItem('kavach_current_user') ?? null
 
           // Validate password against backend — include X-User-Email so the
           // backend can scope the response to this user even during validation
@@ -98,18 +100,18 @@ export const useAuthStore = create<AuthState>()(
             headers: {
               'Authorization': `Bearer ${password}`,
               'Content-Type': 'application/json',
-              'X-User-Email': email,
+              ...(email ? { 'X-User-Email': email } : {}),
             },
           })
 
           if (response.ok) {
             // Issue a signed JWT for the local user session
-            const email = localStorage.getItem('kavach_current_user') ?? 'user'
+            const email = localStorage.getItem('kavach_current_user') ?? null
             const users: { email: string; name: string }[] = JSON.parse(
               localStorage.getItem('kavach_users') ?? '[]'
             )
-            const name = users.find(u => u.email === email)?.name
-            const jwtToken = await issueToken(email, name)
+            const name = email ? users.find(u => u.email === email)?.name : undefined
+            const jwtToken = await issueToken(email ?? 'unknown', name)
 
             set({
               isAuthenticated: true,
@@ -118,7 +120,7 @@ export const useAuthStore = create<AuthState>()(
               isLoading: false,
               lastAuthCheck: Date.now(),
               tokenExpiresAt: null,    // no time-based expiry
-              currentUserEmail: email,
+              currentUserEmail: email, // null when kavach_current_user was not set
               error: null,
             })
             return true
@@ -151,6 +153,10 @@ export const useAuthStore = create<AuthState>()(
         // Rotate the browser secret — this instantly invalidates the current
         // token and any other tokens issued in this browser session.
         rotateBrowserSecret()
+        // Clear the session-stored password so it can't be reused after logout
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('kavach_api_password')
+        }
         set({
           isAuthenticated: false,
           token: null,
@@ -281,6 +287,16 @@ export const useAuthStore = create<AuthState>()(
             const payload = decodeToken(state.token)
             if (payload?.sub) {
               state.currentUserEmail = payload.sub
+            }
+
+            // Restore apiPassword from sessionStorage so API calls work after
+            // a page reload within the same tab.  sessionStorage is cleared
+            // when the tab is closed, so this never leaks across sessions.
+            if (typeof window !== 'undefined') {
+              const savedPassword = sessionStorage.getItem('kavach_api_password')
+              if (savedPassword) {
+                state.apiPassword = savedPassword
+              }
             }
           }
           state.setHasHydrated(true)

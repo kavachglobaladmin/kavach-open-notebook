@@ -5,6 +5,7 @@ import { QUERY_KEYS } from '@/lib/api/query-client'
 import { useToast } from '@/lib/hooks/use-toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import {
   CreateSourceRequest,
   UpdateSourceRequest,
@@ -15,13 +16,24 @@ import {
 
 const NOTEBOOK_SOURCES_PAGE_SIZE = 30
 
+/**
+ * Include the logged-in user's email in source query keys so that
+ * React Query maintains a separate cache per user — same pattern as
+ * use-notebooks.ts.  The backend already scopes sources by owner via
+ * the X-User-Email header; this ensures the client cache is also scoped.
+ */
+function useCurrentUserEmail(): string | null {
+  return useAuthStore(s => s.currentUserEmail)
+}
+
 export function useSources(notebookId?: string) {
+  const userEmail = useCurrentUserEmail()
   return useQuery({
-    queryKey: QUERY_KEYS.sources(notebookId),
+    queryKey: [...QUERY_KEYS.sources(notebookId), { user: userEmail }],
     queryFn: () => sourcesApi.list({ notebook_id: notebookId }),
-    enabled: !!notebookId,
-    staleTime: 5 * 1000, // 5 seconds - more responsive for real-time source updates
-    refetchOnWindowFocus: true, // Refetch when user comes back to the tab
+    enabled: !!notebookId && userEmail !== null,
+    staleTime: 5 * 1000,
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -31,9 +43,10 @@ export function useSources(notebookId?: string) {
  */
 export function useNotebookSources(notebookId: string) {
   const queryClient = useQueryClient()
+  const userEmail = useCurrentUserEmail()
 
   const query = useInfiniteQuery({
-    queryKey: QUERY_KEYS.sourcesInfinite(notebookId),
+    queryKey: [...QUERY_KEYS.sourcesInfinite(notebookId), { user: userEmail }],
     queryFn: async ({ pageParam = 0 }) => {
       const data = await sourcesApi.list({
         notebook_id: notebookId,
@@ -49,7 +62,7 @@ export function useNotebookSources(notebookId: string) {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
-    enabled: !!notebookId,
+    enabled: !!notebookId && userEmail !== null,
     staleTime: 5 * 1000,
     refetchOnWindowFocus: true,
   })
@@ -77,12 +90,13 @@ export function useNotebookSources(notebookId: string) {
 }
 
 export function useSource(id: string) {
+  const userEmail = useCurrentUserEmail()
   return useQuery({
-    queryKey: QUERY_KEYS.source(id),
+    queryKey: [...QUERY_KEYS.source(id), { user: userEmail }],
     queryFn: () => sourcesApi.get(id),
-    enabled: !!id,
-    staleTime: 30 * 1000, // 30 seconds - shorter stale time for more responsive updates
-    refetchOnWindowFocus: true, // Refetch when user comes back to the tab
+    enabled: !!id && userEmail !== null,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   })
 }
 

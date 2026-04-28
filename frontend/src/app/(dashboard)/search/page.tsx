@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -96,7 +97,8 @@ export default function SearchPage() {
   }, [searchQuery, searchType, searchSources, searchNotes, searchMutation])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
       handleSearch()
     }
   }
@@ -130,22 +132,19 @@ export default function SearchPage() {
     }
   }, [urlQuery, urlMode, modelsLoading, modelDefaults, handleSearch, handleAsk])
 
-  // Handle URL param changes while on page (e.g., from command palette again)
+  // Handle URL param changes while on page
   useEffect(() => {
     const currentQ = searchParams?.get('q') || ''
     const rawCurrentMode = searchParams?.get('mode')
     const currentMode = rawCurrentMode === 'search' ? 'search' : 'ask'
 
-    // Check if URL params have changed
     if (currentQ !== lastUrlParamsRef.current.q || currentMode !== lastUrlParamsRef.current.mode) {
       lastUrlParamsRef.current = { q: currentQ, mode: currentMode }
 
       if (currentQ) {
-        // Update state based on mode
         if (currentMode === 'search') {
           setSearchQuery(currentQ)
           setActiveTab('search')
-          // Reset trigger flag so we auto-trigger with new params
           hasAutoTriggeredRef.current = false
         } else {
           setAskQuestion(currentQ)
@@ -158,292 +157,239 @@ export default function SearchPage() {
 
   return (
     <AppShell>
-      <div className="p-4 md:p-6">
-        <h1 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">{t.searchPage.askAndSearch}</h1>
+      <PageHeader 
+        searchValue={searchQuery} 
+        onSearchChange={(val) => setSearchQuery(val)} 
+      />
+      <div className="p-4 md:p-8 max-w-[1600px] mx-auto w-full">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">{t.searchPage.askAndSearch}</h1>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full space-y-6">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.searchPage.chooseAMode}</p>
-            <TabsList aria-label={t.common.accessibility.searchKB} className="w-full max-w-xl">
-              <TabsTrigger value="ask">
-                <MessageCircleQuestion className="h-4 w-4" />
-                {t.searchPage.askBeta}
-              </TabsTrigger>
-              <TabsTrigger value="search">
-                <Search className="h-4 w-4" />
-                {t.searchPage.search}
-              </TabsTrigger>
-            </TabsList>
-          </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 min-h-[calc(100vh-220px)] p-6 md:p-12">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
+            
+            {/* Centered Pill Tabs matching the exact UI with text un-wrapped */}
+            <div className="flex justify-center mb-12">
+              <TabsList className="bg-transparent border-0 gap-4 h-auto p-0 flex flex-wrap justify-center">
+                <TabsTrigger 
+                  value="ask"
+                  className="rounded-full px-8 py-2.5 text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center justify-center data-[state=active]:bg-[#F05A28] data-[state=active]:text-white data-[state=active]:border-[#F05A28] data-[state=inactive]:bg-[#FFF4F0] data-[state=inactive]:text-[#F05A28] border data-[state=inactive]:border-[#F05A28]"
+                >
+                  <MessageCircleQuestion className="h-4 w-4 mr-2" />
+                  {t.searchPage.askBeta || 'Ask (Beta)'}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="search"
+                  className="rounded-full px-8 py-2.5 text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center justify-center data-[state=active]:bg-[#F05A28] data-[state=active]:text-white data-[state=active]:border-[#F05A28] data-[state=inactive]:bg-[#FFF4F0] data-[state=inactive]:text-[#F05A28] border data-[state=inactive]:border-[#F05A28]"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  {t.searchPage.search}
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-          <TabsContent value="ask" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t.searchPage.askYourKb}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {t.searchPage.askYourKbDesc}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Question Input */}
-                <div className="space-y-2">
-                  <Label htmlFor="ask-question">{t.searchPage.question}</Label>
-                  <Textarea
-                    id="ask-question"
-                    name="ask-question"
-                    placeholder={t.searchPage.enterQuestionPlaceholder}
-                    value={askQuestion}
-                    onChange={(e) => setAskQuestion(e.target.value)}
-                    onKeyDown={(e) => {
-                      // Submit on Cmd/Ctrl+Enter
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !ask.isStreaming && askQuestion.trim()) {
-                        e.preventDefault()
-                        handleAsk()
-                      }
-                    }}
-                    disabled={ask.isStreaming}
-                    rows={3}
-                    aria-label={t.common.accessibility.enterQuestion}
-                  />
-                  <p className="text-xs text-muted-foreground">{t.searchPage.pressToSubmit}</p>
+            {/* ASK CONTENT */}
+            <TabsContent value="ask" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.searchPage.askYourKb || 'Ask'}</h2>
+                <p className="text-gray-500 text-sm">{t.searchPage.askYourKbDesc || 'Ask Questions About Your Knowledge Base'}</p>
+              </div>
+
+              <div className="max-w-4xl mx-auto space-y-8">
+                {/* Ask Input Container (Exact match styled) */}
+                <div className="border border-gray-200 rounded-2xl shadow-sm bg-white overflow-hidden transition-all focus-within:border-[#F05A28] focus-within:ring-1 focus-within:ring-[#F05A28]">
+                  <div className="p-2">
+                    <Textarea
+                      placeholder={t.searchPage.enterQuestionPlaceholder || 'Enter Your Question...'}
+                      value={askQuestion}
+                      onChange={(e) => setAskQuestion(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !ask.isStreaming && askQuestion.trim()) {
+                          e.preventDefault()
+                          handleAsk()
+                        }
+                      }}
+                      disabled={ask.isStreaming}
+                      className="border-0 shadow-none focus-visible:ring-0 resize-none text-base md:text-lg min-h-[120px] p-4 bg-transparent"
+                      aria-label={t.common.accessibility.enterQuestion}
+                    />
+                  </div>
+                  
+                  <div className="border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white">
+                    {!hasEmbeddingModel ? (
+                      <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-md w-full sm:w-auto">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{t.searchPage.noEmbeddingModel}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3 flex-wrap flex-1 w-full sm:w-auto">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAdvancedModels(true)}
+                            disabled={ask.isStreaming}
+                            className="bg-[#FFF4F0] hover:bg-[#FFE8E0] text-[#F05A28] hover:text-[#D94E20] h-9 px-4 rounded-md"
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            {t.searchPage.advanced || 'Advanced Models'}
+                          </Button>
+                          <div className="hidden lg:flex gap-2 text-xs">
+                            <Badge variant="outline" className="bg-gray-50 font-normal text-gray-500 border-gray-200">
+                              Strategy: {resolveModelName(customModels?.strategy || modelDefaults?.default_chat_model)}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                          {ask.finalAnswer && (
+                            <Button
+                              variant="outline"
+                              onClick={() => setShowSaveDialog(true)}
+                              className="border-[#F05A28] text-[#F05A28] hover:bg-[#FFF4F0] h-10 px-6"
+                            >
+                              <Save className="h-4 w-4 mr-2" />
+                              {t.searchPage.saveToNotebooks}
+                            </Button>
+                          )}
+                          <Button
+                            onClick={handleAsk}
+                            disabled={ask.isStreaming || !askQuestion.trim()}
+                            className="bg-[#F05A28] hover:bg-[#D94E20] text-white px-8 h-10 rounded-md text-sm font-medium tracking-wide uppercase w-full sm:w-auto"
+                          >
+                            {ask.isStreaming ? (
+                              <>
+                                <LoadingSpinner size="sm" className="mr-2" />
+                                {t.searchPage.processing || 'PROCESSING'}
+                              </>
+                            ) : (
+                              <>
+                                <MessageCircleQuestion className="h-4 w-4 mr-2" />
+                                {t.searchPage.ask || 'ASK'}
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
-                {/* Models Display */}
-                {!hasEmbeddingModel ? (
-                  <div className="flex items-center gap-2 p-3 text-sm text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded-md">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{t.searchPage.noEmbeddingModel}</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs text-muted-foreground">
-                          {customModels ? t.searchPage.usingCustomModels : t.searchPage.usingDefaultModels}
-                        </Label>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowAdvancedModels(true)}
-                          disabled={ask.isStreaming}
-                          className="h-auto py-1 px-2"
-                        >
-                          <Settings className="h-3 w-3 mr-1" />
-                          {t.searchPage.advanced}
-                        </Button>
-                      </div>
-                      <div className="flex gap-2 text-xs flex-wrap">
-                        <Badge variant="secondary">
-                          {t.searchPage.strategy}: {resolveModelName(customModels?.strategy || modelDefaults?.default_chat_model)}
-                        </Badge>
-                        <Badge variant="secondary">
-                          {t.searchPage.answer}: {resolveModelName(customModels?.answer || modelDefaults?.default_chat_model)}
-                        </Badge>
-                        <Badge variant="secondary">
-                          {t.searchPage.final}: {resolveModelName(customModels?.finalAnswer || modelDefaults?.default_chat_model)}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        onClick={handleAsk}
-                        disabled={ask.isStreaming || !askQuestion.trim()}
-                        className="w-full"
-                      >
-                        {ask.isStreaming ? (
-                          <>
-                            <LoadingSpinner size="sm" className="mr-2" />
-                            {t.searchPage.processing}
-                          </>
-                        ) : (
-                          t.searchPage.ask
-                        )}
-                      </Button>
-
-                      {ask.finalAnswer && (
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowSaveDialog(true)}
-                          className="w-full"
-                        >
-                          <Save className="h-4 w-4 mr-2" />
-                          {t.searchPage.saveToNotebooks}
-                        </Button>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {/* Streaming Response */}
+                {/* Ask Streaming Response */}
                 <StreamingResponse
                   isStreaming={ask.isStreaming}
                   strategy={ask.strategy}
                   answers={ask.answers}
                   finalAnswer={ask.finalAnswer}
                 />
+              </div>
+            </TabsContent>
 
-                {/* Advanced Models Dialog */}
-                <AdvancedModelsDialog
-                  open={showAdvancedModels}
-                  onOpenChange={setShowAdvancedModels}
-                  defaultModels={{
-                    strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-                    answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-                    finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
-                  }}
-                  onSave={setCustomModels}
-                />
-
-                {/* Save to Notebooks Dialog */}
-                {ask.finalAnswer && (
-                  <SaveToNotebooksDialog
-                    open={showSaveDialog}
-                    onOpenChange={setShowSaveDialog}
-                    question={askQuestion}
-                    answer={ask.finalAnswer}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="search" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t.searchPage.search}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {t.searchPage.searchDesc}
+            {/* SEARCH CONTENT */}
+            <TabsContent value="search" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.searchPage.search || 'Search'}</h2>
+                <p className="text-gray-500 text-sm">
+                  Search Your Knowledge Base For Specific Keywords Or Concepts
                 </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Search Input */}
-                <div className="space-y-2">
-                  <Label htmlFor="search-query" className="sr-only">
-                    {t.searchPage.search}
-                  </Label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Input
-                      id="search-query"
-                      name="search-query"
-                      placeholder={t.searchPage.enterSearchPlaceholder}
+              </div>
+
+              <div className="max-w-4xl mx-auto space-y-8">
+                {/* Search Input Container (Exact match styled) */}
+                <div className="border border-gray-200 rounded-2xl shadow-sm bg-white overflow-hidden transition-all focus-within:border-[#F05A28] focus-within:ring-1 focus-within:ring-[#F05A28]">
+                  <div className="p-2">
+                    <Textarea
+                      placeholder={t.searchPage.enterSearchPlaceholder || 'Enter Search Query...'}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyPress={handleKeyPress}
                       disabled={searchMutation.isPending}
-                      className="flex-1"
+                      className="border-0 shadow-none focus-visible:ring-0 resize-none text-base md:text-lg min-h-[120px] p-4 bg-transparent"
                       aria-label={t.common.accessibility.enterSearch}
-                      autoComplete="off"
                     />
+                  </div>
+                  
+                  <div className="border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white">
+                    <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
+                      {/* Search Type Dropdown Mimicking UI */}
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={searchType}
+                          onChange={(e) => setSearchType(e.target.value as 'text' | 'vector')}
+                          disabled={!hasEmbeddingModel || modelsLoading || searchMutation.isPending}
+                          className="appearance-none bg-[#FFF4F0] hover:bg-[#FFE8E0] text-[#F05A28] text-sm font-medium pl-4 pr-10 py-2.5 rounded-md outline-none cursor-pointer transition-colors border-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="text">Search Type: Text</option>
+                          <option value="vector" disabled={!hasEmbeddingModel}>Search Type: Vector</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 h-4 w-4 text-[#F05A28] pointer-events-none" />
+                      </div>
+                      
+                      {/* Preserved underlying functionality for Search Locations */}
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-700 transition-colors">
+                          <Checkbox 
+                            checked={searchSources} 
+                            onCheckedChange={(c) => setSearchSources(c as boolean)} 
+                            disabled={searchMutation.isPending}
+                            className="data-[state=checked]:bg-[#F05A28] data-[state=checked]:border-[#F05A28]" 
+                          /> 
+                          {t.searchPage.searchSources || 'Sources'}
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-700 transition-colors">
+                          <Checkbox 
+                            checked={searchNotes} 
+                            onCheckedChange={(c) => setSearchNotes(c as boolean)} 
+                            disabled={searchMutation.isPending}
+                            className="data-[state=checked]:bg-[#F05A28] data-[state=checked]:border-[#F05A28]" 
+                          /> 
+                          {t.searchPage.searchNotes || 'Notes'}
+                        </label>
+                      </div>
+                    </div>
+
                     <Button
                       onClick={handleSearch}
                       disabled={searchMutation.isPending || !searchQuery.trim()}
-                      aria-label={t.common.accessibility.searchKBBtn}
-                      className="w-full sm:w-auto"
+                      className="bg-[#F05A28] hover:bg-[#D94E20] text-white px-8 h-10 rounded-md text-sm font-medium tracking-wide uppercase w-full sm:w-auto"
                     >
                       {searchMutation.isPending ? (
-                        <LoadingSpinner size="sm" />
+                        <LoadingSpinner size="sm" className="mr-2" />
                       ) : (
                         <Search className="h-4 w-4 mr-2" />
                       )}
-                      {t.searchPage.search}
+                      {t.searchPage.search || 'SEARCH'}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">{t.searchPage.pressToSearch}</p>
                 </div>
 
-                {/* Search Options */}
-                <div className="space-y-4">
-                  {/* Search Type */}
-                  <div className="space-y-2" role="group" aria-labelledby="search-type-label">
-                    <span id="search-type-label" className="text-sm font-medium leading-none">{t.searchPage.searchType}</span>
-                    {!hasEmbeddingModel && (
-                      <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>{t.searchPage.vectorSearchWarning}</span>
-                      </div>
-                    )}
-                    <RadioGroup
-                      name="search-type"
-                      value={searchType}
-                      onValueChange={(value: 'text' | 'vector') => setSearchType(value)}
-                      disabled={modelsLoading || searchMutation.isPending}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="text" id="text" />
-                        <Label htmlFor="text" className="font-normal cursor-pointer">
-                          {t.searchPage.textSearch}
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem
-                          value="vector"
-                          id="vector"
-                          disabled={!hasEmbeddingModel || searchMutation.isPending}
-                        />
-                        <Label
-                          htmlFor="vector"
-                          className={`font-normal ${!hasEmbeddingModel ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
-                        >
-                          {t.searchPage.vectorSearch}
-                        </Label>
-                      </div>
-                    </RadioGroup>
+                {!hasEmbeddingModel && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-amber-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{t.searchPage.vectorSearchWarning}</span>
                   </div>
+                )}
 
-                  {/* Search Locations */}
-                  <div className="space-y-2" role="group" aria-labelledby="search-in-label">
-                    <span id="search-in-label" className="text-sm font-medium leading-none">{t.searchPage.searchIn}</span>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="sources"
-                          name="sources"
-                          checked={searchSources}
-                          onCheckedChange={(checked) => setSearchSources(checked as boolean)}
-                          disabled={searchMutation.isPending}
-                        />
-                        <Label htmlFor="sources" className="font-normal cursor-pointer">
-                          {t.searchPage.searchSources}
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="notes"
-                          name="notes"
-                          checked={searchNotes}
-                          onCheckedChange={(checked) => setSearchNotes(checked as boolean)}
-                          disabled={searchMutation.isPending}
-                        />
-                        <Label htmlFor="notes" className="font-normal cursor-pointer">
-                          {t.searchPage.searchNotes}
-                        </Label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Search Results */}
+                {/* Search Results Block (Preserved Logic) */}
                 {searchMutation.data && (
-                  <div className="mt-6 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium">
+                  <div className="mt-8 space-y-4 text-left">
+                    <div className="flex items-center justify-between px-2">
+                      <h3 className="text-sm font-medium text-gray-700">
                         {t.searchPage.resultsFound.replace('{count}', searchMutation.data.total_count.toString())}
                       </h3>
-                      <Badge variant="outline">{searchMutation.data.search_type === 'text' ? t.searchPage.textSearch : t.searchPage.vectorSearch}</Badge>
+                      <Badge variant="outline" className="bg-gray-50 text-gray-600 font-normal">
+                        {searchMutation.data.search_type === 'text' ? t.searchPage.textSearch : t.searchPage.vectorSearch}
+                      </Badge>
                     </div>
 
                     {searchMutation.data.results.length === 0 ? (
-                      <Card>
-                        <CardContent className="pt-6 text-center text-muted-foreground">
+                      <Card className="border-gray-100 shadow-sm">
+                        <CardContent className="pt-8 pb-8 text-center text-muted-foreground">
                           {t.searchPage.noResultsFor.replace('{query}', searchQuery)}
                         </CardContent>
                       </Card>
                     ) : (
-                      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+                      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 pb-4">
                         {searchMutation.data.results.map((result, index) => {
-                          // Parse type from parent_id (format: "source:id" or "note:id" or "source_insight:id")
-                          // Handle null parent_id gracefully (orphaned records)
                           if (!result.parent_id) {
                             console.warn('Search result with null parent_id:', result)
                             return null
@@ -452,49 +398,71 @@ export default function SearchPage() {
                           const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
 
                           return (
-                          <Card key={index}>
-                            <CardContent className="pt-4">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <button
-                                    onClick={() => openModal(modalType, id)}
-                                    className="text-primary hover:underline font-medium"
-                                  >
-                                    {result.title}
-                                  </button>
-                                  <Badge variant="secondary" className="ml-2">
-                                    {result.final_score.toFixed(2)}
-                                  </Badge>
+                            <Card key={index} className="border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                              <CardContent className="p-5">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex-1">
+                                    <button
+                                      onClick={() => openModal(modalType, id)}
+                                      className="text-[#F05A28] hover:text-[#D94E20] hover:underline font-medium text-left"
+                                    >
+                                      {result.title}
+                                    </button>
+                                    <Badge variant="secondary" className="ml-3 bg-[#FFF4F0] text-[#F05A28] hover:bg-[#FFE8E0] font-medium">
+                                      {result.final_score.toFixed(2)}
+                                    </Badge>
+                                  </div>
                                 </div>
-                              </div>
 
-                              {result.matches && result.matches.length > 0 && (
-                                <Collapsible className="mt-3">
-                                  <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                                    <ChevronDown className="h-4 w-4" />
-                                    {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent className="mt-2 space-y-1">
-                                    {result.matches.map((match, i) => (
-                                      <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
-                                        {match}
-                                      </div>
-                                    ))}
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )})}
+                                {result.matches && result.matches.length > 0 && (
+                                  <Collapsible className="mt-4">
+                                    <CollapsibleTrigger className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+                                      <ChevronDown className="h-4 w-4" />
+                                      {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="mt-3 space-y-2">
+                                      {result.matches.map((match, i) => (
+                                        <div key={i} className="text-sm text-gray-600 pl-4 py-1.5 border-l-2 border-[#F05A28]/30 bg-gray-50/50 rounded-r-md">
+                                          {match}
+                                        </div>
+                                      ))}
+                                    </CollapsibleContent>
+                                  </Collapsible>
+                                )}
+                              </CardContent>
+                            </Card>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
+
+      {/* Global Modals for Advanced Options and Notebooks */}
+      <AdvancedModelsDialog
+        open={showAdvancedModels}
+        onOpenChange={setShowAdvancedModels}
+        defaultModels={{
+          strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
+          answer: customModels?.answer || modelDefaults?.default_chat_model || '',
+          finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
+        }}
+        onSave={setCustomModels}
+      />
+
+      {ask.finalAnswer && (
+        <SaveToNotebooksDialog
+          open={showSaveDialog}
+          onOpenChange={setShowSaveDialog}
+          question={askQuestion}
+          answer={ask.finalAnswer}
+        />
+      )}
     </AppShell>
   )
 }

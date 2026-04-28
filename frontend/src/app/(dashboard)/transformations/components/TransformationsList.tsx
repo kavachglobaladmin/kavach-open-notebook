@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { TransformationCard } from './TransformationCard'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -37,32 +36,52 @@ export function TransformationsList({ transformations, isLoading, onPlayground }
 
   if (!transformations || transformations.length === 0) {
     return (
-      <EmptyState
-        icon={Wand2}
-        title={t.transformations.noTransformations}
-        description={t.transformations.createOne}
-        action={
-          <Button onClick={() => handleOpenEditor()}>
-            <Plus className="h-4 w-4 mr-2" />
-            {t.transformations.createNew}
-          </Button>
-        }
-      />
+      <>
+        <EmptyState
+          icon={Wand2}
+          title={t.transformations.noTransformations}
+          description={t.transformations.createOne}
+          action={
+            <button
+              onClick={() => handleOpenEditor()}
+              className="mt-4 flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#FF7043] hover:bg-[#f4622e] text-white text-sm font-semibold transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              {t.transformations.createNew}
+            </button>
+          }
+        />
+        <TransformationEditorDialog
+          open={editorOpen}
+          onOpenChange={(open) => {
+            setEditorOpen(open)
+            if (!open) setEditingTransformation(undefined)
+          }}
+          transformation={editingTransformation}
+        />
+      </>
     )
   }
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold">{t.transformations.listTitle}</h2>
-          <Button onClick={() => handleOpenEditor()}>
-            <Plus className="h-4 w-4 mr-2" />
+      <div className="space-y-4">
+        {/* Section header — matches reference */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-slate-900">
+            {t.transformations.listTitle}
+          </h2>
+          <button
+            onClick={() => handleOpenEditor()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#FF7043] hover:bg-[#f4622e] text-white text-sm font-semibold transition-colors shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
             {t.transformations.createNew}
-          </Button>
+          </button>
         </div>
 
-        <div className="space-y-4">
+        {/* Transformation rows */}
+        <div className="space-y-3">
           {transformations.map((transformation) => (
             <TransformationCard
               key={transformation.id}
@@ -78,9 +97,7 @@ export function TransformationsList({ transformations, isLoading, onPlayground }
         open={editorOpen}
         onOpenChange={(open) => {
           setEditorOpen(open)
-          if (!open) {
-            setEditingTransformation(undefined)
-          }
+          if (!open) setEditingTransformation(undefined)
         }}
         transformation={editingTransformation}
       />

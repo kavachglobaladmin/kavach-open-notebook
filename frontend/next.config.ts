@@ -10,6 +10,13 @@ allowedDevOrigins: [
 // Enable standalone output for optimized Docker deployment
 output: "standalone",
 
+// Silence the "multiple lockfiles" workspace root warning.
+// The frontend package lives in the frontend/ subdirectory; tell Turbopack
+// to treat that directory as the root so it doesn't pick up the parent lockfile.
+turbopack: {
+root: __dirname,
+},
+
 // Experimental features
 // Type assertion needed: proxyClientMaxBodySize is valid in Next.js 15 but types lag behind
 experimental: {
