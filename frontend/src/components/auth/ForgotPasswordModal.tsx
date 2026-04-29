@@ -15,10 +15,12 @@ import successIllust from '@/assets/68470301.png'      // Success        — pas
 
 // ── User helpers (localStorage — same as LoginForm) ───────────────────────────
 function emailExists(email: string): boolean {
+
   try {
     const users = JSON.parse(localStorage.getItem('kavach_users') || '[]')
     return users.some((u: { email: string }) => u.email.toLowerCase() === email.toLowerCase())
-  } catch {
+  } 
+  catch {
     return false
   }
 }
