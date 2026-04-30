@@ -60,14 +60,28 @@ async def get_notebooks(
         # On first access by a logged-in user, those legacy notebooks are claimed
         # (owner is set) so they become properly scoped going forward.
         if current_user:
-            query = f"""
-                SELECT *,
-                count(<-reference.in) as source_count,
-                count(<-artifact.in) as note_count
-                FROM notebook
-                WHERE owner = $owner OR owner = 'user' OR owner = NONE OR owner = null
-                ORDER BY {order_by}
-            """
+            if archived is not None:
+                # Filter archived in the DB query for efficiency.
+                # Treat NULL/NONE as false (legacy notebooks without the field set).
+                archived_condition = "AND (archived = true)" if archived else "AND (archived = false OR archived = NONE OR archived = null OR archived IS NULL)"
+                query = f"""
+                    SELECT *,
+                    count(<-reference.in) as source_count,
+                    count(<-artifact.in) as note_count
+                    FROM notebook
+                    WHERE (owner = $owner OR owner = 'user' OR owner = NONE OR owner = null)
+                    {archived_condition}
+                    ORDER BY {order_by}
+                """
+            else:
+                query = f"""
+                    SELECT *,
+                    count(<-reference.in) as source_count,
+                    count(<-artifact.in) as note_count
+                    FROM notebook
+                    WHERE owner = $owner OR owner = 'user' OR owner = NONE OR owner = null
+                    ORDER BY {order_by}
+                """
             result = await repo_query(query, {"owner": current_user})
             # Migrate legacy notebooks (owner='user' or no owner) to current user
             for nb in result:
@@ -83,18 +97,25 @@ async def get_notebooks(
                     except Exception as migrate_err:
                         logger.warning(f"Could not migrate notebook {nb_id} owner: {migrate_err}")
         else:
-            query = f"""
-                SELECT *,
-                count(<-reference.in) as source_count,
-                count(<-artifact.in) as note_count
-                FROM notebook
-                ORDER BY {order_by}
-            """
+            if archived is not None:
+                archived_condition = "WHERE (archived = true)" if archived else "WHERE (archived = false OR archived = NONE OR archived = null OR archived IS NULL)"
+                query = f"""
+                    SELECT *,
+                    count(<-reference.in) as source_count,
+                    count(<-artifact.in) as note_count
+                    FROM notebook
+                    {archived_condition}
+                    ORDER BY {order_by}
+                """
+            else:
+                query = f"""
+                    SELECT *,
+                    count(<-reference.in) as source_count,
+                    count(<-artifact.in) as note_count
+                    FROM notebook
+                    ORDER BY {order_by}
+                """
             result = await repo_query(query)
-
-        # Filter by archived status if specified
-        if archived is not None:
-            result = [nb for nb in result if nb.get("archived") == archived]
 
         # Build responses — calculate storage_used_mb only for notebooks with a limit
         responses = []

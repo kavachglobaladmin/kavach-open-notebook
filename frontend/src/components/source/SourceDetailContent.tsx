@@ -71,6 +71,7 @@ import {
   Database,
   AlertCircle,
   MessageSquare,
+  BarChart2,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
