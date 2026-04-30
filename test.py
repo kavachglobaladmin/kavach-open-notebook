@@ -1,206 +1,183 @@
-# from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
-# import torch
+import pdfplumber
+import pandas as pd
+import re
 
-# # =========================
-# # CONFIG
-# # =========================
-# model_name = "Qwen/Qwen2.5-1.5B-Instruct"
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
 
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# print(f"Using device: {device}")
-
-# # =========================
-# # TOKENIZER
-# # =========================
-# tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-# # =========================
-# # MODEL
-# # =========================
-# model = AutoModelForCausalLM.from_pretrained(
-#     model_name,
-#     dtype=torch.float16 if device == "cuda" else torch.float32,
-#     device_map="auto"
-# )
-
-# # =========================
-# # STREAMER
-# # =========================
-# streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-# # =========================
-# # FUNCTION: STREAM RESPONSE
-# # =========================
-# def generate_stream(prompt, target_words=2000):
-#     messages = [{"role": "user", "content": prompt}]
-#     total_words = 0
-
-#     while total_words < target_words:
-#         text = tokenizer.apply_chat_template(
-#             messages,
-#             tokenize=False,
-#             add_generation_prompt=True
-#         )
-
-#         inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
-#         print("\n", end="", flush=True)  # start printing immediately
-
-#         with torch.inference_mode():
-#             outputs = model.generate(
-#                 **inputs,
-#                 max_new_tokens=512,
-#                 do_sample=False,   # ⚡ faster
-#                 use_cache=True,
-#                 streamer=streamer   # 🔥 LIVE OUTPUT
-#             )
-
-#         new_text = tokenizer.decode(
-#             outputs[0][inputs.input_ids.shape[-1]:],
-#             skip_special_tokens=True
-#         )
-
-#         word_count = len(new_text.split())
-#         total_words += word_count
-
-#         messages.append({"role": "assistant", "content": new_text})
-#         messages.append({"role": "user", "content": "Continue from where you stopped. Do not repeat."})
-
-# # =========================
-# # LOOP
-# # =========================
-# while True:
-#     user_input = input("\nEnter your prompt (or 'exit'): ")
-#     if user_input.lower() == "exit":
-#         break
-
-#     enhanced_prompt = f"""
-# Write a detailed response of at least 2000 words.
-
-# Topic:
-# {user_input}
-
-# Make it structured and complete.
-# """
-
-#     print("\n=== Output ===\n")
-
-#     generate_stream(enhanced_prompt, target_words=2000)
+# -------------------------------
+# 1. EXTRACT TEXT FROM PDF
+# -------------------------------
+def extract_text(file_path):
+    text = ""
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() + "\n"
+    return text
 
 
+# -------------------------------
+# 2. PARSE TRANSACTIONS
+# -------------------------------
+def parse_transactions(text):
+    lines = text.split("\n")
+    data = []
+
+    for line in lines:
+        match = re.search(r'(\d{2}-\d{2}-\d{4}).*?([\d,]+\.\d{2})\s+([\d,]+\.\d{2}CR)', line)
+
+        if match:
+            date = match.group(1)
+            amount = float(match.group(2).replace(",", ""))
+            balance = float(match.group(3).replace(",", "").replace("CR", ""))
+
+            debit = amount if "WDL" in line or "DEBIT" in line else 0
+            credit = amount if debit == 0 else 0
+
+            data.append({
+                "date": pd.to_datetime(date, dayfirst=True),
+                "description": line,
+                "debit": debit,
+                "credit": credit,
+                "balance": balance
+            })
+
+    return pd.DataFrame(data)
 
 
+# -------------------------------
+# 3. CLEAN DATA
+# -------------------------------
+def clean_data(df):
+    df = df.fillna(0)
+    df["month"] = df["date"].dt.to_period("M")
+    df["amount"] = df["credit"] - df["debit"]
+    return df
 
 
-import streamlit as st
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
-import torch
-import threading
+# -------------------------------
+# 4. TRAIN ML MODEL (Sample Data)
+# -------------------------------
+def train_model():
+    # Sample training data (you can expand)
+    data = [
+        ("ATM WDL SBI", "ATM"),
+        ("CASH DEPOSIT", "DEPOSIT"),
+        ("INTEREST CREDIT", "INTEREST"),
+        ("ATM ANNUAL FEE", "CHARGE"),
+        ("TRANSFER TO ACCOUNT", "TRANSFER"),
+    ]
 
-# =========================
-# CONFIG
-# =========================
-model_name = "Qwen/Qwen2.5-1.5B-Instruct"
-device = "cuda" if torch.cuda.is_available() else "cpu"
+    df = pd.DataFrame(data, columns=["text", "label"])
 
-st.title("💬 Qwen Chat with Suggestions")
+    vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(df["text"])
 
-# =========================
-# LOAD MODEL
-# =========================
-@st.cache_resource(show_spinner=True)
-def load_model():
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map="auto"
-    )
-    return tokenizer, model
+    # Choose model
+    model = LogisticRegression()   # OR MultinomialNB()
+    model.fit(X, df["label"])
 
-tokenizer, model = load_model()
+    return vectorizer, model
 
-# =========================
-# SESSION STATE
-# =========================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
-if "response_text" not in st.session_state:
-    st.session_state.response_text = ""
+# -------------------------------
+# 5. CLASSIFY
+# -------------------------------
+def classify(df, vectorizer, model):
+    X = vectorizer.transform(df["description"])
+    df["type"] = model.predict(X)
+    return df
 
-# Placeholder for streaming output
-output_container = st.empty()
 
-# =========================
-# STREAM GENERATION FUNCTION
-# =========================
-def generate_stream(prompt, max_tokens=512):
-    messages = st.session_state.messages + [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+# -------------------------------
+# 6. REPORTS
+# -------------------------------
 
-    streamer = TextIteratorStreamer(tokenizer, skip_special_tokens=True)
-    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+def monthly_summary(df):
+    return df.groupby("month").agg({
+        "credit": "sum",
+        "debit": "sum",
+        "balance": "last"
+    })
 
-    def worker():
-        with torch.inference_mode():
-            model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                do_sample=False,
-                use_cache=True,
-                streamer=streamer
-            )
+def cash_flow(df):
+    return {
+        "total_credit": df["credit"].sum(),
+        "total_debit": df["debit"].sum(),
+        "net": df["credit"].sum() - df["debit"].sum()
+    }
 
-    thread = threading.Thread(target=worker)
-    thread.start()
+def transaction_type(df):
+    return df.groupby("type").agg({
+        "amount": "sum",
+        "type": "count"
+    })
 
-    output = ""
-    for new_text in streamer:
-        output += new_text
-        st.session_state.response_text = output
-        output_container.markdown(f"```\n{output}\n```")
+def atm_report(df):
+    atm = df[df["type"] == "ATM"]
+    return {"total": atm["debit"].sum(), "count": len(atm)}
 
-    thread.join()
-    return output
+def charges_report(df):
+    return df[df["type"] == "CHARGE"]["debit"].sum()
 
-# =========================
-# USER INPUT AND COMMANDS
-# =========================
+def pattern_report(df):
+    return {
+        "avg_deposit": df[df["credit"] > 0]["credit"].mean(),
+        "avg_withdrawal": df[df["debit"] > 0]["debit"].mean()
+    }
 
-# Text input area for user prompt
-prompt_input = st.text_area("Enter your prompt:", height=100)
+def high_value(df, threshold=5000):
+    return df[abs(df["amount"]) > threshold]
 
-# Command buttons — act as presets, not overwrite prompt silently
-col1, col2, col3, col4 = st.columns(4)
-if col1.button("Continue"):
-    prompt_input = "Continue from where you stopped."
-if col2.button("Explain"):
-    prompt_input = "Explain this in simple words."
-if col3.button("Examples"):
-    prompt_input = "Give real-world examples."
-if col4.button("Summarize"):
-    prompt_input = "Summarize this."
+def balance_trend(df):
+    return df[["date", "balance"]]
 
-# Button to send prompt for generation
-if st.button("Send") and prompt_input.strip():
-    st.session_state.response_text = ""
-    st.session_state.messages.append({"role": "user", "content": prompt_input})
+def interest_report(df):
+    return df[df["type"] == "INTEREST"]["credit"].sum()
 
-    # Generate and wait for full response before appending assistant message
-    response = generate_stream(prompt_input)
-    st.session_state.messages.append({"role": "assistant", "content": response})
+def frequency_report(df):
+    return {
+        "debit_count": len(df[df["debit"] > 0]),
+        "credit_count": len(df[df["credit"] > 0])
+    }
 
-    # Clear prompt input after sending (optional)
-    prompt_input = ""
 
-# Show chat history optionally (nice to add)
-if st.session_state.messages:
-    st.markdown("### Chat History")
-    for msg in st.session_state.messages:
-        role = msg['role']
-        content = msg['content']
-        if role == "user":
-            st.markdown(f"**User:** {content}")
-        else:
-            st.markdown(f"**Assistant:** {content}")
+# -------------------------------
+# 7. PIPELINE RUN
+# -------------------------------
+def run_pipeline(file_path):
+
+    text = extract_text(file_path)
+    df = parse_transactions(text)
+    df = clean_data(df)
+
+    vectorizer, model = train_model()
+    df = classify(df, vectorizer, model)
+
+    reports = {
+        "monthly": monthly_summary(df),
+        "cashflow": cash_flow(df),
+        "types": transaction_type(df),
+        "atm": atm_report(df),
+        "charges": charges_report(df),
+        "pattern": pattern_report(df),
+        "high_value": high_value(df),
+        "balance": balance_trend(df),
+        "interest": interest_report(df),
+        "frequency": frequency_report(df)
+    }
+
+    return reports
+
+
+# -------------------------------
+# 8. RUN
+# -------------------------------
+if __name__ == "__main__":
+    file_path = "ACCT STATEMENT.pdf"
+    reports = run_pipeline(file_path)
+
+    for key, value in reports.items():
+        print(f"\n--- {key.upper()} ---")
+        print(value)

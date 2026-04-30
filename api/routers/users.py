@@ -101,3 +101,36 @@ async def get_profile(request: Request):
         raise HTTPException(status_code=404, detail="User not found")
 
     return UserResponse(email=email, name=user.get("name", ""))
+
+
+class UserUpsertRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=3)
+
+
+@router.post("/users/upsert", response_model=UserResponse)
+async def upsert_user(data: UserUpsertRequest):
+    """
+    Create the user record if it doesn't exist, or update the name if it does.
+    No password required — API-level auth (bearer token) already guards this endpoint.
+    Called after a successful login to ensure the user exists in SurrealDB.
+    """
+    email = data.email.lower().strip()
+    name = data.name.strip()
+
+    existing = await _find_user(email)
+    if existing:
+        if existing.get("name") != name:
+            await repo_query(
+                "UPDATE kavach_user SET name = $name WHERE email = $email",
+                {"email": email, "name": name},
+            )
+            logger.info(f"[users] Updated name for: {email}")
+    else:
+        await repo_query(
+            "CREATE kavach_user SET email = $email, name = $name",
+            {"email": email, "name": name},
+        )
+        logger.info(f"[users] Auto-created user record: {email}")
+
+    return UserResponse(email=email, name=name)

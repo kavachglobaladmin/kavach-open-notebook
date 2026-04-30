@@ -28,6 +28,7 @@ import {
   Newspaper,
   Lightbulb,
   Network,
+  BarChart2,
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -39,6 +40,7 @@ import { MindMapDialog } from '@/components/source/MindMapDialog'
 import { InfographicDialog } from '@/components/source/InfographicDialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ProfileGraphModal } from '@/components/sources/ProfileGraphModal'
+import { BankAnalysisDialog } from '@/components/source/BankAnalysisDialog'
 
 interface SourceCardProps {
   source: SourceListResponse
@@ -144,6 +146,13 @@ export function SourceCard({
   const [mindMapOpen, setMindMapOpen] = useState(false)
   const [infographicOpen, setInfographicOpen] = useState(false)
   const [profileGraphOpen, setProfileGraphOpen] = useState(false)
+  const [bankAnalysisOpen, setBankAnalysisOpen] = useState(false)
+
+  // Detect if this is a bank statement file
+  const isBankFile = !!(source.asset?.file_path) && (
+    /bank|statement|acct|account/i.test(source.title ?? '') ||
+    /\.(pdf)$/i.test(source.asset?.file_path ?? '')
+  )
   // Once we've seen a terminal status, stop polling entirely
   const [terminalStatus, setTerminalStatus] = useState<string | null>(
     sourceWithStatus.status === 'completed' || sourceWithStatus.status === 'failed'
@@ -359,6 +368,22 @@ export function SourceCard({
 
             {/* Infographic button - removed */}
 
+            {/* Bank Analysis button — only for uploaded PDF files */}
+            {isBankFile && isCompleted && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-green-600 hover:bg-green-50 transition-colors"
+                title="Bank Statement Analysis"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setBankAnalysisOpen(true)
+                }}
+              >
+                <BarChart2 className="h-4 w-4" />
+              </Button>
+            )}
+
             {/* Profile Graph button */}
             <Button
               variant="ghost"
@@ -496,6 +521,15 @@ export function SourceCard({
             (source.asset?.file_path ? `/api/sources/${source.id}/download` : undefined)
           }
         />
+
+        {/* Bank Analysis Dialog */}
+        {bankAnalysisOpen && (
+          <BankAnalysisDialog
+            sourceId={source.id}
+            open={bankAnalysisOpen}
+            onClose={() => setBankAnalysisOpen(false)}
+          />
+        )}
       </div>
     </Card>
   )

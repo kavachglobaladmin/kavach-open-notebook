@@ -66,6 +66,21 @@ async function loginUserBackend(email: string, password: string): Promise<{ name
   } catch { return null }
 }
 
+async function upsertUserBackend(name: string, email: string, apiPassword: string): Promise<void> {
+  try {
+    const apiUrl = await getApiUrl()
+    await fetch(`${apiUrl}/api/users/upsert`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiPassword}`,
+        'X-User-Email': email,
+      },
+      body: JSON.stringify({ name, email }),
+    })
+  } catch { /* non-fatal */ }
+}
+
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
 type EmailState = 'empty' | 'invalid' | 'valid'
 function getEmailState(email: string): EmailState {
@@ -236,19 +251,29 @@ export function LoginForm() {
     if (!password.trim()) { setLocalError('Password is required.'); return }
     const normalizedEmail = email.trim().toLowerCase()
     setLocalLoading(true)
-    // Set current user BEFORE login() so auth-store can read the email + name
-    localStorage.setItem('kavach_current_user', email.trim().toLowerCase())
-    // Perform actual login
+
+    // 1. Set current user BEFORE login() so auth-store can read the email + name
+    localStorage.setItem('kavach_current_user', normalizedEmail)
+
+    // 2. Perform app-level auth (validates the API bearer password)
     const ok = await login(password)
-    if (ok) {
-      localStorage.setItem('kavach_session', 'true')
-      router.push('/notebooks')
-    } else {
+    if (!ok) {
       localStorage.removeItem('kavach_current_user')
       setLocalError('Authentication failed. Please try again.')
-      localStorage.removeItem('kavach_current_user')
-      setLocalError('Authentication failed. Please try again.')
+      setLocalLoading(false)
+      return
     }
+
+    // 3. Resolve display name from localStorage (set during registration)
+    const localUser = findUserLocally(normalizedEmail, password)
+    const displayName = localUser?.name?.trim() || normalizedEmail.split('@')[0]
+
+    // 4. Upsert the user in SurrealDB so /api/users/profile works from any device.
+    //    Uses the API bearer password for auth — no separate user password needed.
+    await upsertUserBackend(displayName, normalizedEmail, password)
+
+    localStorage.setItem('kavach_session', 'true')
+    router.push('/notebooks')
     setLocalLoading(false)
   }
 
