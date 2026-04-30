@@ -32,40 +32,45 @@ apiClient.interceptors.request.use(async (config) => {
     // the same browser session after login.
     const storeState = useAuthStore.getState()
 
-    if (storeState.apiPassword) {
-      // Auth is required and user is logged in — send the raw password
-      config.headers.Authorization = `Bearer ${storeState.apiPassword}`
+    // Resolve the API password: prefer in-memory, fall back to sessionStorage
+    // (sessionStorage survives page reloads within the same tab).
+    const apiPassword = storeState.apiPassword
+      ?? (typeof window !== 'undefined' ? sessionStorage.getItem('kavach_api_password') : null)
 
-      // Send user email for per-user data scoping on the backend
-      const userEmail = storeState.currentUserEmail
-        ?? (storeState.token && storeState.token !== 'not-required'
-          ? decodeToken(storeState.token)?.sub
-          : null)
+    // Resolve the user email: prefer in-memory store, fall back to persisted auth-storage
+    const resolveUserEmail = (): string | null => {
+      if (storeState.currentUserEmail) return storeState.currentUserEmail
+      try {
+        const authStorage = localStorage.getItem('auth-storage')
+        if (authStorage) {
+          const { state } = JSON.parse(authStorage)
+          return state?.currentUserEmail
+            ?? (state?.token && state.token !== 'not-required'
+              ? decodeToken(state.token)?.sub
+              : null)
+            ?? null
+        }
+      } catch { /* ignore */ }
+      return null
+    }
+
+    if (apiPassword) {
+      // Auth is required and user is logged in — send the raw password
+      config.headers.Authorization = `Bearer ${apiPassword}`
+
+      const userEmail = resolveUserEmail()
       if (userEmail) {
         config.headers['X-User-Email'] = userEmail
       }
-    } else {
-      // Auth not required (token === 'not-required') — fall back to localStorage
-      const authStorage = localStorage.getItem('auth-storage')
-      if (authStorage) {
-        try {
-          const { state } = JSON.parse(authStorage)
-          if (state?.token) {
-            config.headers.Authorization = `Bearer ${state.token}`
-
-            // Send user email so the backend can scope data per-user.
-            // Prefer the persisted currentUserEmail; fall back to JWT sub claim.
-            const userEmail = state.currentUserEmail
-              ?? (state.token !== 'not-required' ? decodeToken(state.token)?.sub : null)
-            if (userEmail) {
-              config.headers['X-User-Email'] = userEmail
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing auth storage:', error)
-        }
+    } else if (storeState.token === 'not-required') {
+      // Auth not required — still send user email for scoping if available
+      const userEmail = resolveUserEmail()
+      if (userEmail) {
+        config.headers['X-User-Email'] = userEmail
       }
     }
+    // If no apiPassword and auth IS required, let the request go through without
+    // auth — the backend will return 401 and the response interceptor will redirect to /login.
   }
 
   // Handle FormData vs JSON content types

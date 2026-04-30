@@ -113,6 +113,12 @@ export const useAuthStore = create<AuthState>()(
             const name = email ? users.find(u => u.email === email)?.name : undefined
             const jwtToken = await issueToken(email ?? 'unknown', name)
 
+            // Persist the API password in sessionStorage so it survives page reloads
+            // within the same tab. sessionStorage is cleared when the tab is closed.
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('kavach_api_password', password)
+            }
+
             set({
               isAuthenticated: true,
               token: jwtToken,

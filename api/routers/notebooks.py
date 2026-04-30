@@ -54,67 +54,44 @@ async def get_notebooks(
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
-        # Build the query with counts, filtered by owner when a user is present.
-        # Also include legacy notebooks that have no owner (owner IS NULL) so that
-        # notebooks created before user-scoping was introduced are still visible.
-        # On first access by a logged-in user, those legacy notebooks are claimed
-        # (owner is set) so they become properly scoped going forward.
-        if current_user:
-            if archived is not None:
-                # Filter archived in the DB query for efficiency.
-                # Treat NULL/NONE as false (legacy notebooks without the field set).
-                archived_condition = "AND (archived = true)" if archived else "AND (archived = false OR archived = NONE OR archived = null OR archived IS NULL)"
-                query = f"""
-                    SELECT *,
-                    count(<-reference.in) as source_count,
-                    count(<-artifact.in) as note_count
-                    FROM notebook
-                    WHERE (owner = $owner OR owner = 'user' OR owner = NONE OR owner = null)
-                    {archived_condition}
-                    ORDER BY {order_by}
-                """
-            else:
-                query = f"""
-                    SELECT *,
-                    count(<-reference.in) as source_count,
-                    count(<-artifact.in) as note_count
-                    FROM notebook
-                    WHERE owner = $owner OR owner = 'user' OR owner = NONE OR owner = null
-                    ORDER BY {order_by}
-                """
-            result = await repo_query(query, {"owner": current_user})
-            # Migrate legacy notebooks (owner='user' or no owner) to current user
-            for nb in result:
-                nb_owner = nb.get("owner")
-                if nb_owner != current_user:
-                    nb_id = str(nb.get("id", ""))
-                    try:
-                        await repo_query(
-                            "UPDATE $id SET owner = $owner",
-                            {"id": nb_id, "owner": current_user}
-                        )
-                        logger.info(f"Migrated notebook {nb_id} owner from '{nb_owner}' to '{current_user}'")
-                    except Exception as migrate_err:
-                        logger.warning(f"Could not migrate notebook {nb_id} owner: {migrate_err}")
+        # Build archived condition — treat NULL/NONE as false (legacy notebooks).
+        if archived is True:
+            archived_condition = "AND (archived = true)"
+        elif archived is False:
+            archived_condition = (
+                "AND (archived = false OR archived = NONE "
+                "OR archived = null OR archived IS NULL)"
+            )
         else:
-            if archived is not None:
-                archived_condition = "WHERE (archived = true)" if archived else "WHERE (archived = false OR archived = NONE OR archived = null OR archived IS NULL)"
-                query = f"""
-                    SELECT *,
-                    count(<-reference.in) as source_count,
-                    count(<-artifact.in) as note_count
-                    FROM notebook
-                    {archived_condition}
-                    ORDER BY {order_by}
-                """
+            archived_condition = ""
+
+        if current_user:
+            # Strict per-user scoping: only return notebooks owned by this user.
+            # No cross-user leakage — each user sees only their own notebooks.
+            query = f"""
+                SELECT *,
+                count(<-reference.in) as source_count,
+                count(<-artifact.in) as note_count
+                FROM notebook
+                WHERE owner = $owner
+                {archived_condition}
+                ORDER BY {order_by}
+            """
+            result = await repo_query(query, {"owner": current_user})
+        else:
+            # No authenticated user (auth disabled) — return all notebooks.
+            if archived_condition:
+                where_clause = f"WHERE 1=1 {archived_condition}"
             else:
-                query = f"""
-                    SELECT *,
-                    count(<-reference.in) as source_count,
-                    count(<-artifact.in) as note_count
-                    FROM notebook
-                    ORDER BY {order_by}
-                """
+                where_clause = ""
+            query = f"""
+                SELECT *,
+                count(<-reference.in) as source_count,
+                count(<-artifact.in) as note_count
+                FROM notebook
+                {where_clause}
+                ORDER BY {order_by}
+            """
             result = await repo_query(query)
 
         # Build responses — calculate storage_used_mb only for notebooks with a limit
@@ -141,6 +118,34 @@ async def get_notebooks(
         raise HTTPException(
             status_code=500, detail=f"Error fetching notebooks: {str(e)}"
         )
+
+
+@router.post("/notebooks/claim-unowned")
+async def claim_unowned_notebooks(
+    current_user: Optional[str] = Depends(get_current_user),
+):
+    """
+    Assign all unowned notebooks (owner = null/NONE/'user') to the current user.
+    Call this once after first login to migrate legacy data.
+    Returns the count of notebooks claimed.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        result = await repo_query(
+            """
+            UPDATE notebook
+            SET owner = $owner
+            WHERE owner = NONE OR owner = null OR owner = 'user'
+            """,
+            {"owner": current_user},
+        )
+        claimed = len(result) if result else 0
+        logger.info(f"[notebooks] {current_user} claimed {claimed} unowned notebooks")
+        return {"claimed": claimed}
+    except Exception as e:
+        logger.error(f"Error claiming unowned notebooks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/notebooks", response_model=NotebookResponse)
