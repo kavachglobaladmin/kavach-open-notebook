@@ -5,11 +5,14 @@ import sys
 
 import pdfplumber
 import pypdfium2 as pdfium
-import pytesseract
-from pytesseract import Output
 
 
 def _configure_tesseract():
+    try:
+        import pytesseract
+    except ImportError:
+        return False
+
     possible_tessdata_dirs = [
         Path(sys.prefix) / "share" / "tessdata",
         Path(sys.prefix) / "Library" / "share" / "tessdata",
@@ -32,9 +35,12 @@ def _configure_tesseract():
                 break
     if tesseract_path:
         pytesseract.pytesseract.tesseract_cmd = tesseract_path
+    return True
 
 
 def _ocr_page_lines(page, scale=3):
+    import pytesseract
+    from pytesseract import Output
     _configure_tesseract()
     bitmap = page.render(scale=scale)
     image = bitmap.to_pil()
@@ -92,15 +98,37 @@ def _embedded_text(file_path):
     return "\n".join(text_parts).strip()
 
 
+def _pymupdf_text(file_path):
+    """Extract text using PyMuPDF (fitz) — handles more PDF types than pdfplumber."""
+    import fitz  # PyMuPDF
+    text_parts = []
+    doc = fitz.open(str(file_path))
+    try:
+        for page in doc:
+            text_parts.append(page.get_text() or "")
+    finally:
+        doc.close()
+    return "\n".join(text_parts).strip()
+
+
 def extract_text(file_path):
-    # Try embedded text first — no OCR needed for digital PDFs
+    # 1. Try pdfplumber first
     try:
         embedded = _embedded_text(file_path)
         if embedded and len(embedded.strip()) > 100:
             return embedded
     except Exception:
         pass
-    # Fallback to OCR only if tesseract is available
+
+    # 2. Try PyMuPDF — handles more PDF variants (iText, etc.)
+    try:
+        mupdf = _pymupdf_text(file_path)
+        if mupdf and len(mupdf.strip()) > 100:
+            return mupdf
+    except Exception:
+        pass
+
+    # 3. Fallback to OCR only if tesseract is available
     try:
         import shutil
         if shutil.which("tesseract"):
@@ -109,7 +137,8 @@ def extract_text(file_path):
                 return ocr_text
     except Exception:
         pass
-    # Last resort
+
+    # 4. Last resort — pdfplumber again
     try:
         return _embedded_text(file_path)
     except Exception:
