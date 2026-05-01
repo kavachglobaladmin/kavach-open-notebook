@@ -1,0 +1,6 @@
+-- Migration 18: Add owner field to notebook and note tables
+-- The notebook table is SCHEMAFULL — without this DEFINE FIELD,
+-- any SET owner = '...' is silently discarded by SurrealDB.
+
+DEFINE FIELD IF NOT EXISTS owner ON TABLE notebook TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS owner ON TABLE note TYPE option<string>;

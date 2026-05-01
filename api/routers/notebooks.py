@@ -162,7 +162,7 @@ async def debug_notebook_owners(
     Debug endpoint — returns all notebooks with their owner field.
     Shows what email is being received as X-User-Email and what owners exist in DB.
     """
-    all_notebooks = await repo_query("SELECT id, name, owner FROM notebook ORDER BY updated DESC")
+    all_notebooks = await repo_query("SELECT id, name, owner FROM notebook")
     return {
         "received_x_user_email": current_user,
         "total_notebooks": len(all_notebooks),
@@ -326,15 +326,33 @@ async def update_notebook(
 
         await notebook.save()
 
-        # Query with counts after update
-        query = """
+        # Re-fetch with counts after save
+        result = await repo_query(
+            """
             SELECT *,
             count(<-reference.in) as source_count,
             count(<-artifact.in) as note_count
             FROM $notebook_id
-        """
+            """,
+            {"notebook_id": ensure_record_id(notebook_id)},
+        )
 
-        # Fallback if query fails
+        if result:
+            nb = result[0]
+            return NotebookResponse(
+                id=str(nb.get("id", "")),
+                name=nb.get("name", ""),
+                description=nb.get("description", ""),
+                archived=nb.get("archived", False),
+                storage_limit_mb=nb.get("storage_limit_mb"),
+                storage_used_mb=None,
+                created=str(nb.get("created", "")),
+                updated=str(nb.get("updated", "")),
+                source_count=nb.get("source_count", 0),
+                note_count=nb.get("note_count", 0),
+            )
+
+        # Fallback
         return NotebookResponse(
             id=notebook.id or "",
             name=notebook.name,

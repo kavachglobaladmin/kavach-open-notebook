@@ -1,0 +1,3 @@
+-- Rollback migration 18: Remove owner field from notebook and note tables
+REMOVE FIELD owner ON TABLE notebook;
+REMOVE FIELD owner ON TABLE note;
