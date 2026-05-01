@@ -39,14 +39,13 @@ export function useAuth() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasHydrated, authRequired])
 
-  const handleLogin = async (password: string) => {
+  const handleLogin = async (email: string, password: string) => {
     // Clear all cached queries before login so stale data from a previous
     // user session is never shown to the newly logged-in user.
     queryClient.clear()
 
-    const success = await login(password)
+    const success = await login(email, password)
     if (success) {
-      // Check if there's a stored redirect path
       const redirectPath = sessionStorage.getItem('redirectAfterLogin')
       if (redirectPath) {
         sessionStorage.removeItem('redirectAfterLogin')

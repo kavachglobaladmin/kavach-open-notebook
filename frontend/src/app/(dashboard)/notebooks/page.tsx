@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -10,6 +10,10 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { CreateNotebookDialog } from '@/components/notebooks/CreateNotebookDialog'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { notebooksApi } from '@/lib/api/notebooks'
+import { useQueryClient } from '@tanstack/react-query'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 
 export default function NotebooksPage() {
   const { t } = useTranslation()
@@ -17,28 +21,48 @@ export default function NotebooksPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const { data: notebooks, isLoading, refetch } = useNotebooks(false)
   const { data: archivedNotebooks } = useNotebooks(true)
+  const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+  const queryClient = useQueryClient()
+
+  // ── Claim unowned notebooks once per session per user ──────────────────────
+  // Notebooks created before the user system (owner = NONE) are invisible
+  // because GET /notebooks filters WHERE owner = $email. This one-time call
+  // assigns them to the current user so they appear immediately.
+  const claimedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!currentUserEmail) return
+    // Only run once per user per browser session
+    const sessionKey = `notebooks_claimed_${currentUserEmail}`
+    if (sessionStorage.getItem(sessionKey) === 'true') return
+    if (claimedRef.current === currentUserEmail) return
+    claimedRef.current = currentUserEmail
+
+    notebooksApi.claimUnowned()
+      .then((result) => {
+        sessionStorage.setItem(sessionKey, 'true')
+        if (result.claimed > 0) {
+          // Unowned notebooks were found and assigned — refetch to show them
+          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
+        }
+      })
+      .catch(() => {
+        // Non-fatal — user can still use the app
+      })
+  }, [currentUserEmail, queryClient])
 
   const normalizedQuery = searchTerm.trim().toLowerCase()
 
   const filteredActive = useMemo(() => {
-    if (!notebooks) {
-      return undefined
-    }
-    if (!normalizedQuery) {
-      return notebooks
-    }
+    if (!notebooks) return undefined
+    if (!normalizedQuery) return notebooks
     return notebooks.filter((notebook) =>
       notebook.name.toLowerCase().includes(normalizedQuery)
     )
   }, [notebooks, normalizedQuery])
 
   const filteredArchived = useMemo(() => {
-    if (!archivedNotebooks) {
-      return undefined
-    }
-    if (!normalizedQuery) {
-      return archivedNotebooks
-    }
+    if (!archivedNotebooks) return undefined
+    if (!normalizedQuery) return archivedNotebooks
     return archivedNotebooks.filter((notebook) =>
       notebook.name.toLowerCase().includes(normalizedQuery)
     )
@@ -72,16 +96,16 @@ export default function NotebooksPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                 <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => refetch()}
-                    className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
-                  >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetch()}
+                  className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
                   <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                   {t.common.refresh || "Refresh"}
                 </Button>
-                <Button 
+                <Button
                   onClick={() => setCreateDialogOpen(true)}
                   className="bg-[#FF7043] hover:bg-[#F4511E] text-white rounded-lg h-10 font-semibold gap-2"
                 >
@@ -90,23 +114,23 @@ export default function NotebooksPage() {
                 </Button>
               </div>
             </div>
-            
+
             {/* Notebook Lists */}
             <div className="space-y-12">
-              <NotebookList 
-                notebooks={filteredActive} 
+              <NotebookList
+                notebooks={filteredActive}
                 isLoading={isLoading}
-                title="" // Title is handled by the custom header above
+                title=""
                 emptyTitle={isSearching ? t.common.noMatches : undefined}
                 emptyDescription={isSearching ? t.common.tryDifferentSearch : undefined}
                 onAction={!isSearching ? () => setCreateDialogOpen(true) : undefined}
                 actionLabel={!isSearching ? t.notebooks.newNotebook : undefined}
               />
-              
+
               {hasArchived && (
                 <div className="pt-4 border-t border-slate-100">
-                  <NotebookList 
-                    notebooks={filteredArchived} 
+                  <NotebookList
+                    notebooks={filteredArchived}
                     isLoading={false}
                     title={t.notebooks.archivedNotebooks}
                     collapsible

@@ -42,6 +42,15 @@ export const notebooksApi = {
     return response.data
   },
 
+  /**
+   * Assign all notebooks with owner = NONE/null to the currently logged-in user.
+   * Called once on the notebooks page load to migrate legacy data.
+   */
+  claimUnowned: async (): Promise<{ claimed: number }> => {
+    const response = await apiClient.post<{ claimed: number }>('/notebooks/claim-unowned')
+    return response.data
+  },
+
   addSource: async (notebookId: string, sourceId: string) => {
     const response = await apiClient.post(`/notebooks/${notebookId}/sources/${sourceId}`)
     return response.data

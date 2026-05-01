@@ -164,6 +164,7 @@ app.add_middleware(
         "/openapi.json",
         "/redoc",
         "/api/auth/status",
+        "/api/auth/login",
         "/api/config",
         "/api/otp/send",
         "/api/otp/verify",

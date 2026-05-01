@@ -63,14 +63,21 @@ apiClient.interceptors.request.use(async (config) => {
         config.headers['X-User-Email'] = userEmail
       }
     } else if (storeState.token === 'not-required') {
-      // Auth not required — still send user email for scoping if available
+      // Auth not required — still send user email for scoping if available.
+      // This ensures notebooks are always filtered by owner even when no
+      // API password is configured.
+      const userEmail = resolveUserEmail()
+      if (userEmail) {
+        config.headers['X-User-Email'] = userEmail
+      }
+    } else if (storeState.isAuthenticated) {
+      // Authenticated but apiPassword not yet restored (e.g. between hydration
+      // and sessionStorage read) — still send the email so scoping works.
       const userEmail = resolveUserEmail()
       if (userEmail) {
         config.headers['X-User-Email'] = userEmail
       }
     }
-    // If no apiPassword and auth IS required, let the request go through without
-    // auth — the backend will return 401 and the response interceptor will redirect to /login.
   }
 
   // Handle FormData vs JSON content types

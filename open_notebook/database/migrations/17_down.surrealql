@@ -1,0 +1,2 @@
+-- Rollback migration 17: Remove kavach_user table entirely
+REMOVE TABLE kavach_user;
