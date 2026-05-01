@@ -38,9 +38,37 @@ async def analyze_bank_statement(source_id: str):
         import asyncio
         from open_notebook.bank_statement.pipeline import run_pipeline
 
-        result = await asyncio.to_thread(run_pipeline, file_path)
+        # Strategy: always try direct file extraction first (most accurate).
+        # Only fall back to source.full_text if file extraction yields 0 transactions
+        # (handles image-based PDFs that were OCR'd during source processing).
+        fallback_text = source.full_text if source.full_text else None
+        logger.info(f"full_text length: {len(fallback_text) if fallback_text else 0}")
 
-        logger.info(f"Bank analysis complete: {result.get('total_transactions', 0)} transactions")
+        # First pass: direct file extraction (no pre-extracted text)
+        result = await asyncio.to_thread(run_pipeline, file_path, None)
+        total = result.get('total_transactions', 0)
+        logger.info(f"Bank analysis complete: {total} transactions")
+
+        # Second pass: if file extraction failed, try stored full_text (OCR fallback)
+        if total == 0 and fallback_text and len(fallback_text.strip()) > 100:
+            logger.info("File extraction yielded 0 — retrying with source.full_text")
+            result = await asyncio.to_thread(run_pipeline, file_path, fallback_text)
+            total = result.get('total_transactions', 0)
+            logger.info(f"Bank analysis (full_text fallback) complete: {total} transactions")
+
+        # Detect blank/unreadable PDF and return helpful error
+        if total == 0:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "No transactions could be extracted from this PDF. "
+                    "This usually means the PDF is image-based (scanned) without OCR, "
+                    "or was created using 'Print to PDF' from a protected document. "
+                    "Please download the original PDF directly from your bank's app or website "
+                    "and upload that file instead."
+                )
+            )
+
         return result
 
     except HTTPException:

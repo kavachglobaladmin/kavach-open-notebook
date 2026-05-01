@@ -355,6 +355,12 @@ export function LoginForm() {
                     <div className="h-1.5 w-12 bg-[#FF7043] rounded-full" />
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {localError && (
+                        <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            {localError}
+                        </div>
+                    )}
                     <div className="space-y-1">
                         <label className="text-sm font-bold text-slate-700 ml-1">Name</label>
                         <input
@@ -385,6 +391,30 @@ export function LoginForm() {
                             className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all"
                         />
                     </div>
+                    {/* Terms & Conditions */}
+                    <label className="flex items-start gap-3 cursor-pointer select-none group">
+                        <div className="relative mt-0.5 shrink-0">
+                            <input
+                                type="checkbox"
+                                checked={agreed}
+                                onChange={e => { setAgreed(e.target.checked); if (localError.includes('Terms')) setLocalError('') }}
+                                className="sr-only"
+                            />
+                            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${agreed ? 'bg-[#FF7043] border-[#FF7043]' : 'border-slate-300 bg-white group-hover:border-[#FF7043]'}`}>
+                                {agreed && (
+                                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+                                    </svg>
+                                )}
+                            </div>
+                        </div>
+                        <span className="text-sm text-slate-500 leading-snug">
+                            I agree to the{' '}
+                            <span className="text-[#FF7043] font-semibold">Terms & Conditions</span>
+                            {' '}and{' '}
+                            <span className="text-[#FF7043] font-semibold">Privacy Policy</span>
+                        </span>
+                    </label>
                     <button type="submit" disabled={isLoading} className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98]" style={{ background: '#FF7043' }}>
                         {isLoading ? <LoadingSpinner /> : 'CREATE ACCOUNT'}
                     </button>

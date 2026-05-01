@@ -8,7 +8,7 @@ from surreal_commands import CommandInput, CommandOutput, command
 from open_notebook.database.repository import ensure_record_id
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import ConfigurationError
+from open_notebook.exceptions import ConfigurationError, NotFoundError
 
 try:
     from open_notebook.graphs.source import source_graph
@@ -54,7 +54,7 @@ class SourceProcessingOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 120,  # Allow queue to drain
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
+        "stop_on": [ValueError, ConfigurationError, NotFoundError],  # Don't retry validation/config/missing errors
         "retry_log_level": "debug",  # Avoid log noise during transaction conflicts
     },
 )
@@ -138,10 +138,10 @@ async def process_source_command(
             processing_time=processing_time,
         )
 
-    except ValueError as e:
-        # Validation errors are permanent failures - don't retry
+    except (ValueError, NotFoundError) as e:
+        # Validation/not-found errors are permanent failures - don't retry
         processing_time = time.time() - start_time
-        logger.error(f"Source processing failed: {e}")
+        logger.error(f"Source processing failed (permanent): {e}")
         return SourceProcessingOutput(
             success=False,
             source_id=input_data.source_id,
@@ -186,7 +186,7 @@ class RunTransformationOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 1,
         "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
+        "stop_on": [ValueError, ConfigurationError, NotFoundError],  # Don't retry validation/config/missing errors
         "retry_log_level": "debug",
     },
 )
@@ -247,8 +247,8 @@ async def run_transformation_command(
             processing_time=processing_time,
         )
 
-    except ValueError as e:
-        # Validation errors are permanent failures - don't retry
+    except (ValueError, NotFoundError) as e:
+        # Validation/not-found errors are permanent failures - don't retry
         processing_time = time.time() - start_time
         logger.error(
             f"Failed to run transformation {input_data.transformation_id} "
