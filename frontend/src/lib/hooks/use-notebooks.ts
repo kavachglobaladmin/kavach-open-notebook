@@ -63,11 +63,16 @@ export function useCreateNotebook() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { t } = useTranslation()
+  const userEmail = useCurrentUserEmail()
 
   return useMutation({
     mutationFn: (data: CreateNotebookRequest) => notebooksApi.create(data),
     onSuccess: () => {
-      // Invalidate all notebook queries (covers all users' cache buckets)
+      // Invalidate the exact user-scoped query keys so the new notebook
+      // appears immediately for the logged-in user without a manual refresh.
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.notebooks, { archived: false, user: userEmail }] })
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.notebooks, { archived: true, user: userEmail }] })
+      // Also invalidate the broader key as a safety net
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebooks })
       toast({
         title: t.common.success,

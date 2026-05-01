@@ -8,7 +8,7 @@ interface AuthState {
   isAuthenticated: boolean
   /** JWT-like signed token (or 'not-required' when auth is disabled) */
   token: string | null
-  /** The raw API password — kept only in memory, never persisted */
+  /** The global API bearer token returned by /api/auth/login — never persisted */
   apiPassword: string | null
   isLoading: boolean
   error: string | null
@@ -16,14 +16,22 @@ interface AuthState {
   isCheckingAuth: boolean
   hasHydrated: boolean
   authRequired: boolean | null
-  /** Expiry timestamp (ms) for UI countdown */
   tokenExpiresAt: number | null
-  /** Email of the currently logged-in user (derived from JWT sub claim) */
+  /** Email of the currently logged-in user */
   currentUserEmail: string | null
 
   setHasHydrated: (state: boolean) => void
   checkAuthRequired: () => Promise<boolean>
-  login: (password: string) => Promise<boolean>
+  /**
+   * Validates user credentials against kavach_user via /api/auth/login.
+   * On success the backend returns the global api_token which is stored
+   * in memory + sessionStorage for subsequent API calls.
+   *
+   * @param email     User's email address
+   * @param password  User's own password (validated against kavach_user)
+   * @param name      Display name (optional, from login response)
+   */
+  login: (email: string, password: string, name?: string) => Promise<boolean>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -83,71 +91,62 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // ── Login ─────────────────────────────────────────────────────────────
-      login: async (password: string) => {
+      // Calls /api/auth/login which validates kavach_user credentials and
+      // returns the global api_token. No global password needed on the frontend.
+      login: async (email: string, password: string, name?: string) => {
         set({ isLoading: true, error: null })
         try {
           const apiUrl = await getApiUrl()
 
-          // Get the email that's about to log in (set by LoginForm before calling login())
-          // Never fall back to the string 'user' — use null so no X-User-Email header
-          // is sent when the email is unknown, avoiding cross-user data leakage.
-          const email = localStorage.getItem('kavach_current_user') ?? null
-
-          // Validate password against backend — include X-User-Email so the
-          // backend can scope the response to this user even during validation
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${password}`,
-              'Content-Type': 'application/json',
-              ...(email ? { 'X-User-Email': email } : {}),
-            },
+          const response = await fetch(`${apiUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
           })
 
           if (response.ok) {
-            // Issue a signed JWT for the local user session
-            const email = localStorage.getItem('kavach_current_user') ?? null
-            const users: { email: string; name: string }[] = JSON.parse(
-              localStorage.getItem('kavach_users') ?? '[]'
-            )
-            const name = email ? users.find(u => u.email === email)?.name : undefined
-            const jwtToken = await issueToken(email ?? 'unknown', name)
+            const data = await response.json()
+            const apiToken: string = data.api_token ?? ''
+            const verifiedEmail: string = data.email ?? email.trim().toLowerCase()
+            const displayName: string = name ?? data.name ?? verifiedEmail.split('@')[0]
 
-            // Persist the API password in sessionStorage so it survives page reloads
-            // within the same tab. sessionStorage is cleared when the tab is closed.
+            // Issue a signed JWT for the local session
+            const jwtToken = await issueToken(verifiedEmail, displayName)
+
             if (typeof window !== 'undefined') {
-              sessionStorage.setItem('kavach_api_password', password)
+              // Store api_token in sessionStorage — cleared when tab closes
+              sessionStorage.setItem('kavach_api_password', apiToken)
+              localStorage.setItem('kavach_current_user', verifiedEmail)
             }
 
             set({
               isAuthenticated: true,
               token: jwtToken,
-              apiPassword: password,   // memory-only, not persisted
+              apiPassword: apiToken,
               isLoading: false,
               lastAuthCheck: Date.now(),
-              tokenExpiresAt: null,    // no time-based expiry
-              currentUserEmail: email, // null when kavach_current_user was not set
+              tokenExpiresAt: null,
+              currentUserEmail: verifiedEmail,
               error: null,
             })
             return true
           } else {
-            let errorMessage = 'Authentication failed'
-            if (response.status === 401) errorMessage = 'Invalid password. Please try again.'
-            else if (response.status === 403) errorMessage = 'Access denied. Please check your credentials.'
-            else if (response.status >= 500) errorMessage = 'Server error. Please try again later.'
-            else errorMessage = `Authentication failed (${response.status})`
+            let errorMessage = 'Authentication failed.'
+            try {
+              const errData = await response.json()
+              errorMessage = errData?.detail ?? errorMessage
+            } catch { /* ignore */ }
 
             set({ error: errorMessage, isLoading: false, isAuthenticated: false, token: null, tokenExpiresAt: null })
             return false
           }
         } catch (error) {
-          console.error('Network error during auth:', error)
           const errorMessage =
             error instanceof TypeError && error.message.includes('Failed to fetch')
               ? 'Unable to connect to server. Please check if the API is running.'
               : error instanceof Error
               ? `Network error: ${error.message}`
-              : 'An unexpected error occurred during authentication'
+              : 'An unexpected error occurred.'
 
           set({ error: errorMessage, isLoading: false, isAuthenticated: false, token: null, tokenExpiresAt: null })
           return false

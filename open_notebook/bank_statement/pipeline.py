@@ -18,6 +18,49 @@ from open_notebook.bank_statement.reports import (
 _DISPLAY_COLS = ["date", "description", "debit", "credit", "balance", "nlp_keywords", "type"]
 
 
+def _clean_ocr_content(text: str) -> str:
+    """
+    Clean OCR-extracted content for bank statement parsing.
+    
+    Handles:
+    - [OCR PAGE CONTENT] markers → replaced with newlines
+    - Long single-line pages → split on known date patterns and UPI keywords
+    - Gujarati/Hindi OCR artifacts → removed
+    - Repeated header lines → removed
+    """
+    import re
+
+    # Remove [OCR PAGE CONTENT] markers
+    text = re.sub(r'\[OCR PAGE CONTENT\]', '\n', text)
+
+    # Remove non-ASCII characters that are OCR artifacts (Gujarati, Hindi etc.)
+    # Keep: ASCII printable + common symbols
+    text = re.sub(r'[^\x00-\x7F]+', ' ', text)
+
+    # Split on UPI transaction patterns — insert newline before each UPI/NEFT/IMPS entry
+    text = re.sub(r'\s+(UPI(?:OUT|IN)?[/ ])', r'\n\1', text)
+    text = re.sub(r'\s+(NEFT[/ ])', r'\n\1', text)
+    text = re.sub(r'\s+(IMPS[/ ])', r'\n\1', text)
+    text = re.sub(r'\s+(RTGS[/ ])', r'\n\1', text)
+    text = re.sub(r'\s+(SBINT[: ])', r'\n\1', text)
+
+    # Split on date patterns like "04 Aug", "05 Sep" at start of segments
+    text = re.sub(
+        r'\s+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:\s+\d{4})?)\s+',
+        r'\n\1\n',
+        text
+    )
+
+    # Clean up multiple spaces and blank lines
+    lines = []
+    for line in text.splitlines():
+        line = ' '.join(line.split())
+        if line:
+            lines.append(line)
+
+    return '\n'.join(lines)
+
+
 def _fmt(value) -> str:
     try:
         return f"{float(value):,.2f}"
@@ -79,12 +122,22 @@ def _fmt_pattern(report: dict) -> dict:
     return {k: _fmt(v) if isinstance(v, float) else v for k, v in report.items()}
 
 
-def run_pipeline(file_path) -> dict:
+def run_pipeline(file_path, pre_extracted_text: str | None = None) -> dict:
     import re as _re
+    from loguru import logger as _log
 
-    # 1. Extract
-    from open_notebook.bank_statement.extract import extract_text
-    text = extract_text(file_path)
+    # 1. Extract text — use pre-extracted if provided (e.g. OCR already done during source processing)
+    if pre_extracted_text and len(pre_extracted_text.strip()) > 100:
+        _log.info(f"run_pipeline: using pre_extracted_text ({len(pre_extracted_text)} chars)")
+        text = _clean_ocr_content(pre_extracted_text)
+    else:
+        _log.info(f"run_pipeline: extracting from file {file_path}")
+        from open_notebook.bank_statement.extract import extract_text
+        text = extract_text(file_path)
+        if text:
+            text = _clean_ocr_content(text)
+
+    _log.info(f"run_pipeline: text length after clean = {len(text) if text else 0}")
 
     # 2. Metadata
     details = parse_statement_details(text)

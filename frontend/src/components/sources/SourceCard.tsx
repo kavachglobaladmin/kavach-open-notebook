@@ -260,7 +260,7 @@ export function SourceCard({
       )}
       onClick={(e) => {
         // Don't open source detail if a dialog is already open
-        if (mindMapOpen || infographicOpen || profileGraphOpen) return
+        if (mindMapOpen || infographicOpen || profileGraphOpen || bankAnalysisOpen) return
         handleCardClick()
       }}
     >

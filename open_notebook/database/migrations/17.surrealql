@@ -1,0 +1,21 @@
+-- Migration 17: Rebuild kavach_user table with encrypted password column
+-- Removes all existing kavach_user records and redefines the schema
+-- with: email, name, password_hash (for login verification), password_encrypted (Fernet, for display)
+
+-- Step 1: Delete all existing kavach_user records (clean slate)
+DELETE kavach_user;
+
+-- Step 2: Remove old table definition if it exists
+REMOVE TABLE IF EXISTS kavach_user;
+
+-- Step 3: Define the kavach_user table with the new schema
+DEFINE TABLE kavach_user SCHEMAFULL;
+
+DEFINE FIELD email              ON kavach_user TYPE string ASSERT $value != NONE AND $value != '';
+DEFINE FIELD name               ON kavach_user TYPE string ASSERT $value != NONE AND $value != '';
+DEFINE FIELD password_hash      ON kavach_user TYPE string ASSERT $value != NONE AND $value != '';
+DEFINE FIELD password_encrypted ON kavach_user TYPE string ASSERT $value != NONE AND $value != '';
+DEFINE FIELD created_at         ON kavach_user TYPE datetime DEFAULT time::now();
+
+-- Unique index on email
+DEFINE INDEX kavach_user_email_idx ON kavach_user FIELDS email UNIQUE;
