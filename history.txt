@@ -1,22 +1,5 @@
 #V2
-info for db;
-SELECT * FROM kavach_user;
-select * from kavach_user;
-info for db;
-select * from kavach_user;
-DEFINE FIELD created_at ON kavach_user TYPE datetime DEFAULT time::now();
-REMOVE FIELD created_at ON kavach_user;
-DEFINE FIELD created_at ON kavach_user TYPE datetime DEFAULT time::now();
-INFO FOR TABLE kavach_user;
-select * from kavach_user;
-select * from notebooks;
-select * from note;
-SELECT id, name, owner, created FROM notebook ORDER BY created DESC;
-select * from notebooks;
-select * from kavach_user;
-SELECT id, name, owner, created FROM notebook ORDER BY created DESC;
-select * from kavach_user;
-select * from notebook;
-SELECT id, name, owner, created FROM notebook ORDER BY created DESC;
-update notebook set owner ='prachipranav90@gmail.com' where owner = none;
-SELECT id, name, owner, created FROM notebook ORDER BY created DESC;
+cls
+SELECT * FROM information_schema.tables;
+SELECT * FROM openNoteBookDB;
+cls

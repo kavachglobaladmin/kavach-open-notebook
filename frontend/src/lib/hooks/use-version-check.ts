@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { toast } from 'sonner'
 import { getConfig } from '@/lib/config'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { addNotification } from '@/components/layout/NotificationCenter'
 
 /**
  * Hook to check for version updates and display notification.
@@ -26,16 +26,12 @@ export function useVersionCheck() {
         const dismissKey = `version_notification_dismissed_${config.latestVersion}`
         if (sessionStorage.getItem(dismissKey)) return
 
-        toast.info(t.advanced.updateAvailable.replace('{version}', config.latestVersion), {
-          description: t.advanced.updateAvailableDesc,
-          duration: Infinity,
-          closeButton: true,
-          action: {
-            label: t.advanced.viewOnGithub,
-            onClick: () => window.open('https://github.com/lfnovo/open-notebook', '_blank'),
-          },
-          onDismiss: () => sessionStorage.setItem(dismissKey, 'true'),
+        addNotification({
+          title: t.advanced.updateAvailable.replace('{version}', config.latestVersion),
+          message: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/lfnovo/open-notebook`,
+          type: 'info',
         })
+        sessionStorage.setItem(dismissKey, 'true')
       })
       .catch(() => {
         // Silently fail - version check is non-critical

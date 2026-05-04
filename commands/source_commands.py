@@ -166,6 +166,7 @@ class RunTransformationInput(CommandInput):
 
     source_id: str
     transformation_id: str
+    model_id: Optional[str] = None
 
 
 class RunTransformationOutput(CommandOutput):
@@ -212,9 +213,23 @@ async def run_transformation_command(
     start_time = time.time()
 
     try:
+        # Get model name for logging
+        model_name = "default"
+        if input_data.model_id:
+            try:
+                from open_notebook.ai.models import Model
+                model = await Model.get(input_data.model_id)
+                if model and hasattr(model, 'name') and hasattr(model, 'provider'):
+                    model_name = f"{model.name} ({model.provider})"
+                else:
+                    model_name = input_data.model_id
+            except Exception as e:
+                logger.debug(f"Could not fetch model details: {e}")
+                model_name = input_data.model_id
+
         logger.info(
             f"Running transformation {input_data.transformation_id} "
-            f"on source {input_data.source_id}"
+            f"on source {input_data.source_id} with model: {model_name}"
         )
 
         # Load source
@@ -231,13 +246,14 @@ async def run_transformation_command(
 
         # Run transformation graph (includes LLM call + insight creation)
         await transform_graph.ainvoke(
-            input=dict(source=source, transformation=transformation)
+            input=dict(source=source, transformation=transformation),
+            config={"configurable": {"model_id": input_data.model_id}}
         )
 
         processing_time = time.time() - start_time
         logger.info(
             f"Successfully ran transformation {input_data.transformation_id} "
-            f"on source {input_data.source_id} in {processing_time:.2f}s"
+            f"on source {input_data.source_id} in {processing_time:.2f}s with model: {model_name}"
         )
 
         return RunTransformationOutput(

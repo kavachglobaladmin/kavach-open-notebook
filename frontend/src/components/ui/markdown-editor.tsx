@@ -23,7 +23,7 @@ export interface MarkdownEditorProps {
 export const MarkdownEditor = forwardRef<HTMLDivElement, MarkdownEditorProps>(
   ({ value = '', onChange, placeholder, height = 300, preview = 'live', hideToolbar = false, className, textareaId, name }, ref) => {
     return (
-      <div className={className} ref={ref}>
+      <div className={className} ref={ref} suppressHydrationWarning>
         <MDEditor
           value={value}
           onChange={onChange}
@@ -36,6 +36,7 @@ export const MarkdownEditor = forwardRef<HTMLDivElement, MarkdownEditorProps>(
             name: name,
           }}
           data-color-mode="light"
+          visibleDragbar={false}
         />
       </div>
     )

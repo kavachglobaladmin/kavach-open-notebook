@@ -16,7 +16,7 @@ import { InfographicInsightViewer, isInfographicInsight } from '@/components/sou
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
 import { DenseSummaryViewer, isDenseSummaryInsight } from '@/components/source/DenseSummaryViewer'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 
 interface SourceInsightDialogProps {
   open: boolean

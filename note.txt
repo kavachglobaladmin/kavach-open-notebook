@@ -1,11 +1,12 @@
 backend_start : uv run uvicorn api.main:app --host 0.0.0.0 --port 5055 --reload
 
 surrealdb_start : C:\surrealdb\surreal.exe start --log info --user root --pass root rocksdb://./surreal_data
-
+live_database :surreal start --bind 0.0.0.0:8000 --user openNoteBookUser --pass kavach123openNoteBook123 rocksdb://./surreal_data
 frontend : npm run dev
 
 zookeeper: C:\kafka\kafka> .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
-kafka server :  C:\kafka\kafka> .\bin\windows\kafka-server-start.bat .\config\server.properties
+kafka server :  C:\kafka\kafka> deactivate
+
 
 surreal-commands-worker: uv run --env-file .env surreal-commands-worker --import-modules commands
 

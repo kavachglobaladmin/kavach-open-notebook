@@ -1,0 +1,4 @@
+-- Migration 21: Add model_id field to transformation table
+-- Allows per-transformation model selection
+
+DEFINE FIELD model_id ON TABLE transformation TYPE option<string>;

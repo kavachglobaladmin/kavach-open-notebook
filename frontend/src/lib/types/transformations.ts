@@ -5,6 +5,7 @@ export interface Transformation {
   description: string
   prompt: string
   apply_default: boolean
+  model_id?: string
   created: string
   updated: string
 }
@@ -15,6 +16,7 @@ export interface CreateTransformationRequest {
   description: string
   prompt: string
   apply_default?: boolean
+  model_id?: string
 }
 
 export interface UpdateTransformationRequest {
@@ -23,6 +25,7 @@ export interface UpdateTransformationRequest {
   description?: string
   prompt?: string
   apply_default?: boolean
+  model_id?: string
 }
 
 export interface ExecuteTransformationRequest {

@@ -368,8 +368,8 @@ export function SourceCard({
 
             {/* Infographic button - removed */}
 
-            {/* Bank Analysis button — only for uploaded PDF files */}
-            {isBankFile && isCompleted && (
+            {/* Bank Analysis button — show for uploaded PDF files (even while processing) */}
+            {isBankFile && (isCompleted || isProcessing) && (
               <Button
                 variant="ghost"
                 size="sm"

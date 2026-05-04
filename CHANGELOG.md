@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Retry button for failed podcast episodes in the UI (#211, #218)
-- Error details displayed on failed podcast episodes (#185, #355)
+- Error details ed on failed podcast episodes (#185, #355)
 - `POST /podcasts/episodes/{id}/retry` API endpoint for re-submitting failed episodes
 - `error_message` field in podcast episode API responses
 
@@ -135,7 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Azure form race condition: all configuration now saved in single atomic request
-- Migration API "error error" display: added proper MigrationResult model with message field
+- Migration API "error error" : added proper MigrationResult model with message field
 - Connection tester for Ollama providers: improved error handling and URL validation
 - SqliteSaver async compatibility issues in chat system (#509, #525, #538)
 - Re-embedding failures with empty content (#513, #515)

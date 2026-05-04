@@ -60,6 +60,7 @@ _BALANCE_LABEL_WORDS = {
 # Words that indicate summary/footer lines — skip entirely
 _SKIP_LINE_PATTERNS = [
     re.compile(r"page\s+no", re.IGNORECASE),
+    re.compile(r"page\s+\d+\s+of\s+\d+", re.IGNORECASE),
     re.compile(r"end\s+of\s+statement", re.IGNORECASE),
     re.compile(r"statement\s+summary", re.IGNORECASE),
     re.compile(r"brought\s+forward", re.IGNORECASE),
@@ -70,6 +71,8 @@ _SKIP_LINE_PATTERNS = [
     re.compile(r"in\s+case\s+your\s+account", re.IGNORECASE),
     re.compile(r"dr\s+count", re.IGNORECASE),
     re.compile(r"cr\s+count", re.IGNORECASE),
+    re.compile(r"issued\s+by\s+federal", re.IGNORECASE),
+    re.compile(r"contact\s+us\s+\d", re.IGNORECASE),
 ]
 
 
@@ -364,7 +367,10 @@ def _statement_period(text: str):
     """
     Find statement period (start_month, start_year, end_month, end_year).
     Looks for patterns like "01-11-2011 To 28-02-2013".
+    Always returns the earlier date as start and later date as end.
     """
+    import datetime as _dt
+
     # Try numeric date pairs first (most reliable)
     dates_found = []
     for line in text.splitlines()[:30]:
@@ -378,7 +384,8 @@ def _statement_period(text: str):
     if len(dates_found) >= 2:
         d1, d2 = dates_found[0], dates_found[-1]
         if d1 != d2:
-            return d1.month, d1.year, d2.month, d2.year
+            start, end = (d1, d2) if d1 < d2 else (d2, d1)
+            return start.month, start.year, end.month, end.year
 
     # Fallback: textual month-year pairs
     tokens = " ".join(text.splitlines()).split()
@@ -388,9 +395,10 @@ def _statement_period(text: str):
         month = tokens[i + 1].strip(" ,.").lower()
         year = tokens[i + 2].strip(" ,.")
         if day.isdigit() and month in MONTHS and year.isdigit() and len(year) == 4:
-            found.append((MONTHS[month], int(year)))
+            found.append((_dt.date(int(year), MONTHS[month], int(day))))
             if len(found) == 2:
-                return found[0][0], found[0][1], found[1][0], found[1][1]
+                start, end = (found[0], found[1]) if found[0] < found[1] else (found[1], found[0])
+                return start.month, start.year, end.month, end.year
     return None
 
 
@@ -404,7 +412,9 @@ def _clean_description(desc_tokens: list, fallback_year: int) -> str:
     amount tokens, and page-header fragments.
     """
     _PAGE_NOISE = re.compile(
-        r"page\s*no|value\s*date|cheque|no/ref|heque|post\s*date",
+        r"page\s*no|value\s*date|cheque|no/ref|heque|post\s*date"
+        r"|issued\s+by|contact\s+us|account\s+no\.|account\s+holder"
+        r"|day/night|payment\s+method|transaction\s+details",
         re.IGNORECASE,
     )
     # Amount pattern — remove stray amounts from description
@@ -420,6 +430,9 @@ def _clean_description(desc_tokens: list, fallback_year: int) -> str:
             continue
         # Skip page-header noise
         if _PAGE_NOISE.search(tok):
+            continue
+        # Skip lone month names at start (artifact of "DD Mon" date split)
+        if not clean and tok.strip(" ,.-").lower() in MONTHS:
             continue
         clean.append(tok)
     return " ".join(clean).strip()
@@ -504,6 +517,113 @@ def _is_continuation(line: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Multi-line transaction joiner
+# ---------------------------------------------------------------------------
+
+_PAGE_HEADER_RE = re.compile(
+    r"issued\s+by|page\s+\d+\s+of|account\s+no\.|account\s+holder|date\s+day",
+    re.IGNORECASE,
+)
+
+
+def _is_page_header(line: str) -> bool:
+    """Return True if this line looks like a repeated page header."""
+    return bool(_PAGE_HEADER_RE.search(line))
+
+
+def _is_date_only_line(line: str, fallback_year: int, period) -> bool:
+    """Return True if this line contains only a date (e.g. '04 Aug', '15-03-2024')."""
+    tokens = line.split()
+    if not tokens or len(tokens) > 3:
+        return False
+    date_obj, _ = _date_from_tokens(tokens, fallback_year, period)
+    if date_obj is None:
+        return False
+    # Make sure there are no amounts on this line
+    return not bool(_amounts_in_line(line))
+    """Return True if this line contains only a date (e.g. '04 Aug', '15-03-2024')."""
+    tokens = line.split()
+    if not tokens or len(tokens) > 3:
+        return False
+    date_obj, _ = _date_from_tokens(tokens, fallback_year, period)
+    if date_obj is None:
+        return False
+    # Make sure there are no amounts on this line
+    return not bool(_amounts_in_line(line))
+
+
+def _is_amount_only_line(line: str) -> bool:
+    """Return True if this line contains only a single amount (e.g. '344.13' or '1,655.87')."""
+    tokens = line.split()
+    if len(tokens) != 1:
+        return False
+    return _parse_amount(tokens[0]) is not None
+
+
+def _join_multiline_transactions(lines: list, fallback_year: int, period) -> list:
+    """
+    Detect and join multi-line transaction blocks into single lines.
+
+    Federal Bank OCR format:
+        04 Aug                          ← date-only line
+        UPIOUT/558289304094/...         ← description (1+ lines)
+        344.13                          ← amount
+        1,655.87                        ← balance
+
+    Joins them into: '04 Aug UPIOUT/558289304094/... 344.13 1,655.87'
+
+    Only activates when the text has a significant number of date-only lines
+    (i.e. this is a multi-line format statement).
+    """
+    # Count date-only lines to decide if this is a multi-line format
+    date_only_count = sum(
+        1 for l in lines if _is_date_only_line(l, fallback_year, period)
+    )
+    # If fewer than 3 date-only lines, this is probably a normal single-line format
+    if date_only_count < 3:
+        return lines
+
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if _is_date_only_line(line, fallback_year, period):
+            # Start collecting a multi-line transaction block
+            block = [line]
+            i += 1
+            # Collect following lines until we hit the next date-only line or end
+            while i < len(lines):
+                next_line = lines[i]
+                # Stop if we hit another date-only line
+                if _is_date_only_line(next_line, fallback_year, period):
+                    break
+                # Stop if we hit a header, skip line, or page header
+                if _is_header_line(next_line) or _should_skip_line(next_line) or _is_page_header(next_line):
+                    break
+                block.append(next_line)
+                # Stop as soon as we have 2 amount-only lines (amount + balance)
+                amount_lines_so_far = sum(1 for l in block[1:] if _is_amount_only_line(l))
+                if amount_lines_so_far >= 2:
+                    i += 1
+                    break
+                i += 1
+
+            # Join the block into one line if it has at least 2 amount-only lines
+            amount_lines = [l for l in block[1:] if _is_amount_only_line(l)]
+            if len(amount_lines) >= 2:
+                result.append(" ".join(block))
+            else:
+                # Not a clean multi-line block — keep as-is
+                result.extend(block)
+        else:
+            result.append(line)
+            i += 1
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -528,10 +648,11 @@ def parse_transactions(text: str) -> pd.DataFrame:
     # SBI has Post Date + Value Date columns → same txn appears twice in OCR text
     seen_keys: set = set()
 
-    for raw_line in text.splitlines():
-        line = " ".join(raw_line.split())
-        if not line:
-            continue
+    # Pre-process: join multi-line transaction blocks (e.g. Federal Bank OCR format)
+    raw_lines = [" ".join(l.split()) for l in text.splitlines() if l.strip()]
+    raw_lines = _join_multiline_transactions(raw_lines, fallback_year, period)
+
+    for line in raw_lines:
 
         # Skip footer / summary / page-number lines
         if _should_skip_line(line):

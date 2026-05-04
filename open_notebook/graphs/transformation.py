@@ -401,6 +401,9 @@ TEXT:
 
 async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str, transformation_name: str = "") -> str:
     """Single-pass or chunked transformation using the user's prompt."""
+    import time as _time
+    start_time = _time.time()
+    
     # Bank statement needs larger context to capture all transactions in one pass
     CHUNK_SIZE = 12000 if ("bank_name" in transformation_prompt or "transactions" in transformation_prompt) else 15000
     # Dense summary needs more output tokens — detect by name or prompt content
@@ -416,7 +419,11 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         chain = await provision_langchain_model(
             system + content, model_id, "transformation", max_tokens=single_max_tokens
         )
-        return await _invoke_model(chain, system, content)
+        result = await _invoke_model(chain, system, content)
+        elapsed = _time.time() - start_time
+        from loguru import logger as _logger
+        _logger.info(f"[Transformation] Single-pass completed in {elapsed:.2f}s")
+        return result
 
     chunks = [
         content[i: i + CHUNK_SIZE].strip()
@@ -424,11 +431,15 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         if content[i: i + CHUNK_SIZE].strip()
     ]
 
+    from loguru import logger as _logger
+    _logger.info(f"[Transformation] Processing {len(chunks)} chunks (content size: {len(content)} chars)")
+
     summaries = []
     # Process chunks in parallel batches of 5 to reduce total time
     import asyncio as _asyncio
 
-    async def _summarise_chunk(chunk: str) -> str:
+    async def _summarise_chunk(chunk: str, chunk_idx: int) -> str:
+        chunk_start = _time.time()
         if is_dense:
             # For dense summary: write a detailed paragraph directly from this chunk
             system = (
@@ -446,15 +457,23 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         chain = await provision_langchain_model(
             system + chunk, model_id, "transformation", max_tokens=2048
         )
-        return await _invoke_model(chain, system, chunk)
+        result = await _invoke_model(chain, system, chunk)
+        chunk_elapsed = _time.time() - chunk_start
+        _logger.debug(f"[Transformation] Chunk {chunk_idx+1} completed in {chunk_elapsed:.2f}s")
+        return result
 
     BATCH = 5
     for i in range(0, len(chunks), BATCH):
         batch = chunks[i:i + BATCH]
-        results = await _asyncio.gather(*[_summarise_chunk(c) for c in batch])
+        batch_start = _time.time()
+        results = await _asyncio.gather(*[_summarise_chunk(c, i+j) for j, c in enumerate(batch)])
         summaries.extend(results)
+        batch_elapsed = _time.time() - batch_start
+        _logger.info(f"[Transformation] Batch {i//BATCH + 1} ({len(batch)} chunks) completed in {batch_elapsed:.2f}s")
 
     if len(summaries) == 1:
+        elapsed = _time.time() - start_time
+        _logger.info(f"[Transformation] Completed in {elapsed:.2f}s")
         return summaries[0]
 
     # For dense summary: join all paragraphs directly — no re-summarization
@@ -473,7 +492,10 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         chain = await provision_langchain_model(
             dedup_system + all_paragraphs, model_id, "transformation", max_tokens=8000
         )
-        return await _invoke_model(chain, dedup_system, all_paragraphs)
+        result = await _invoke_model(chain, dedup_system, all_paragraphs)
+        elapsed = _time.time() - start_time
+        _logger.info(f"[Transformation] Final merge completed in {elapsed:.2f}s")
+        return result
 
     all_facts = "\n\n".join(s for s in summaries if s.strip())
 
@@ -530,9 +552,24 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
     content = state.get("input_text")
     assert source or content, "No content to transform"
     transformation: Transformation = state["transformation"]
-    model_id = config.get("configurable", {}).get("model_id")
+    # Use model_id from config first, then fall back to transformation's model_id
+    model_id = config.get("configurable", {}).get("model_id") or transformation.model_id
 
     try:
+        # Log the model being used
+        from loguru import logger as _logger
+        model_name = "default"
+        if model_id:
+            try:
+                from open_notebook.ai.models import Model
+                model = await Model.get(model_id)
+                if model:
+                    model_name = f"{model.name} ({model.provider})"
+            except Exception:
+                model_name = model_id
+        
+        _logger.info(f"[Transformation] Running '{transformation.title}' with model: {model_name}")
+
         t_title = (transformation.title or "").strip().lower()
         t_name  = (transformation.name  or "").strip().lower()
         is_mindmap = (
@@ -544,8 +581,6 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
 
         # ── Mind Map ──────────────────────────────────────────────────────
         if is_mindmap:
-            from loguru import logger as _logger
-
             _logger.info(f"[MindMap] title='{transformation.title}' name='{transformation.name}'")
 
             if not content:

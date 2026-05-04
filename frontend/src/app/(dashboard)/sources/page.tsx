@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 
 export default function SourcesPage() {

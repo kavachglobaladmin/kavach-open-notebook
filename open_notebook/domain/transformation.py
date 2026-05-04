@@ -12,6 +12,9 @@ class Transformation(ObjectModel):
     description: str
     prompt: str
     apply_default: bool
+    model_id: Optional[str] = Field(
+        None, description="Optional model ID to use for this transformation"
+    )
 
 
 class DefaultPrompts(RecordModel):

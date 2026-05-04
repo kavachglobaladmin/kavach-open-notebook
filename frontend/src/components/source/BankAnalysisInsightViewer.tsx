@@ -144,31 +144,27 @@ function SectionCard({ icon: Icon, title, iconClass = 'text-muted-foreground', b
   )
 }
 
-// ── detector ─────────────────────────────────────────────────────────────────
+// ── detector ──────────────────────────────────────────────────────────────────
 
 export function isBankAnalysisInsight(insightType: string): boolean {
   const t = insightType.toLowerCase()
   return t.includes('bank anal') || t.includes('bank statement') || t.includes('bank_statement')
 }
 
-// ── main viewer ───────────────────────────────────────────────────────────────
+// ── JSON bank statement viewer ────────────────────────────────────────────────
 
-// Try to parse JSON bank statement format from the new extraction prompt
 function tryParseJsonBankStatement(content: string): {
   account_summary: Record<string, unknown>
   transactions: Array<Record<string, unknown>>
 } | null {
   try {
-    // Strip markdown fences if present
     let cleaned = content
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-
-    // Fix common JSON issues from LLM output:
-    // 1. Numbers with commas: 35,738.00 → 35738.00
+    // Fix numbers with commas
     cleaned = cleaned.replace(/:\s*(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)/g, (_, n) => ': ' + n.replace(/,/g, ''))
-    // 2. Trailing commas before } or ]
+    // Fix trailing commas
     cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
-    // 3. Missing commas between objects (}\n{)
+    // Fix missing commas between objects
     cleaned = cleaned.replace(/\}\s*\n\s*\{/g, '},\n{')
 
     const parsed = JSON.parse(cleaned)
@@ -179,14 +175,17 @@ function tryParseJsonBankStatement(content: string): {
   return null
 }
 
-function JsonBankStatementViewer({ data }: { data: { account_summary: Record<string, unknown>; transactions: Array<Record<string, unknown>> } }) {
-  const s = data.account_summary
+function JsonBankStatementViewer({ data }: {
+  data: { account_summary: Record<string, unknown>; transactions: Array<Record<string, unknown>> }
+}) {
+  const s    = data.account_summary
   const txns = data.transactions
 
   const totalCredit = txns.reduce((sum, t) => sum + Math.max(Number(t.credit) || 0, 0), 0)
   const totalDebit  = txns.reduce((sum, t) => sum + Math.max(Number(t.debit)  || 0, 0), 0)
 
-  const fmtAmt = (n: number) => n > 0 ? `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'
+  const fmtAmt = (n: number) =>
+    n > 0 ? `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'
 
   return (
     <div className="space-y-4 pb-4">
@@ -198,8 +197,8 @@ function JsonBankStatementViewer({ data }: { data: { account_summary: Record<str
         </div>
         <h2 className="text-xl font-black">{String(s.bank_name || s.bank || 'Bank Statement')}</h2>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          {s.account_holder && <div><span className="text-blue-300/60 text-xs">Holder</span><p className="font-medium">{String(s.account_holder)}</p></div>}
-          {s.account_number && <div><span className="text-blue-300/60 text-xs">Account No.</span><p className="font-medium">{String(s.account_number)}</p></div>}
+          {s.account_holder  && <div><span className="text-blue-300/60 text-xs">Holder</span><p className="font-medium">{String(s.account_holder)}</p></div>}
+          {s.account_number  && <div><span className="text-blue-300/60 text-xs">Account No.</span><p className="font-medium">{String(s.account_number)}</p></div>}
           {s.statement_period && <div><span className="text-blue-300/60 text-xs">Period</span><p className="font-medium">{String(s.statement_period)}</p></div>}
           {s.opening_balance != null && <div><span className="text-blue-300/60 text-xs">Opening Balance</span><p className="font-medium">{fmtAmt(Number(s.opening_balance))}</p></div>}
           {s.closing_balance != null && <div><span className="text-blue-300/60 text-xs">Closing Balance</span><p className="font-medium">{fmtAmt(Number(s.closing_balance))}</p></div>}
@@ -207,11 +206,15 @@ function JsonBankStatementViewer({ data }: { data: { account_summary: Record<str
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-lg bg-emerald-600/20 border border-emerald-500/30 p-3 text-center">
             <p className="text-xs text-emerald-300">Total Credits</p>
-            <p className="text-lg font-black text-emerald-300">{fmtAmt(s.total_credits != null ? Number(s.total_credits) : totalCredit)}</p>
+            <p className="text-lg font-black text-emerald-300">
+              {fmtAmt(s.total_credits != null ? Number(s.total_credits) : totalCredit)}
+            </p>
           </div>
           <div className="rounded-lg bg-rose-600/20 border border-rose-500/30 p-3 text-center">
             <p className="text-xs text-rose-300">Total Debits</p>
-            <p className="text-lg font-black text-rose-300">{fmtAmt(s.total_debits != null ? Number(s.total_debits) : totalDebit)}</p>
+            <p className="text-lg font-black text-rose-300">
+              {fmtAmt(s.total_debits != null ? Number(s.total_debits) : totalDebit)}
+            </p>
           </div>
         </div>
       </div>
@@ -235,16 +238,16 @@ function JsonBankStatementViewer({ data }: { data: { account_summary: Record<str
             </thead>
             <tbody>
               {txns
-                .filter(tx => tx.date && String(tx.date) !== '...')  // skip truncation markers
+                .filter(tx => tx.date && String(tx.date) !== '...')
                 .map((tx, i) => (
-                <tr key={i} className={i % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                  <td className="px-3 py-1.5 whitespace-nowrap">{String(tx.date || '—')}</td>
-                  <td className="px-3 py-1.5 max-w-[200px] truncate">{String(tx.description || tx.narration || '—')}</td>
-                  <td className="px-3 py-1.5 text-right text-rose-600">{Number(tx.debit) > 0 ? fmtAmt(Number(tx.debit)) : '—'}</td>
-                  <td className="px-3 py-1.5 text-right text-emerald-600">{Number(tx.credit) > 0 ? fmtAmt(Number(tx.credit)) : '—'}</td>
-                  <td className="px-3 py-1.5 text-right">{tx.balance != null ? fmtAmt(Number(tx.balance)) : '—'}</td>
-                </tr>
-              ))}
+                  <tr key={i} className={i % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                    <td className="px-3 py-1.5 whitespace-nowrap">{String(tx.date || '—')}</td>
+                    <td className="px-3 py-1.5 max-w-[200px] truncate">{String(tx.description || tx.narration || '—')}</td>
+                    <td className="px-3 py-1.5 text-right text-rose-600">{Number(tx.debit)  > 0 ? fmtAmt(Number(tx.debit))  : '—'}</td>
+                    <td className="px-3 py-1.5 text-right text-emerald-600">{Number(tx.credit) > 0 ? fmtAmt(Number(tx.credit)) : '—'}</td>
+                    <td className="px-3 py-1.5 text-right">{tx.balance != null ? fmtAmt(Number(tx.balance)) : '—'}</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -253,16 +256,17 @@ function JsonBankStatementViewer({ data }: { data: { account_summary: Record<str
   )
 }
 
+// ── main exported viewer ──────────────────────────────────────────────────────
+
 export function BankAnalysisInsightViewer({ content }: BankAnalysisInsightViewerProps) {
-  // Try JSON format first (new extraction prompt)
   const jsonData = useMemo(() => tryParseJsonBankStatement(content), [content])
   if (jsonData) {
     return <JsonBankStatementViewer data={jsonData} />
   }
-
-  // Fall back to legacy text-based parsing
   return <LegacyBankAnalysisViewer content={content} />
 }
+
+// ── Legacy text-based viewer ──────────────────────────────────────────────────
 
 function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
   const data = useMemo(() => {
@@ -279,21 +283,26 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
 
     const transactions = parseTransactions(content)
     const totalCredit  = transactions.filter(t => /credit/i.test(t.type)).reduce((s, t) => s + t.amount, 0)
-    const totalDebit   = transactions.filter(t => /debit/i.test(t.type)).reduce((s, t) => s + t.amount, 0)
+    const totalDebit   = transactions.filter(t => /debit/i.test(t.type)).reduce((s, t)  => s + t.amount, 0)
 
     const categoryMap: Record<string, number> = {}
     for (const tx of transactions) {
       const cat = tx.category || 'Other'
       categoryMap[cat] = (categoryMap[cat] || 0) + tx.amount
     }
-    const categories = Object.entries(categoryMap).sort((a, b) => b[1] - a[1]).map(([name, total]) => ({ name, total }))
+    const categories = Object.entries(categoryMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, total]) => ({ name, total }))
 
     const entityMap: Record<string, number> = {}
     for (const tx of transactions) {
       const key = tx.description.split(/[-\s]/)[0].replace(/\./g, '').trim()
       if (key) entityMap[key] = (entityMap[key] || 0) + tx.amount
     }
-    const topEntities = Object.entries(entityMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, value]) => ({ name, value }))
+    const topEntities = Object.entries(entityMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value]) => ({ name, value }))
 
     const anomalies    = transactions.filter(t => /debit/i.test(t.type) && t.amount >= 5000)
     const normalCount  = transactions.length - anomalies.length
@@ -316,7 +325,7 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
   return (
     <div className="space-y-5 pb-4">
 
-      {/* ── Hero banner ── */}
+      {/* Hero banner */}
       <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-6 shadow-lg">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-blue-400 blur-3xl" />
@@ -345,16 +354,15 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
             {data.currency && <span className="text-xs text-blue-300/60 font-medium">{data.currency}</span>}
           </div>
         </div>
-        {/* KPI row */}
         <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          <KpiCard label="Total Credit"  value={fmt(data.totalCredit)} icon={ArrowUpCircle}   gradient="from-emerald-600 to-emerald-800" />
-          <KpiCard label="Total Debit"   value={fmt(data.totalDebit)}  icon={ArrowDownCircle} gradient="from-rose-600 to-rose-800" />
-          <KpiCard label="Net Flow"      value={fmt(Math.abs(netFlow))} sub={netFlow >= 0 ? 'Surplus' : 'Deficit'} icon={Activity} gradient={netFlow >= 0 ? 'from-blue-600 to-blue-800' : 'from-orange-600 to-orange-800'} />
-          <KpiCard label="Risk Tier"     value={data.riskTier || '—'}  icon={ShieldAlert}     gradient="from-violet-600 to-violet-800" />
+          <KpiCard label="Total Credit"  value={fmt(data.totalCredit)}      icon={ArrowUpCircle}   gradient="from-emerald-600 to-emerald-800" />
+          <KpiCard label="Total Debit"   value={fmt(data.totalDebit)}       icon={ArrowDownCircle} gradient="from-rose-600 to-rose-800" />
+          <KpiCard label="Net Flow"      value={fmt(Math.abs(netFlow))}     sub={netFlow >= 0 ? 'Surplus' : 'Deficit'} icon={Activity} gradient={netFlow >= 0 ? 'from-blue-600 to-blue-800' : 'from-orange-600 to-orange-800'} />
+          <KpiCard label="Risk Tier"     value={data.riskTier || '—'}       icon={ShieldAlert}     gradient="from-violet-600 to-violet-800" />
         </div>
       </div>
 
-      {/* ── Credit vs Debit bar ── */}
+      {/* Credit vs Debit bar */}
       <SectionCard icon={Activity} title="Credit vs Debit Flow">
         {(() => {
           const total = (data.totalCredit + data.totalDebit) || 1
@@ -383,7 +391,7 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
         })()}
       </SectionCard>
 
-      {/* ── Category + Anomaly ── */}
+      {/* Category + Anomaly */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {data.categories.length > 0 && (
           <SectionCard icon={BarChart2} title="Category Distribution">
@@ -414,7 +422,7 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
         </SectionCard>
       </div>
 
-      {/* ── Transaction ledger ── */}
+      {/* Transaction ledger */}
       {data.transactions.length > 0 && (
         <SectionCard icon={TrendingDown} title="Transaction Ledger"
           badge={<Badge variant="secondary" className="text-[10px] font-bold">{data.transactions.length} txns</Badge>}>
@@ -461,7 +469,7 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
         </SectionCard>
       )}
 
-      {/* ── Top entities ── */}
+      {/* Top entities */}
       {data.topEntities.length > 0 && (
         <SectionCard icon={Users} title="Top Entities by Volume">
           {data.topEntities.map((e, i) => (
@@ -471,7 +479,7 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
         </SectionCard>
       )}
 
-      {/* ── Advanced insights ── */}
+      {/* Advanced insights */}
       {data.advancedLines.length > 0 && (
         <SectionCard icon={TrendingUp} title="Advanced Insights">
           <div className="space-y-2">
@@ -487,7 +495,7 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
         </SectionCard>
       )}
 
-      {/* ── Risk reasoning ── */}
+      {/* Risk reasoning */}
       {data.reasoning && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-5 shadow-sm">
           <div className="flex items-center gap-2.5 mb-3">

@@ -134,13 +134,13 @@ async def claim_unowned_notebooks(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     try:
-        # SurrealDB: use type::is::none() to reliably detect NONE values
+        # SurrealDB v3: type::is::none() renamed to type::is_none()
         # Simple equality checks like `owner = NONE` don't always work in WHERE clauses
         result = await repo_query(
             """
             UPDATE notebook
             SET owner = $owner
-            WHERE type::is::none(owner)
+            WHERE type::is_none(owner)
                OR owner = null
                OR owner = 'user'
             """,

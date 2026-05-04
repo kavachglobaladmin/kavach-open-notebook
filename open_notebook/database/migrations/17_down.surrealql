@@ -1,2 +1,3 @@
--- Rollback migration 17: Remove kavach_user table entirely
-REMOVE TABLE kavach_user;
+-- Migration 17 rollback: Remove kavach_user table
+
+REMOVE TABLE IF EXISTS kavach_user;
