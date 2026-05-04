@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm'
 import { convertReferencesToMarkdownLinks, createReferenceLinkComponent } from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 
 interface StrategyData {
   reasoning: string

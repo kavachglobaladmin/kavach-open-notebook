@@ -38,23 +38,38 @@ async def analyze_bank_statement(source_id: str):
         import asyncio
         from open_notebook.bank_statement.pipeline import run_pipeline
 
-        # Strategy: always try direct file extraction first (most accurate).
-        # Only fall back to source.full_text if file extraction yields 0 transactions
-        # (handles image-based PDFs that were OCR'd during source processing).
-        fallback_text = source.full_text if source.full_text else None
-        logger.info(f"full_text length: {len(fallback_text) if fallback_text else 0}")
+        # Strategy:
+        # 1. If full_text is raw OCR/extracted text → pass it to pipeline (avoids re-OCR).
+        # 2. If full_text is already structured pipeline output (starts with "=== ACCOUNT DETAILS")
+        #    → run pipeline directly on the file (text-based PDFs are fast; avoids parser confusion).
+        # 3. If full_text is empty → run pipeline on file (triggers OCR if needed).
+        full_text = source.full_text if source.full_text else None
+        logger.info(f"source.full_text length: {len(full_text) if full_text else 0}")
 
-        # First pass: direct file extraction (no pre-extracted text)
-        result = await asyncio.to_thread(run_pipeline, file_path, None)
+        # Detect already-processed structured output — pipeline output starts with this marker
+        is_already_structured = (
+            full_text and full_text.strip().startswith("=== ACCOUNT DETAILS")
+        )
+
+        if is_already_structured:
+            # full_text is structured pipeline output, not raw text — run on file directly
+            logger.info("full_text is structured output — running pipeline on file directly")
+            result = await asyncio.to_thread(run_pipeline, file_path, None)
+            # If file extraction also fails (e.g. scanned PDF), try with full_text anyway
+            if result.get('total_transactions', 0) == 0:
+                logger.info("File extraction got 0 — trying full_text as fallback")
+                result = await asyncio.to_thread(run_pipeline, file_path, full_text)
+        elif full_text and len(full_text.strip()) > 100:
+            # Raw extracted text — pass directly to avoid re-OCR
+            logger.info("Using source.full_text as raw text (no OCR needed)")
+            result = await asyncio.to_thread(run_pipeline, file_path, full_text)
+        else:
+            # No stored text — run full extraction (may trigger OCR)
+            logger.info("source.full_text is empty — running file extraction")
+            result = await asyncio.to_thread(run_pipeline, file_path, None)
+
         total = result.get('total_transactions', 0)
         logger.info(f"Bank analysis complete: {total} transactions")
-
-        # Second pass: if file extraction failed, try stored full_text (OCR fallback)
-        if total == 0 and fallback_text and len(fallback_text.strip()) > 100:
-            logger.info("File extraction yielded 0 — retrying with source.full_text")
-            result = await asyncio.to_thread(run_pipeline, file_path, fallback_text)
-            total = result.get('total_transactions', 0)
-            logger.info(f"Bank analysis (full_text fallback) complete: {total} transactions")
 
         # Detect blank/unreadable PDF and return helpful error
         if total == 0:

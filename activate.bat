@@ -17,7 +17,7 @@ REM ── Kafka Server ──────────────────�
 start "Kafka" cmd /k "cd /d C:\kafka\kafka && .\bin\windows\kafka-server-start.bat .\config\server.properties"
 
 REM ── Surreal Commands Worker (conda env activate karva sathe) ──
-start "Surreal Worker" cmd /k "call conda activate C:\Bhavesh\env && uv run --env-file .env surreal-commands-worker --import-modules commands"
+start "Surreal Worker" cmd /k "call conda activate C:\Bhavesh\env && uv run --no-sync --env-file .env surreal-commands-worker --import-modules commands"
 
 echo.
 echo All 6 services started!

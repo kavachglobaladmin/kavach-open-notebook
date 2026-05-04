@@ -75,7 +75,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
 import { FormattedViewDialog } from '@/components/source/FormattedViewDialog'

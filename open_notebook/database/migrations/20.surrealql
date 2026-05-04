@@ -1,0 +1,6 @@
+-- Migration 20: Add owner and storage_limit_mb fields to notebook table,
+-- and owner field to note table
+
+DEFINE FIELD OVERWRITE owner ON TABLE notebook TYPE option<string>;
+DEFINE FIELD OVERWRITE storage_limit_mb ON TABLE notebook TYPE option<int>;
+DEFINE FIELD OVERWRITE owner ON TABLE note TYPE option<string>;

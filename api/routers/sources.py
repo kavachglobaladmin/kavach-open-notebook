@@ -1408,7 +1408,7 @@ async def get_sources(
             # Query sources for specific notebook - include command field with FETCH
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
-                (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
+                array::len((SELECT VALUE id FROM source_insight WHERE source = $parent.id)) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM (select value in from reference where out=$notebook_id)
                 {order_clause}
@@ -1427,7 +1427,7 @@ async def get_sources(
             # Return only sources linked to notebooks owned by this user
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
-                (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
+                array::len((SELECT VALUE id FROM source_insight WHERE source = $parent.id)) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM (
                     SELECT VALUE in FROM reference
@@ -1445,7 +1445,7 @@ async def get_sources(
             # Query all sources - include command field with FETCH
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
-                (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
+                array::len((SELECT VALUE id FROM source_insight WHERE source = $parent.id)) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
                 {order_clause}
@@ -2422,10 +2422,18 @@ def _extract_word_cloud_data(text: str) -> list:
     """Extract word frequencies for word cloud using advanced NLP (spaCy with phrases + entities)."""
     import re as _re
     from collections import Counter
-    import spacy
-
-    # Load spaCy model
-    nlp = spacy.load("en_core_web_sm")
+    
+    try:
+        import spacy
+        # Load spaCy model
+        try:
+            nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            logger.warning("spaCy model 'en_core_web_sm' not found. Using fallback word extraction.")
+            return _extract_word_cloud_data_fallback(text)
+    except ImportError:
+        logger.warning("spaCy not installed. Using fallback word extraction.")
+        return _extract_word_cloud_data_fallback(text)
 
     # Clean text (preserve your logic)
     cleaned = _re.sub(r'\s+', ' ', text)
@@ -2469,7 +2477,41 @@ def _extract_word_cloud_data(text: str) -> list:
         for word, count in counter.most_common(80)
         if count >= 2
     ]
-    print(result)
+    return result
+
+
+def _extract_word_cloud_data_fallback(text: str) -> list:
+    """Fallback word cloud extraction without spaCy (simple word frequency)."""
+    import re as _re
+    from collections import Counter
+    
+    # Simple stopwords list
+    stopwords = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these',
+        'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which',
+        'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both',
+        'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not',
+        'only', 'same', 'so', 'than', 'too', 'very', 'as', 'if', 'just'
+    }
+    
+    # Extract words
+    words = _re.findall(r'\b[a-z]+\b', text.lower())
+    
+    # Filter
+    filtered = [w for w in words if len(w) > 3 and w not in stopwords]
+    
+    # Count
+    counter = Counter(filtered)
+    
+    # Return top 50
+    result = [
+        {'text': word, 'value': count}
+        for word, count in counter.most_common(50)
+        if count >= 2
+    ]
     return result
 
 
@@ -3474,7 +3516,7 @@ async def update_source(source_id: str, source_update: SourceUpdate):
 
 
 @router.post("/sources/{source_id}/retry", response_model=SourceResponse)
-async def retry_source_processing(source_id: str):
+async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Query(None)):
     """Retry processing for a failed or stuck source."""
     try:
         # First, verify source exists
@@ -3502,10 +3544,21 @@ async def retry_source_processing(source_id: str):
         references = await repo_query(query, {"source_id": source_id})
         notebook_ids = [str(ref["notebook"]) for ref in references]
 
+        # If no notebooks found, use the provided notebook_id or raise error
         if not notebook_ids:
-            raise HTTPException(
-                status_code=400, detail="Source is not associated with any notebooks"
-            )
+            if not notebook_id:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Source is not associated with any notebooks. Please provide a notebook_id parameter to retry."
+                )
+            notebook_ids = [notebook_id]
+            # Also create the reference relationship
+            try:
+                await source.add_to_notebook(notebook_id)
+                logger.info(f"Added source {source_id} to notebook {notebook_id}")
+            except Exception as e:
+                logger.warning(f"Failed to add source to notebook: {e}")
+                # Continue anyway, the reference might already exist
 
         # Prepare content_state based on source asset
         content_state = {}
@@ -3692,6 +3745,22 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
         if not transformation:
             raise HTTPException(status_code=404, detail="Transformation not found")
 
+        # Get model name for logging
+        model_name = "default"
+        model_id_to_use = request.model_id or transformation.model_id
+        
+        if model_id_to_use:
+            try:
+                from open_notebook.ai.models import Model
+                model = await Model.get(model_id_to_use)
+                if model and hasattr(model, 'name') and hasattr(model, 'provider'):
+                    model_name = f"{model.name} ({model.provider})"
+                else:
+                    model_name = model_id_to_use
+            except Exception as e:
+                logger.debug(f"Could not fetch model details: {e}")
+                model_name = model_id_to_use
+
         # Submit transformation as background job (fire-and-forget)
         command_id = submit_command(
             "open_notebook",
@@ -3699,10 +3768,12 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
             {
                 "source_id": source_id,
                 "transformation_id": request.transformation_id,
+                "model_id": model_id_to_use,
             },
         )
         logger.info(
-            f"Submitted run_transformation command {command_id} for source {source_id}"
+            f"Submitted run_transformation command {command_id} for source {source_id} "
+            f"using transformation '{transformation.title}' with model: {model_name}"
         )
 
         # Return immediately with command_id for status tracking

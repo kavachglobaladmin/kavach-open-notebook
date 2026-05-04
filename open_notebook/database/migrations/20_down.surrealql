@@ -1,0 +1,4 @@
+-- Migration 20 rollback
+REMOVE FIELD IF EXISTS owner ON TABLE notebook;
+REMOVE FIELD IF EXISTS storage_limit_mb ON TABLE notebook;
+REMOVE FIELD IF EXISTS owner ON TABLE note;

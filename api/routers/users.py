@@ -142,11 +142,18 @@ class UserAdminRecord(BaseModel):
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 async def _find_user(email: str) -> Optional[dict]:
-    result = await repo_query(
-        "SELECT * FROM kavach_user WHERE email = $email LIMIT 1",
-        {"email": email.lower().strip()},
-    )
-    return result[0] if result else None
+    try:
+        result = await repo_query(
+            "SELECT * FROM kavach_user WHERE email = $email LIMIT 1",
+            {"email": email.lower().strip()},
+        )
+        return result[0] if result else None
+    except Exception as e:
+        # SurrealDB v3 raises an error if the table doesn't exist yet.
+        # Treat that as "no user found" — the table is created by migration 17.
+        if "does not exist" in str(e):
+            return None
+        raise
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────

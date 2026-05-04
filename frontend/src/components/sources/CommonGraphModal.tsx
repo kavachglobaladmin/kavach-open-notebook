@@ -24,7 +24,7 @@ import { useModels, useModelDefaults, useUpdateModelDefaults } from '@/lib/hooks
 import { Badge } from '@/components/ui/badge'
 import { useTransformations, useCreateTransformation, useUpdateTransformation } from '@/lib/hooks/use-transformations'
 import { Settings2, RefreshCw } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 
 const COMMON_GRAPH_TRANSFORMATION_NAME = 'common_graph_extraction'
 

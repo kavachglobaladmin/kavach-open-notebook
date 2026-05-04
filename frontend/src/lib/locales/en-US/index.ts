@@ -816,6 +816,8 @@ export const enUS = {
     noTransformations: "No transformations yet",
     createOne: "Create a transformation to get started",
     selectModel: "Select a model",
+    selectModelDesc: "Choose a specific model for this transformation",
+    noModelSelected: "Use default model",
     deleteConfirm: "Are you sure you want to delete this transformation?",
     model: "Model",
     systemPrompt: "System Prompt",

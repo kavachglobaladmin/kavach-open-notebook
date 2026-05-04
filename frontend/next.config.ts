@@ -7,6 +7,9 @@ allowedDevOrigins: [
 "localhost",
 "0.0.0.0"
 ],
+
+// Hide the Next.js dev tools button (bottom-left N logo)
+devIndicators: false,
 // Enable standalone output for optimized Docker deployment
 output: "standalone",
 

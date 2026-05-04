@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { FileText, RefreshCw, AlertCircle } from 'lucide-react'
 
 // ── localStorage helpers ──────────────────────────────────────────────────────

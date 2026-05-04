@@ -1,6 +1,5 @@
--- Migration 18: Add owner field to notebook and note tables
--- The notebook table is SCHEMAFULL — without this DEFINE FIELD,
--- any SET owner = '...' is silently discarded by SurrealDB.
+-- Migration 18: Add missing fields to kavach_user table
+-- Migration 17 created the table without password_encrypted and created_at fields
 
-DEFINE FIELD IF NOT EXISTS owner ON TABLE notebook TYPE option<string>;
-DEFINE FIELD IF NOT EXISTS owner ON TABLE note TYPE option<string>;
+DEFINE FIELD OVERWRITE password_encrypted ON TABLE kavach_user TYPE option<string>;
+DEFINE FIELD OVERWRITE created_at ON TABLE kavach_user TYPE option<datetime> DEFAULT time::now();

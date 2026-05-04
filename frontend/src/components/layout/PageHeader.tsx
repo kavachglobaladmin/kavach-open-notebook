@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, Plus, Search } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import apiClient from '@/lib/api/client'
+import { NotificationCenter } from './NotificationCenter'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -29,12 +30,29 @@ function resolveFromLocalStorage(email: string): string {
 }
 
 async function fetchProfileName(): Promise<string | null> {
-  try {
-    const res = await apiClient.get<{ email: string; name: string }>('/users/profile')
-    return res.data?.name?.trim() || null
-  } catch {
-    return null
+  const maxRetries = 3
+  let lastError: any = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await apiClient.get<{ email: string; name: string }>('/users/profile')
+      return res.data?.name?.trim() || null
+    } catch (error) {
+      lastError = error
+      // If it's a 404 or 401, don't retry
+      if (error?.response?.status === 404 || error?.response?.status === 401) {
+        return null
+      }
+      // Wait before retrying (exponential backoff: 100ms, 200ms, 400ms)
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)))
+      }
+    }
   }
+
+  // After all retries failed, silently return null
+  // This is expected during initial page load before auth is fully initialized
+  return null
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -136,11 +154,8 @@ export function PageHeader({
 
       {/* ── Right: Bell + New + User ──────────────────────────────── */}
       <div className="flex items-center gap-4 ml-6 shrink-0">
-        {/* Bell */}
-        <Button variant="ghost" size="icon" className="text-slate-500 relative" aria-label="Notifications">
-          <Bell className="h-5 w-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-white" />
-        </Button>
+        {/* Notification Center */}
+        <NotificationCenter />
 
         {/* + NEW */}
         {!hideNew && (

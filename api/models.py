@@ -115,6 +115,9 @@ class TransformationCreate(BaseModel):
     apply_default: bool = Field(
         False, description="Whether to apply this transformation by default"
     )
+    model_id: Optional[str] = Field(
+        None, description="Optional model ID to use for this transformation"
+    )
 
 
 class TransformationUpdate(BaseModel):
@@ -129,6 +132,9 @@ class TransformationUpdate(BaseModel):
     apply_default: Optional[bool] = Field(
         None, description="Whether to apply this transformation by default"
     )
+    model_id: Optional[str] = Field(
+        None, description="Optional model ID to use for this transformation"
+    )
 
 
 class TransformationResponse(BaseModel):
@@ -138,6 +144,7 @@ class TransformationResponse(BaseModel):
     description: str
     prompt: str
     apply_default: bool
+    model_id: Optional[str] = None
     created: str
     updated: str
 

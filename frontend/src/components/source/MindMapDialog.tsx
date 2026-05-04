@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import {
   GitBranch, ChevronRight, RefreshCw, AlertCircle,
   ImageIcon, Network, BookOpen, X, ZoomIn, ZoomOut, Maximize2,

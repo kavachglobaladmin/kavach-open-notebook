@@ -130,20 +130,32 @@ def _extract_inline_field(line):
 
 def _merge_fields(fields):
     merged = []
-    seen = {}
+    seen_labels = {}
+    seen_values = set()
+
+    # Normalize label for deduplication
+    def _norm(label: str) -> str:
+        return label.lower().replace("/", "").replace(" ", "").replace(".", "").replace("_", "")
 
     for field in fields:
         label = field["label"]
         value = field["value"]
-        key = label.lower()
+        norm_key = _norm(label)
 
-        if key in seen:
-            if value not in seen[key]["value"].split(" | "):
-                seen[key]["value"] = f"{seen[key]['value']} | {value}"
+        # Skip if same value already seen (e.g. account number appearing twice)
+        if value and value in seen_values:
+            continue
+
+        if norm_key in seen_labels:
+            if value not in seen_labels[norm_key]["value"].split(" | "):
+                seen_labels[norm_key]["value"] = f"{seen_labels[norm_key]['value']} | {value}"
         else:
             item = {"label": label, "value": value}
-            seen[key] = item
+            seen_labels[norm_key] = item
             merged.append(item)
+
+        if value:
+            seen_values.add(value)
 
     return merged
 
