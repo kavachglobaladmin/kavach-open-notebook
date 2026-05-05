@@ -160,14 +160,16 @@ def _parse_mindmap_json(raw: str) -> dict:
     """
     from loguru import logger as _logger
 
-    # Strip markdown fences
-    cleaned = _re.sub(r"```(?:json)?\s*", "", raw).replace("```", "").strip()
+    fence_match = _re.search(r"```(?:json)?\s*([\s\S]*?)```", raw, _re.IGNORECASE)
+    cleaned = fence_match.group(1).strip() if fence_match else raw.strip()
+    cleaned = _re.sub(r"^Here is the JSON mind map:\s*", "", cleaned, flags=_re.IGNORECASE).strip()
+    cleaned = _re.sub(r"```(?:json)?\s*", "", cleaned, flags=_re.IGNORECASE).replace("```", "").strip()
 
     # Skip any leading prose before the first {
     start = cleaned.find("{")
     if start == -1:
         _logger.error(f"[MindMap] No JSON object found. Output:\n{raw[:800]}")
-        return {"label": "Parse Error", "children": [{"label": "No JSON in model output"}]}
+        return _build_fallback_mind_map_from_text(raw, title="Mind Map")
 
     cleaned = cleaned[start:]
 
@@ -182,6 +184,16 @@ def _parse_mindmap_json(raw: str) -> dict:
             return _sanitize_tree(data)
     except _json.JSONDecodeError as e:
         _logger.warning(f"[MindMap] Direct parse failed: {e}")
+
+    # Attempt 1b: trim an obviously incomplete tail, then rebalance
+    try:
+        repaired = _repair_truncated_json(cleaned)
+        data = _json.loads(repaired)
+        if isinstance(data, dict) and "label" in data:
+            _logger.info("[MindMap] Repaired parse succeeded")
+            return _sanitize_tree(data)
+    except Exception as e:
+        _logger.warning(f"[MindMap] Repaired parse failed: {e}")
 
     # Attempt 2: balance unclosed braces (truncated output)
     try:
@@ -205,7 +217,7 @@ def _parse_mindmap_json(raw: str) -> dict:
         _logger.warning(f"[MindMap] Trimmed parse failed: {e}")
 
     _logger.error(f"[MindMap] All parse attempts failed. Raw:\n{raw[:800]}")
-    return {"label": "Parse Error", "children": [{"label": "JSON parse failed — see logs"}]}
+    return _build_fallback_mind_map_from_text(cleaned or raw, title="Mind Map")
 
 
 def _balance_braces(s: str) -> str:
@@ -229,6 +241,91 @@ def _balance_braces(s: str) -> str:
             elif ch in "}]" and stack and stack[-1] == ch:
                 stack.pop()
     return s + "".join(reversed(stack))
+
+
+def _repair_truncated_json(s: str) -> str:
+    """
+    Remove a dangling partial tail and then close any open containers.
+    Useful when the model output ends in the middle of a child object.
+    """
+    repaired = s.strip()
+    repaired = _re.sub(r',?\s*"[^"]*"\s*:\s*"?[^"\]}]*$', "", repaired)
+    repaired = _re.sub(r',?\s*\{\s*"[^"]*"\s*:\s*"?[^"\]}]*$', "", repaired)
+
+    while repaired and repaired[-1] not in ['}', ']', '"'] and not repaired[-1].isdigit():
+        repaired = repaired[:-1].rstrip()
+
+    repaired = _re.sub(r",\s*([}\]])", r"\1", repaired)
+    return _balance_braces(repaired)
+
+
+def _build_fallback_mind_map_from_text(text: str, title: str = "Mind Map") -> dict:
+    """
+    Build a usable fallback tree from prose or broken JSON instead of saving
+    a Parse Error placeholder.
+    """
+    subject = _extract_subject(text) or title
+    lines = []
+    for line in text.splitlines():
+        cleaned = line.strip(" `\t-")
+        if not cleaned:
+            continue
+        if cleaned.lower().startswith(("here is the json", "json mind map")):
+            continue
+        if len(cleaned) < 4:
+            continue
+        lines.append(cleaned)
+
+    children = []
+    current_section = None
+    current_items = []
+
+    def flush_section():
+        nonlocal current_section, current_items
+        if current_section and current_items:
+            children.append({
+                "label": current_section[:120],
+                "children": [{"label": item[:120]} for item in current_items[:12]],
+            })
+        current_section = None
+        current_items = []
+
+    for line in lines[:120]:
+        if line.startswith(("{", "}", "[", "]")):
+            continue
+        label_match = _re.search(r'"label"\s*:\s*"([^"]+)"', line)
+        if label_match:
+            label = label_match.group(1).strip()
+            if current_section is None:
+                current_section = label
+            elif not current_items:
+                current_items.append(label)
+            else:
+                flush_section()
+                current_section = label
+            continue
+        if len(line) > 20:
+            current_items.append(line)
+
+    flush_section()
+
+    if not children:
+        sentences = [
+            s.strip() for s in _re.split(r'(?<=[.!?])\s+', text)
+            if len(s.strip()) > 20
+        ]
+        chunk_size = max(3, len(sentences) // 5) if sentences else 3
+        for i in range(0, len(sentences), chunk_size):
+            chunk = sentences[i:i + chunk_size]
+            children.append({
+                "label": f"Section {i // chunk_size + 1}",
+                "children": [{"label": s[:120]} for s in chunk],
+            })
+
+    return {
+        "label": subject[:120] or title,
+        "children": children if children else [{"label": "No structured content found"}],
+    }
 
 
 def _sanitize_tree(node: dict, max_label: int = 120) -> dict:
@@ -421,6 +518,13 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         or "dense" in transformation_prompt.lower()
         or "paragraph" in transformation_prompt.lower()
     )
+    # Structured JSON output (infographic, investigation profile, etc.)
+    is_structured_json = (
+        "document_type" in transformation_prompt
+        or "ir_document" in transformation_prompt
+        or ("infographic" in transformation_name.lower() and "json" in transformation_prompt.lower())
+        or ("investigation" in transformation_name.lower() and "profile" in transformation_name.lower())
+    )
     single_max_tokens = 8000 if is_dense else 4096
 
     if len(content) <= CHUNK_SIZE:
@@ -455,6 +559,16 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
                 "Read the text below and write a detailed, comprehensive paragraph summarizing ALL the information in it. "
                 "Include every name, date, location, case number, amount, and event. "
                 "Write in flowing prose. Do NOT use bullet points. Do NOT add meta-commentary.\n\nTEXT:\n"
+            )
+        elif is_structured_json:
+            # For structured JSON outputs: extract all relevant data as bullet points
+            # The merge step will assemble the final JSON
+            system = (
+                f"{transformation_prompt}\n\n"
+                "Extract ALL relevant data from the text below as detailed bullet points. "
+                "Include every name, date, FIR number, case detail, associate, event, and fact. "
+                "Do NOT output JSON yet — just extract all facts as bullet points. "
+                "Do NOT skip any information. Do NOT add commentary.\n\nTEXT:\n"
             )
         else:
             system = (
@@ -510,12 +624,6 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
 
     # For bank statement JSON, merge transaction arrays across chunks
     is_bank_stmt = "transactions" in transformation_prompt and "account_summary" in transformation_prompt
-    # Detect dense summary by name or prompt content
-    is_dense = (
-        "dense" in transformation_name.lower()
-        or "dense" in transformation_prompt.lower()
-        or "paragraph" in transformation_prompt.lower()
-    )
 
     if is_bank_stmt:
         merge_system = (
@@ -525,6 +633,18 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
             "Combine ALL transactions from all parts into a single array. "
             "Use account_summary from the first part that has it. "
             "Output ONLY the merged JSON, no explanation.\n\nFRAGMENTS:\n"
+        )
+    elif is_structured_json:
+        merge_system = (
+            f"{transformation_prompt}\n\n"
+            "You are given multiple JSON fragments or fact lists extracted from different sections of a document. "
+            "Merge them into ONE complete, valid JSON object following the exact structure specified in the prompt above. "
+            "Combine ALL data from all fragments:\n"
+            "- Merge arrays (timeline_events, case_details, associates, highlights, etc.) by concatenating them\n"
+            "- Fill in ALL fields with complete data from across all fragments\n"
+            "- Do NOT leave fields empty if data exists in any fragment\n"
+            "- Ensure the output is valid, complete JSON with no missing brackets or commas\n"
+            "Output ONLY the merged JSON, no explanation or meta-commentary.\n\nFRAGMENTS:\n"
         )
     elif is_dense:
         merge_system = (
@@ -563,6 +683,7 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
     transformation: Transformation = state["transformation"]
     # Use model_id from config first, then fall back to transformation's model_id
     model_id = config.get("configurable", {}).get("model_id") or transformation.model_id
+    generation_id = config.get("configurable", {}).get("generation_id")
 
     try:
         # Log the model being used
@@ -609,7 +730,11 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             _logger.info(f"[MindMap] Done — {len(mind_map_dict.get('children', []))} top-level categories")
 
             if source:
-                await source.add_insight(transformation.title, final_output)
+                await source.add_insight(
+                    transformation.title,
+                    final_output,
+                    generation_id=generation_id,
+                )
 
             return {"output": final_output}
 
@@ -641,7 +766,11 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             )
 
         if source:
-            await source.add_insight(transformation.title, final_output)
+            await source.add_insight(
+                transformation.title,
+                final_output,
+                generation_id=generation_id,
+            )
 
         return {"output": final_output}
 

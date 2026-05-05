@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -3776,6 +3777,27 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
             },
         )
 
+        generation_id = str(uuid.uuid4())
+        await repo_query(
+            """
+            DELETE source_insight_generation
+            WHERE source = $source_id
+              AND string::lowercase(string::trim(insight_type)) =
+                  string::lowercase(string::trim($insight_type));
+
+            CREATE source_insight_generation CONTENT {
+                source: $source_id,
+                insight_type: $insight_type,
+                generation_id: $generation_id
+            };
+            """,
+            {
+                "source_id": ensure_record_id(source_id),
+                "insight_type": transformation.title,
+                "generation_id": generation_id,
+            },
+        )
+
         # Get model name for logging
         model_name = "default"
         model_id_to_use = request.model_id or transformation.model_id
@@ -3800,6 +3822,7 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
                 "source_id": source_id,
                 "transformation_id": request.transformation_id,
                 "model_id": model_id_to_use,
+                "generation_id": generation_id,
             },
         )
         logger.info(
