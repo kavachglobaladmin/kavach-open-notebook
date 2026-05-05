@@ -480,30 +480,91 @@ async def create_insight_command(
             f"type={input_data.insight_type}"
         )
 
-        # 1. Create insight record in database
-        result = await repo_query(
+        insight_type_clean = (input_data.insight_type or "").strip()
+        vars = {
+            "source_id": ensure_record_id(input_data.source_id),
+            "insight_type": insight_type_clean,
+            "content": input_data.content,
+        }
+
+        # Respect user deletions: if this insight type was deleted, do not let a
+        # stale background job recreate it. Explicit re-generation clears the
+        # tombstone in the API route before submitting a fresh command.
+        tombstones = await repo_query(
             """
-            CREATE source_insight CONTENT {
-                "source": $source_id,
-                "insight_type": $insight_type,
-                "content": $content
-            };
+            SELECT id
+            FROM source_insight_tombstone
+            WHERE source = $source_id
+              AND string::lowercase(string::trim(insight_type)) =
+                  string::lowercase(string::trim($insight_type))
+            LIMIT 1
             """,
-            {
-                "source_id": ensure_record_id(input_data.source_id),
-                "insight_type": input_data.insight_type,
-                "content": input_data.content,
-            },
+            vars,
+        )
+        if tombstones:
+            logger.info(
+                f"Skipping insight recreation for source {input_data.source_id}: "
+                f"type={insight_type_clean} has an active tombstone"
+            )
+            return CreateInsightOutput(
+                success=True,
+                insight_id=None,
+                processing_time=time.time() - start_time,
+            )
+
+        # 1. Idempotency: keep ONE insight per (source, insight_type).
+        # If the same report is generated twice (double click, refresh, retries),
+        # overwrite the existing record instead of creating a duplicate row.
+        existing = await repo_query(
+            """
+            SELECT VALUE id
+            FROM source_insight
+            WHERE source = $source_id
+              AND string::trim(insight_type) = $insight_type
+            LIMIT 1
+            """,
+            vars,
         )
 
-        if not result or len(result) == 0:
-            raise ValueError("Failed to create insight - no result returned")
+        if existing and len(existing) > 0 and existing[0]:
+            insight_id = str(existing[0])
+            logger.info(
+                f"Updating existing insight {insight_id} for source {input_data.source_id}: "
+                f"type={insight_type_clean}"
+            )
+            await repo_query(
+                """
+                UPDATE $insight_id SET
+                  insight_type = $insight_type,
+                  content = $content
+                """,
+                {
+                    "insight_id": ensure_record_id(insight_id),
+                    "insight_type": insight_type_clean,
+                    "content": input_data.content,
+                },
+            )
+        else:
+            # 2. Create insight record in database
+            result = await repo_query(
+                """
+                CREATE source_insight CONTENT {
+                    "source": $source_id,
+                    "insight_type": $insight_type,
+                    "content": $content
+                };
+                """,
+                vars,
+            )
 
-        insight_id = str(result[0].get("id", ""))
-        if not insight_id:
-            raise ValueError("Failed to create insight - no ID in result")
+            if not result or len(result) == 0:
+                raise ValueError("Failed to create insight - no result returned")
 
-        # 2. Submit embedding command (fire-and-forget)
+            insight_id = str(result[0].get("id", ""))
+            if not insight_id:
+                raise ValueError("Failed to create insight - no ID in result")
+
+        # 3. Submit embedding command (fire-and-forget)
         submit_command(
             "open_notebook",
             "embed_insight",
@@ -537,13 +598,19 @@ async def create_insight_command(
             error_message=str(e),
         )
     except Exception as e:
-        # Transient failure - will be retried (surreal-commands logs final failure)
+        # Log transient error but don't retry - return failure instead
+        # This prevents duplicate insights from retry attempts
+        processing_time = time.time() - start_time
         cmd_id = get_command_id(input_data)
-        logger.debug(
+        logger.warning(
             f"Transient error creating insight for source {input_data.source_id} "
-            f"(command: {cmd_id}): {e}"
+            f"(command: {cmd_id}): {e}. Returning failure instead of retrying."
         )
-        raise
+        return CreateInsightOutput(
+            success=False,
+            processing_time=processing_time,
+            error_message=f"Transient error: {str(e)}",
+        )
 
 
 async def collect_items_for_rebuild(

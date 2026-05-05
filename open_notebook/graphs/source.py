@@ -556,8 +556,19 @@ async def content_process(state: SourceState) -> dict:
     try:
         model_manager = ModelManager()
         defaults = await model_manager.get_defaults()
-        if defaults.default_speech_to_text_model:
-            stt_model = await Model.get(defaults.default_speech_to_text_model)
+        stt_model_id = defaults.default_speech_to_text_model
+        if stt_model_id:
+            try:
+                stt_model = await Model.get(stt_model_id)
+            except Exception as e:
+                logger.warning(
+                    f"Default speech-to-text model {stt_model_id} was not found; "
+                    "clearing stale default reference."
+                )
+                defaults.default_speech_to_text_model = None
+                await defaults.save()
+                stt_model = None
+
             if stt_model:
                 content_state["audio_provider"] = stt_model.provider
                 content_state["audio_model"] = stt_model.name
@@ -663,6 +674,37 @@ async def content_process(state: SourceState) -> dict:
         except Exception as _e:
             logger.warning(f"bank_statement pipeline failed: {_e} — falling back to OCR")
 
+    content_text = processed_state.content or ""
+
+    # ── Mobile CDR / SMS exports (CSV, TXT): structure full_text like bank summaries ──
+    if file_path and content_text.strip():
+        try:
+            from open_notebook.mobile_data.pipeline import (
+                build_searchable_text,
+                run_pipeline_from_text,
+                sniff_maybe_mobile,
+            )
+
+            title_hint = getattr(processed_state, "title", None) or ""
+            if sniff_maybe_mobile(title_hint, str(file_path), content_text[:16000]):
+                mr = await asyncio.to_thread(run_pipeline_from_text, content_text)
+                if mr.get("total_records", 0) > 0:
+                    excerpt_cap = 180_000
+                    tail = (
+                        content_text[:excerpt_cap]
+                        if len(content_text) > excerpt_cap
+                        else content_text
+                    )
+                    processed_state.content = (
+                        f"{build_searchable_text(mr)}\n\n=== SOURCE EXCERPT ===\n{tail}"
+                    )
+                    content_text = processed_state.content or ""
+                    logger.info(
+                        f"mobile_data pipeline: {mr['total_records']} rows embedded in source text"
+                    )
+        except Exception as _mob:
+            logger.warning(f"mobile_data pipeline skip: {_mob}")
+
     # Trigger OCR fallback when:
     #   - content is empty/missing, OR
     #   - it's a PDF and the extracted text is suspiciously sparse (< 200 chars total)
@@ -765,7 +807,8 @@ async def transform_content(state: TransformationState) -> Optional[dict]:
     result = await transform_graph.ainvoke(
         dict(input_text=content, transformation=transformation)  # type: ignore[arg-type]
     )
-    await source.add_insight(transformation.title, result["output"])
+    # Note: transform_graph.ainvoke() already calls source.add_insight() internally
+    # in the run_transformation() node, so we don't duplicate it here
     return {
         "transformation": [
             {

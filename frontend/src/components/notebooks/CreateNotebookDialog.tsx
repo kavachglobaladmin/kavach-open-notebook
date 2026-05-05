@@ -39,6 +39,7 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
   const { t } = useTranslation()
   const createNotebook = useCreateNotebook()
   const [storageLimitMb, setStorageLimitMb] = useState<number | null>(null)
+  const [storageLimitError, setStorageLimitError] = useState<string | null>(null)
 
   const {
     register,
@@ -54,20 +55,26 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
   const closeDialog = () => onOpenChange(false)
 
   const onSubmit = async (data: CreateNotebookFormData) => {
+    if (storageLimitMb == null) {
+      setStorageLimitError(t.notebooks.storageLimitRequired)
+      return
+    }
     await createNotebook.mutateAsync({
       name: data.name,
       description: data.description,
-      storage_limit_mb: storageLimitMb ?? undefined,
+      storage_limit_mb: storageLimitMb,
     })
     closeDialog()
     reset()
     setStorageLimitMb(null)
+    setStorageLimitError(null)
   }
 
   useEffect(() => {
     if (!open) {
       reset()
       setStorageLimitMb(null)
+      setStorageLimitError(null)
     }
   }, [open, reset])
 
@@ -106,7 +113,7 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5">
               <HardDrive className="h-3.5 w-3.5" />
-              Storage Limit
+              {t.notebooks.storageLimitLabel} *
             </Label>
             <div className="grid grid-cols-3 gap-2">
               {STORAGE_OPTIONS.map((mb) => {
@@ -115,7 +122,10 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
                   <button
                     key={mb}
                     type="button"
-                    onClick={() => setStorageLimitMb(selected ? null : mb)}
+                    onClick={() => {
+                      setStorageLimitMb(selected ? null : mb)
+                      setStorageLimitError(null)
+                    }}
                     className={[
                       'flex flex-col items-center justify-center rounded-lg border py-2.5 text-sm font-medium transition-all',
                       selected
@@ -129,18 +139,28 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
                 )
               })}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {storageLimitMb
-                ? `Limit set to ${storageLimitMb} MB. Click again to remove limit.`
-                : 'No limit selected — unlimited storage. Click a tile to set a limit.'}
-            </p>
+            {storageLimitError ? (
+              <p className="text-xs text-destructive">{storageLimitError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {storageLimitMb != null
+                  ? t.notebooks.storageLimitHelperSelected.replace(
+                      '{mb}',
+                      String(storageLimitMb)
+                    )
+                  : t.notebooks.storageLimitHelper}
+              </p>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={closeDialog}>
               {t.common.cancel}
             </Button>
-            <Button type="submit" disabled={!isValid || createNotebook.isPending}>
+            <Button
+              type="submit"
+              disabled={!isValid || storageLimitMb == null || createNotebook.isPending}
+            >
               {createNotebook.isPending ? t.common.creating : t.notebooks.createNew}
             </Button>
           </DialogFooter>

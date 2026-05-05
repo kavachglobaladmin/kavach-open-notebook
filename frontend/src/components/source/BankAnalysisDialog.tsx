@@ -131,7 +131,8 @@ const fixLabel = (label: string): string =>
 function TxTable({ rows, cols, maxH = 320 }: {
   rows: Row[]
   cols: Column[]
-  maxH?: number
+  /** Use "none" so the dialog body scrolls as one column (avoids nested scroll + flex clipping at 100% zoom). */
+  maxH?: number | 'none'
 }) {
   if (!rows || rows.length === 0) {
     return (
@@ -140,8 +141,12 @@ function TxTable({ rows, cols, maxH = 320 }: {
       </div>
     )
   }
+  const scrollWrap: React.CSSProperties =
+    maxH === 'none'
+      ? { overflowX: 'auto' }
+      : { maxHeight: maxH, overflowY: 'auto', overflowX: 'auto' }
   return (
-    <div style={{ maxHeight: maxH, overflowY: 'auto', overflowX: 'auto' }}>
+    <div style={scrollWrap}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
         <thead>
           <tr>
@@ -348,7 +353,7 @@ function BankAnalysisContent({ data }: { data: Record<string, unknown> }) {
       )}
 
       {/* ── 3. Monthly Summary + Transaction Types ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
         {monthly && monthly.length > 0 && (
           <div style={card}>
             <div style={sectionHead('#2563eb')}>
@@ -613,7 +618,7 @@ function BankAnalysisContent({ data }: { data: Record<string, unknown> }) {
             <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>All Transactions — {txns.length} entries</span>
           </div>
           <div style={bodyNoPad}>
-            <TxTable rows={txns} maxH={500} cols={[
+            <TxTable rows={txns} maxH="none" cols={[
               { key: 'date',         label: 'Date',     color: '#6b7280', mono: true },
               { key: 'description',  label: 'Desc',     color: '#374151' },
               { key: 'debit',        label: 'Debit',    color: '#dc2626' },
@@ -661,6 +666,8 @@ export function BankAnalysisDialog({ sourceId, open, onClose }: BankAnalysisDial
     /* position:fixed + explicit top/right/bottom/left is zoom-proof */
     <div style={{
       position: 'fixed', top: 0, right: 0, bottom: 0, left: 0,
+      height: '100dvh',
+      maxHeight: '100dvh',
       zIndex: 9999,
       display: 'flex', flexDirection: 'column',
       background: '#f3f4f6',
@@ -721,14 +728,17 @@ export function BankAnalysisDialog({ sourceId, open, onClose }: BankAnalysisDial
       </div>
 
       {/* ── Scrollable body ──
-          flex:1 + minHeight:0 is the correct pattern for a scrollable flex child.
-          overflow:hidden on the parent clips it; overflow-y:auto here enables scroll. */}
+          Avoid display:flex on the element that also scrolls — nested flex min-height:auto
+          prevents reliable overflow in some browsers at 100% zoom. Inner stack uses flex+gap. */}
       <div style={{
         flex: 1, minHeight: 0,
         overflowY: 'auto', overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
         padding: '24px 24px',
-        display: 'flex', flexDirection: 'column', gap: 16,
+        paddingBottom: 32,
       }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 'min-content' }}>
         {loading && (
           <div style={{
             display: 'flex', flexDirection: 'column',
@@ -757,6 +767,7 @@ export function BankAnalysisDialog({ sourceId, open, onClose }: BankAnalysisDial
         )}
 
         {data && !loading && <BankAnalysisContent data={data} />}
+        </div>
       </div>
 
       {/* ── Footer ── */}

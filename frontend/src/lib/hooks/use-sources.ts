@@ -67,9 +67,20 @@ export function useNotebookSources(notebookId: string) {
     refetchOnWindowFocus: true,
   })
 
-  // Flatten all pages into a single array (memoized to prevent infinite re-renders)
+  // Flatten all pages into a single array with deduplication (memoized to prevent infinite re-renders)
   const sources: SourceListResponse[] = useMemo(
-    () => query.data?.pages.flatMap(page => page.sources) ?? [],
+    () => {
+      const allSources = query.data?.pages.flatMap(page => page.sources) ?? []
+      // Deduplicate by source ID to prevent duplicate key warnings
+      const seen = new Set<string>()
+      return allSources.filter(source => {
+        if (seen.has(source.id)) {
+          return false
+        }
+        seen.add(source.id)
+        return true
+      })
+    },
     [query.data?.pages]
   )
 
@@ -286,8 +297,10 @@ export function useRetrySource() {
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: (sourceId: string) => sourcesApi.retry(sourceId),
-    onSuccess: (result, sourceId) => {
+    mutationFn: ({ sourceId, notebookId }: { sourceId: string; notebookId?: string }) =>
+      sourcesApi.retry(sourceId, notebookId),
+    onSuccess: (result, vars) => {
+      const sourceId = vars.sourceId
       // Invalidate status query to refetch latest status
       queryClient.invalidateQueries({
         queryKey: ['sources', sourceId, 'status']

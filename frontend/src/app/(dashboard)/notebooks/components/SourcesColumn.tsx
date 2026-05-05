@@ -154,7 +154,7 @@ export function SourcesColumn({
 
   const handleRetry = async (sourceId: string) => {
     try {
-      await retrySource.mutateAsync(sourceId)
+      await retrySource.mutateAsync({ sourceId, notebookId })
     } catch (error) {
       console.error('Failed to retry source:', error)
     }

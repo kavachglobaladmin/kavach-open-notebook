@@ -438,6 +438,7 @@ export function SourceDetailContent({
   const [loading, setLoading] = useState(true)
   const [loadingInsights, setLoadingInsights] = useState(false)
   const [creatingInsight, setCreatingInsight] = useState(false)
+  const createInsightLockRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isEmbedding, setIsEmbedding] = useState(false)
@@ -530,7 +531,23 @@ export function SourceDetailContent({
     try {
       setLoadingInsights(true)
       const data = await insightsApi.listForSource(sourceId)
-      setInsights(data)
+      // De-duplicate insights that may be returned twice (same type/content)
+      // Keep the most recently updated one.
+      const byFingerprint = new Map<string, SourceInsightResponse>()
+      for (const insight of data) {
+        const fingerprint = `${insight.insight_type}::${insight.content}`
+        const existing = byFingerprint.get(fingerprint)
+        if (!existing) {
+          byFingerprint.set(fingerprint, insight)
+          continue
+        }
+        const existingUpdated = new Date(existing.updated).getTime()
+        const currentUpdated = new Date(insight.updated).getTime()
+        if (!Number.isNaN(currentUpdated) && currentUpdated >= existingUpdated) {
+          byFingerprint.set(fingerprint, insight)
+        }
+      }
+      setInsights(Array.from(byFingerprint.values()))
     } catch (err) {
       console.error('Failed to fetch insights:', err)
     } finally {
@@ -556,12 +573,15 @@ export function SourceDetailContent({
   }, [fetchInsights, fetchSource, fetchTransformations, sourceId])
 
   const createInsight = async () => {
+    // Prevent rapid double-clicks / repeated submits before React state updates
+    if (createInsightLockRef.current) return
     if (!selectedTransformation) {
       toast.error(t.sources.selectTransformation)
       return
     }
 
     try {
+      createInsightLockRef.current = true
       setCreatingInsight(true)
       const response = await insightsApi.create(sourceId, {
         transformation_id: selectedTransformation
@@ -592,6 +612,7 @@ export function SourceDetailContent({
       toast.error(t.common.error)
     } finally {
       setCreatingInsight(false)
+      createInsightLockRef.current = false
     }
   }
 

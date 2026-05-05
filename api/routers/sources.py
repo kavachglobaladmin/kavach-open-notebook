@@ -1406,11 +1406,16 @@ async def get_sources(
                 raise HTTPException(status_code=403, detail="Access denied")
 
             # Query sources for specific notebook - include command field with FETCH
+            # Deduplicate by using array::distinct on the source IDs first
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
-                array::len((SELECT VALUE id FROM source_insight WHERE source = $parent.id)) AS insights_count,
+                count(array::distinct(
+                    SELECT VALUE string::concat(insight_type, '::', content)
+                    FROM source_insight
+                    WHERE source = $parent.id
+                )) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM (select value in from reference where out=$notebook_id)
+                FROM array::distinct((select value in from reference where out=$notebook_id))
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -1425,14 +1430,19 @@ async def get_sources(
             )
         elif current_user:
             # Return only sources linked to notebooks owned by this user
+            # Deduplicate by using array::distinct on the source IDs first
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
-                array::len((SELECT VALUE id FROM source_insight WHERE source = $parent.id)) AS insights_count,
+                count(array::distinct(
+                    SELECT VALUE string::concat(insight_type, '::', content)
+                    FROM source_insight
+                    WHERE source = $parent.id
+                )) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM (
+                FROM array::distinct((
                     SELECT VALUE in FROM reference
                     WHERE out IN (SELECT VALUE id FROM notebook WHERE owner = $owner)
-                )
+                ))
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -1445,7 +1455,11 @@ async def get_sources(
             # Query all sources - include command field with FETCH
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
-                array::len((SELECT VALUE id FROM source_insight WHERE source = $parent.id)) AS insights_count,
+                count(array::distinct(
+                    SELECT VALUE string::concat(insight_type, '::', content)
+                    FROM source_insight
+                    WHERE source = $parent.id
+                )) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
                 {order_clause}
@@ -3618,12 +3632,14 @@ async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Q
                 id=source.id or "",
                 title=source.title,
                 topics=source.topics or [],
-                asset=AssetModel(
-                    file_path=source.asset.file_path if source.asset else None,
-                    url=source.asset.url if source.asset else None,
-                )
-                if source.asset
-                else None,
+                asset=(
+                    AssetModel(
+                        file_path=source.asset.file_path if source.asset else None,
+                        url=source.asset.url if source.asset else None,
+                    )
+                    if source.asset
+                    else None
+                ),
                 full_text=source.full_text,
                 embedded=embedded_chunks > 0,
                 embedded_chunks=embedded_chunks,
@@ -3745,6 +3761,21 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
         if not transformation:
             raise HTTPException(status_code=404, detail="Transformation not found")
 
+        # If this insight type was previously deleted, clear the tombstone because
+        # the user is explicitly asking to generate it again.
+        await repo_query(
+            """
+            DELETE source_insight_tombstone
+            WHERE source = $source_id
+              AND string::lowercase(string::trim(insight_type)) =
+                  string::lowercase(string::trim($insight_type))
+            """,
+            {
+                "source_id": ensure_record_id(source_id),
+                "insight_type": transformation.title,
+            },
+        )
+
         # Get model name for logging
         model_name = "default"
         model_id_to_use = request.model_id or transformation.model_id
@@ -3792,4 +3823,3 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
         raise HTTPException(
             status_code=500, detail=f"Error starting insight generation: {str(e)}"
         )
-

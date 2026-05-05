@@ -244,6 +244,22 @@ async def run_transformation_command(
                 f"Transformation '{input_data.transformation_id}' not found"
             )
 
+        # Validate model exists before running transformation
+        model_id_to_use = input_data.model_id or transformation.model_id
+        if model_id_to_use:
+            try:
+                from open_notebook.ai.models import Model
+                model = await Model.get(model_id_to_use)
+                if not model:
+                    raise ValueError(
+                        f"Model '{model_id_to_use}' not found. Please check Settings → Models and select an available model."
+                    )
+            except ValueError:
+                raise
+            except Exception as e:
+                logger.debug(f"Could not validate model: {e}")
+                # Continue anyway - model validation will happen during LLM call
+
         # Run transformation graph (includes LLM call + insight creation)
         await transform_graph.ainvoke(
             input=dict(source=source, transformation=transformation),

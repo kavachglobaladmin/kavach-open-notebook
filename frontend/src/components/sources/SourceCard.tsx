@@ -29,6 +29,7 @@ import {
   Lightbulb,
   Network,
   BarChart2,
+  PhoneCall,
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -41,6 +42,7 @@ import { InfographicDialog } from '@/components/source/InfographicDialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ProfileGraphModal } from '@/components/sources/ProfileGraphModal'
 import { BankAnalysisDialog } from '@/components/source/BankAnalysisDialog'
+import { MobileDataAnalysisDialog } from '@/components/source/MobileDataAnalysisDialog'
 
 interface SourceCardProps {
   source: SourceListResponse
@@ -147,6 +149,18 @@ export function SourceCard({
   const [infographicOpen, setInfographicOpen] = useState(false)
   const [profileGraphOpen, setProfileGraphOpen] = useState(false)
   const [bankAnalysisOpen, setBankAnalysisOpen] = useState(false)
+  const [mobileAnalysisOpen, setMobileAnalysisOpen] = useState(false)
+
+  const filePathUi = source.asset?.file_path ?? ''
+  const titleAndPath = `${source.title ?? ''} ${filePathUi}`
+  const mobileHint =
+    /cdr|call\s*detail|sms|subscriber|tower|\blac\b|cell\s*id|mobile\s*data|phone\s*log|imei\b|call\s*log/i
+
+  const isMobileDataFile =
+    !!source.asset?.file_path &&
+    (/\.(csv|tsv)$/i.test(filePathUi) ||
+      (/\.(txt|log)$/i.test(filePathUi) && mobileHint.test(titleAndPath)) ||
+      (/\.pdf$/i.test(filePathUi) && mobileHint.test(titleAndPath)))
 
   // Detect if this is a bank statement file
   const isBankFile = !!(source.asset?.file_path) && (
@@ -177,9 +191,23 @@ export function SourceCard({
 
   // Determine current status
   // If source has a command_id but no status, treat as "new" (just created)
+  // If a source already has meaningful output (insights / embeddings / topics),
+  // don't keep showing processing/failed after reload due to stale command status.
+  const hasInsights = (source.insights_count ?? 0) > 0
+  const hasDerivedOutput =
+    hasInsights ||
+    !!source.embedded ||
+    ((source.topics?.length ?? 0) > 0)
   const rawStatus = statusData?.status || sourceWithStatus.status
-  const currentStatus: SourceStatus = isSourceStatus(rawStatus)
-    ? rawStatus
+  const normalizedRawStatus =
+    (rawStatus === 'failed' && hasDerivedOutput)
+      ? 'completed'
+      : ((rawStatus === 'new' || rawStatus === 'queued' || rawStatus === 'running') && hasDerivedOutput)
+        ? 'completed'
+        : rawStatus
+
+  const currentStatus: SourceStatus = isSourceStatus(normalizedRawStatus)
+    ? normalizedRawStatus
     : (sourceWithStatus.command_id ? 'new' : 'completed')
 
 
@@ -384,6 +412,21 @@ export function SourceCard({
               </Button>
             )}
 
+            {isMobileDataFile && (isCompleted || isProcessing) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                title={t.sources.mobileData.analysisTooltip}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMobileAnalysisOpen(true)
+                }}
+              >
+                <PhoneCall className="h-4 w-4" />
+              </Button>
+            )}
+
             {/* Profile Graph button */}
             <Button
               variant="ghost"
@@ -528,6 +571,14 @@ export function SourceCard({
             sourceId={source.id}
             open={bankAnalysisOpen}
             onClose={() => setBankAnalysisOpen(false)}
+          />
+        )}
+
+        {mobileAnalysisOpen && (
+          <MobileDataAnalysisDialog
+            sourceId={source.id}
+            open={mobileAnalysisOpen}
+            onClose={() => setMobileAnalysisOpen(false)}
           />
         )}
       </div>
