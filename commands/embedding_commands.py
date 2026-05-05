@@ -61,6 +61,7 @@ class CreateInsightInput(CommandInput):
     source_id: str
     insight_type: str
     content: str
+    generation_id: Optional[str] = None
 
 
 class CreateInsightOutput(CommandOutput):
@@ -487,6 +488,34 @@ async def create_insight_command(
             "content": input_data.content,
         }
 
+        if input_data.generation_id:
+            active_generation = await repo_query(
+                """
+                SELECT generation_id
+                FROM source_insight_generation
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                LIMIT 1
+                """,
+                vars,
+            )
+            if active_generation:
+                latest_generation_id = str(
+                    active_generation[0].get("generation_id", "") or ""
+                ).strip()
+                if latest_generation_id and latest_generation_id != input_data.generation_id:
+                    logger.info(
+                        f"Skipping stale insight generation for source {input_data.source_id}: "
+                        f"type={insight_type_clean}, generation={input_data.generation_id}, "
+                        f"latest={latest_generation_id}"
+                    )
+                    return CreateInsightOutput(
+                        success=True,
+                        insight_id=None,
+                        processing_time=time.time() - start_time,
+                    )
+
         # Respect user deletions: if this insight type was deleted, do not let a
         # stale background job recreate it. Explicit re-generation clears the
         # tombstone in the API route before submitting a fresh command.
@@ -513,21 +542,29 @@ async def create_insight_command(
             )
 
         # 1. Idempotency: keep ONE insight per (source, insight_type).
-        # If the same report is generated twice (double click, refresh, retries),
-        # overwrite the existing record instead of creating a duplicate row.
+        # Use SELECT-then-UPDATE/CREATE with a post-creation dedup pass to handle
+        # the race condition where two commands run simultaneously and both see no
+        # existing record, then both CREATE.  After the write we re-query and keep
+        # only the oldest record, deleting any extras.
         existing = await repo_query(
             """
-            SELECT VALUE id
+            SELECT id, created
             FROM source_insight
             WHERE source = $source_id
-              AND string::trim(insight_type) = $insight_type
-            LIMIT 1
+              AND string::lowercase(string::trim(insight_type)) =
+                  string::lowercase(string::trim($insight_type))
+            ORDER BY created ASC
             """,
             vars,
         )
 
-        if existing and len(existing) > 0 and existing[0]:
-            insight_id = str(existing[0])
+        if existing and len(existing) > 0:
+            insight_id = str(existing[0].get("id", ""))
+            duplicate_ids = [
+                str(item.get("id", ""))
+                for item in existing[1:]
+                if item.get("id")
+            ]
             logger.info(
                 f"Updating existing insight {insight_id} for source {input_data.source_id}: "
                 f"type={insight_type_clean}"
@@ -544,6 +581,19 @@ async def create_insight_command(
                     "content": input_data.content,
                 },
             )
+
+            # Collapse any legacy duplicate rows so this source/type pair keeps
+            # exactly one canonical insight record.
+            if duplicate_ids:
+                logger.info(
+                    f"Removing {len(duplicate_ids)} duplicate insight rows for "
+                    f"source {input_data.source_id}: type={insight_type_clean}"
+                )
+                for duplicate_id in duplicate_ids:
+                    await repo_query(
+                        "DELETE $insight_id",
+                        {"insight_id": ensure_record_id(duplicate_id)},
+                    )
         else:
             # 2. Create insight record in database
             result = await repo_query(
@@ -563,6 +613,41 @@ async def create_insight_command(
             insight_id = str(result[0].get("id", ""))
             if not insight_id:
                 raise ValueError("Failed to create insight - no ID in result")
+
+            # Post-creation dedup: handle race condition where two commands both
+            # saw no existing record and both created a new one simultaneously.
+            # Re-query and keep only the oldest; delete any newer duplicates.
+            all_after_create = await repo_query(
+                """
+                SELECT id, created
+                FROM source_insight
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                ORDER BY created ASC
+                """,
+                vars,
+            )
+            if all_after_create and len(all_after_create) > 1:
+                # Keep the oldest record; delete the rest (including ours if we lost the race)
+                canonical_id = str(all_after_create[0].get("id", ""))
+                race_duplicates = [
+                    str(item.get("id", ""))
+                    for item in all_after_create[1:]
+                    if item.get("id")
+                ]
+                logger.info(
+                    f"Race condition detected: {len(race_duplicates)} duplicate(s) for "
+                    f"source {input_data.source_id}: type={insight_type_clean}. "
+                    f"Keeping {canonical_id}, removing {race_duplicates}"
+                )
+                for dup_id in race_duplicates:
+                    await repo_query(
+                        "DELETE $insight_id",
+                        {"insight_id": ensure_record_id(dup_id)},
+                    )
+                # Use the canonical (oldest) record going forward
+                insight_id = canonical_id
 
         # 3. Submit embedding command (fire-and-forget)
         submit_command(

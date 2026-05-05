@@ -458,7 +458,12 @@ class Source(ObjectModel):
             logger.exception(e)
             raise DatabaseOperationError(e)
 
-    async def add_insight(self, insight_type: str, content: str) -> Optional[str]:
+    async def add_insight(
+        self,
+        insight_type: str,
+        content: str,
+        generation_id: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Submit insight creation as an async command (fire-and-forget).
 
@@ -493,6 +498,7 @@ class Source(ObjectModel):
                     "source_id": str(self.id),
                     "insight_type": insight_type,
                     "content": content,
+                    "generation_id": generation_id,
                 },
             )
             logger.info(

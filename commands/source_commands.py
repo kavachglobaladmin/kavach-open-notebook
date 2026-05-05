@@ -167,6 +167,7 @@ class RunTransformationInput(CommandInput):
     source_id: str
     transformation_id: str
     model_id: Optional[str] = None
+    generation_id: Optional[str] = None
 
 
 class RunTransformationOutput(CommandOutput):
@@ -263,7 +264,10 @@ async def run_transformation_command(
         # Run transformation graph (includes LLM call + insight creation)
         await transform_graph.ainvoke(
             input=dict(source=source, transformation=transformation),
-            config={"configurable": {"model_id": input_data.model_id}}
+            config={"configurable": {
+                "model_id": input_data.model_id,
+                "generation_id": input_data.generation_id,
+            }}
         )
 
         processing_time = time.time() - start_time
