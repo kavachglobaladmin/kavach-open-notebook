@@ -5,7 +5,7 @@ live_database :surreal start --bind 0.0.0.0:8000 --user openNoteBookUser --pass 
 frontend : npm run dev
 
 zookeeper: C:\kafka\kafka> .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
-kafka server :  C:\kafka\kafka> deactivate
+kafka server :  C:\kafka\kafka> .\bin\windows\kafka-server-start.bat .\config\server.properties
 
 
 surreal-commands-worker: uv run --env-file .env surreal-commands-worker --import-modules commands

@@ -94,7 +94,9 @@ export function useNotifications() {
   useEffect(() => {
     const listener = () => setUpdate(prev => prev + 1)
     listeners.add(listener)
-    return () => listeners.delete(listener)
+    return () => {
+      listeners.delete(listener)
+    }
   }, [])
 
   return {

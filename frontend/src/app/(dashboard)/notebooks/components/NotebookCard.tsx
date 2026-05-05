@@ -15,10 +15,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { NotebookDeleteDialog } from './NotebookDeleteDialog'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { useToast } from '@/lib/hooks/use-toast'
+import { takeNotebookStorageToastBand } from '@/lib/utils/notebook-storage-alerts'
 
 interface NotebookCardProps {
   notebook: NotebookResponse
@@ -45,23 +46,36 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
   const limitMb  = notebook.storage_limit_mb ?? 0
   const usedPct  = hasLimit ? Math.min((usedMb / limitMb) * 100, 100) : 0
 
-  // Fire toast notifications at 50 / 75 / 100 % thresholds — once per mount
-  const notifiedRef = useRef<Set<number>>(new Set())
+  // Persist one toast per ascending storage band per notebook — survives refresh and matches notification center clears
   useEffect(() => {
     if (!hasLimit) return
-    const thresholds = [
-      { pct: 100, title: 'Storage Full', desc: `"${notebook.name}" has reached its ${limitMb} MB limit. No more uploads allowed.`, variant: 'destructive' as const },
-      { pct: 75,  title: 'Storage at 75%', desc: `"${notebook.name}" has used ${usedMb.toFixed(1)} MB of ${limitMb} MB.`, variant: 'destructive' as const },
-      { pct: 50,  title: 'Storage at 50%', desc: `"${notebook.name}" has used ${usedMb.toFixed(1)} MB of ${limitMb} MB.`, variant: 'default' as const },
-    ]
-    for (const { pct, title, desc, variant } of thresholds) {
-      if (usedPct >= pct && !notifiedRef.current.has(pct)) {
-        notifiedRef.current.add(pct)
-        toast({ title, description: desc, variant })
-        break // show only the highest threshold notification
-      }
+
+    const nextBand = takeNotebookStorageToastBand(notebook.id, usedPct)
+    if (!nextBand) return
+
+    const payloads: Record<
+      50 | 75 | 100,
+      { title: string; desc: string; variant: 'default' | 'destructive' }
+    > = {
+      100: {
+        title: 'Storage Full',
+        desc: `"${notebook.name}" has reached its ${limitMb} MB limit. No more uploads allowed.`,
+        variant: 'destructive',
+      },
+      75: {
+        title: 'Storage at 75%',
+        desc: `"${notebook.name}" has used ${usedMb.toFixed(1)} MB of ${limitMb} MB.`,
+        variant: 'destructive',
+      },
+      50: {
+        title: 'Storage at 50%',
+        desc: `"${notebook.name}" has used ${usedMb.toFixed(1)} MB of ${limitMb} MB.`,
+        variant: 'default',
+      },
     }
-  }, [usedPct, hasLimit, limitMb, usedMb, notebook.name, toast])
+    const p = payloads[nextBand]
+    toast({ title: p.title, description: p.desc, variant: p.variant })
+  }, [usedPct, hasLimit, limitMb, usedMb, notebook.id, notebook.name, toast])
 
   const handleArchiveToggle = (e: React.MouseEvent) => {
     e.stopPropagation()

@@ -399,8 +399,17 @@ TEXT:
 # Regular transformations (non-mindmap)
 # =============================================================================
 
-async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str, transformation_name: str = "") -> str:
-    """Single-pass or chunked transformation using the user's prompt."""
+async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str, transformation_name: str = "", is_final_transformation: bool = True) -> str:
+    """
+    Single-pass or chunked transformation using the user's prompt.
+    
+    Args:
+        model_id: Model to use for transformation
+        content: Content to transform
+        transformation_prompt: Prompt for transformation
+        transformation_name: Name of transformation (for detection)
+        is_final_transformation: If False, this is an intermediate step (don't save Dense Summary)
+    """
     import time as _time
     start_time = _time.time()
     

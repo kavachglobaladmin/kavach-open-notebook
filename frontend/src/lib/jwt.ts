@@ -119,7 +119,7 @@ function sha256(data: Uint8Array): Uint8Array {
 
 function hmacSha256Fallback(keyStr: string, msgStr: string): Uint8Array {
   const enc = new TextEncoder()
-  let key = enc.encode(keyStr)
+  let key: Uint8Array = enc.encode(keyStr)
   if (key.length > 64) key = sha256(key)
 
   const ipad = new Uint8Array(64)

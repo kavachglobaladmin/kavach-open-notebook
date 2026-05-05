@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from api.models import NoteResponse, SaveAsNoteRequest, SourceInsightResponse
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import SourceInsight
 from open_notebook.exceptions import InvalidInputError
 
@@ -42,6 +43,19 @@ async def delete_insight(insight_id: str):
         if not insight:
             raise HTTPException(status_code=404, detail="Insight not found")
 
+        source = await insight.get_source()
+        await repo_query(
+            """
+            CREATE source_insight_tombstone CONTENT {
+                source: $source_id,
+                insight_type: $insight_type
+            }
+            """,
+            {
+                "source_id": ensure_record_id(source.id),
+                "insight_type": (insight.insight_type or "").strip(),
+            },
+        )
         await insight.delete()
 
         return {"message": "Insight deleted successfully"}
