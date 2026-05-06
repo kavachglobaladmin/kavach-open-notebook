@@ -183,14 +183,7 @@ class RunTransformationOutput(CommandOutput):
 @command(
     "run_transformation",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError, NotFoundError],  # Don't retry validation/config/missing errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def run_transformation_command(
     input_data: RunTransformationInput,
@@ -233,6 +226,42 @@ async def run_transformation_command(
             f"on source {input_data.source_id} with model: {model_name}"
         )
 
+        # Dedup check: if a generation_id is provided, atomically claim it by
+        # deleting the record. Only the first command to delete it will proceed;
+        # any parallel command will find nothing and skip.
+        if input_data.generation_id:
+            from open_notebook.database.repository import repo_query, ensure_record_id
+            # Atomically claim the generation by deleting it.
+            # SurrealDB DELETE returns the deleted records, so only the command
+            # that actually deletes the row will get a non-empty result.
+            # Any parallel command racing on the same generation_id will get
+            # an empty result and skip.
+            claimed = await repo_query(
+                """
+                DELETE source_insight_generation
+                WHERE source = $source_id
+                  AND generation_id = $generation_id
+                RETURN BEFORE
+                """,
+                {
+                    "source_id": ensure_record_id(input_data.source_id),
+                    "generation_id": input_data.generation_id,
+                },
+            )
+            if not claimed:
+                # Nothing deleted → generation_id was already claimed by another
+                # command or superseded by a newer user click
+                logger.info(
+                    f"Skipping duplicate run_transformation for source {input_data.source_id}: "
+                    f"generation_id={input_data.generation_id} already claimed or superseded"
+                )
+                return RunTransformationOutput(
+                    success=True,
+                    source_id=input_data.source_id,
+                    transformation_id=input_data.transformation_id,
+                    processing_time=time.time() - start_time,
+                )
+
         # Load source
         source = await Source.get(input_data.source_id)
         if not source:
@@ -261,14 +290,23 @@ async def run_transformation_command(
                 logger.debug(f"Could not validate model: {e}")
                 # Continue anyway - model validation will happen during LLM call
 
-        # Run transformation graph (includes LLM call + insight creation)
-        await transform_graph.ainvoke(
+        # Run transformation graph (LLM call only — no insight saving inside)
+        result = await transform_graph.ainvoke(
             input=dict(source=source, transformation=transformation),
             config={"configurable": {
                 "model_id": input_data.model_id,
                 "generation_id": input_data.generation_id,
             }}
         )
+
+        # Save insight ONCE here, after the full final output is ready
+        final_output = result.get("output", "") if result else ""
+        if source and final_output:
+            await source.add_insight(
+                transformation.title,
+                final_output,
+                generation_id=input_data.generation_id,
+            )
 
         processing_time = time.time() - start_time
         logger.info(

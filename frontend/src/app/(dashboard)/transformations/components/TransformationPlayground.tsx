@@ -6,7 +6,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Loader2 } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
 import { useExecuteTransformation } from '@/lib/hooks/use-transformations'
-import { ModelSelector } from '@/components/common/ModelSelector'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -20,24 +19,23 @@ export function TransformationPlayground({ transformations, selectedTransformati
   const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState(selectedTransformation?.id || '')
   const [inputText, setInputText] = useState('')
-  const [modelId, setModelId] = useState('')
   const [output, setOutput] = useState('')
 
   const executeTransformation = useExecuteTransformation()
 
   const handleExecute = async () => {
-    if (!selectedId || !modelId || !inputText.trim()) return
+    if (!selectedId || !inputText.trim()) return
 
     const result = await executeTransformation.mutateAsync({
       transformation_id: selectedId,
       input_text: inputText,
-      model_id: modelId,
+      model_id: '',
     })
 
     setOutput(result.output)
   }
 
-  const canExecute = selectedId && modelId && inputText.trim() && !executeTransformation.isPending
+  const canExecute = selectedId && inputText.trim() && !executeTransformation.isPending
 
   return (
     <div className="space-y-6">
@@ -62,7 +60,7 @@ export function TransformationPlayground({ transformations, selectedTransformati
           />
         </div>
 
-        {/* Controls row — Transformation + Model dropdowns + RUN button */}
+        {/* Controls row — Transformation dropdown + RUN button */}
         <div className="px-6 py-4 flex items-center gap-4 flex-wrap">
           {/* Transformation selector */}
           <div className="flex flex-col gap-1 min-w-[160px]">
@@ -84,21 +82,6 @@ export function TransformationPlayground({ transformations, selectedTransformati
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Model selector */}
-          <div className="flex flex-col gap-1 min-w-[160px]">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              {t.transformations.model}
-            </label>
-            <ModelSelector
-              label=""
-              name="model"
-              modelType="language"
-              value={modelId}
-              onChange={setModelId}
-              placeholder={t.transformations.selectModel}
-            />
           </div>
 
           {/* Spacer */}

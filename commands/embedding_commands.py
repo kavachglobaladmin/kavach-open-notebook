@@ -122,14 +122,7 @@ class EmbedSourceOutput(CommandOutput):
 @command(
     "embed_note",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
     """
@@ -214,14 +207,7 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
 @command(
     "embed_insight",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOutput:
     """
@@ -246,9 +232,21 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
         logger.info(f"Starting embedding for insight: {input_data.insight_id}")
 
         # 1. Load insight
-        insight = await SourceInsight.get(input_data.insight_id)
+        try:
+            insight = await SourceInsight.get(input_data.insight_id)
+        except Exception:
+            insight = None
+
         if not insight:
-            raise ValueError(f"Insight '{input_data.insight_id}' not found")
+            # Insight was deleted (dedup cleanup) — skip silently
+            logger.info(
+                f"Skipping embed for deleted insight {input_data.insight_id}"
+            )
+            return EmbedInsightOutput(
+                success=True,
+                insight_id=input_data.insight_id,
+                processing_time=time.time() - start_time,
+            )
 
         if not insight.content or not insight.content.strip():
             raise ValueError(
@@ -308,14 +306,7 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
 @command(
     "embed_source",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutput:
     """
@@ -444,14 +435,7 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
 @command(
     "create_insight",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def create_insight_command(
     input_data: CreateInsightInput,
@@ -515,6 +499,18 @@ async def create_insight_command(
                         insight_id=None,
                         processing_time=time.time() - start_time,
                     )
+        else:
+            # No generation_id = old queued command from a previous session.
+            # Always skip — the current session's command (with generation_id) will handle it.
+            logger.info(
+                f"Skipping legacy (no generation_id) create_insight for source "
+                f"{input_data.source_id}: type={insight_type_clean}"
+            )
+            return CreateInsightOutput(
+                success=True,
+                insight_id=None,
+                processing_time=time.time() - start_time,
+            )
 
         # Respect user deletions: if this insight type was deleted, do not let a
         # stale background job recreate it. Explicit re-generation clears the

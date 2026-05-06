@@ -3738,6 +3738,117 @@ async def delete_mindmap_insights(source_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# @router.post(
+#     "/sources/{source_id}/insights",
+#     response_model=InsightCreationResponse,
+#     status_code=202,
+# )
+# async def create_source_insight(source_id: str, request: CreateSourceInsightRequest):
+#     """
+#     Start insight generation for a source by running a transformation.
+
+#     This endpoint returns immediately with a 202 Accepted status.
+#     The transformation runs asynchronously in the background via the job queue.
+#     Poll GET /sources/{source_id}/insights to see when the insight is ready.
+#     """
+#     try:
+#         # Validate source exists
+#         source = await Source.get(source_id)
+#         if not source:
+#             raise HTTPException(status_code=404, detail="Source not found")
+
+#         # Validate transformation exists
+#         transformation = await Transformation.get(request.transformation_id)
+#         if not transformation:
+#             raise HTTPException(status_code=404, detail="Transformation not found")
+
+#         # If this insight type was previously deleted, clear the tombstone because
+#         # the user is explicitly asking to generate it again.
+#         await repo_query(
+#             """
+#             DELETE source_insight_tombstone
+#             WHERE source = $source_id
+#               AND string::lowercase(string::trim(insight_type)) =
+#                   string::lowercase(string::trim($insight_type))
+#             """,
+#             {
+#                 "source_id": ensure_record_id(source_id),
+#                 "insight_type": transformation.title,
+#             },
+#         )
+
+#         generation_id = str(uuid.uuid4())
+#         await repo_query(
+#             """
+#             DELETE source_insight_generation
+#             WHERE source = $source_id
+#               AND string::lowercase(string::trim(insight_type)) =
+#                   string::lowercase(string::trim($insight_type));
+
+#             CREATE source_insight_generation CONTENT {
+#                 source: $source_id,
+#                 insight_type: $insight_type,
+#                 generation_id: $generation_id
+#             };
+#             """,
+#             {
+#                 "source_id": ensure_record_id(source_id),
+#                 "insight_type": transformation.title,
+#                 "generation_id": generation_id,
+#             },
+#         )
+
+#         # Get model name for logging
+#         model_name = "default"
+#         model_id_to_use = request.model_id or transformation.model_id
+        
+#         if model_id_to_use:
+#             try:
+#                 from open_notebook.ai.models import Model
+#                 model = await Model.get(model_id_to_use)
+#                 if model and hasattr(model, 'name') and hasattr(model, 'provider'):
+#                     model_name = f"{model.name} ({model.provider})"
+#                 else:
+#                     model_name = model_id_to_use
+#             except Exception as e:
+#                 logger.debug(f"Could not fetch model details: {e}")
+#                 model_name = model_id_to_use
+
+#         # Submit transformation as background job (fire-and-forget)
+#         command_id = submit_command(
+#             "open_notebook",
+#             "run_transformation",
+#             {
+#                 "source_id": source_id,
+#                 "transformation_id": request.transformation_id,
+#                 "model_id": model_id_to_use,
+#                 "generation_id": generation_id,
+#             },
+#         )
+#         logger.info(
+#             f"Submitted run_transformation command {command_id} for source {source_id} "
+#             f"using transformation '{transformation.title}' with model: {model_name}"
+#         )
+
+#         # Return immediately with command_id for status tracking
+#         return InsightCreationResponse(
+#             status="pending",
+#             message="Insight generation started",
+#             source_id=source_id,
+#             transformation_id=request.transformation_id,
+#             command_id=str(command_id),
+#         )
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error starting insight generation for source {source_id}: {e}")
+#         raise HTTPException(
+#             status_code=500, detail=f"Error starting insight generation: {str(e)}"
+#         )
+
+
+
 @router.post(
     "/sources/{source_id}/insights",
     response_model=InsightCreationResponse,
@@ -3778,18 +3889,29 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
         )
 
         generation_id = str(uuid.uuid4())
+
+        # Step 1: Delete old generation record (separate call - SurrealDB multi-statement ; unreliable)
         await repo_query(
             """
             DELETE source_insight_generation
             WHERE source = $source_id
               AND string::lowercase(string::trim(insight_type)) =
-                  string::lowercase(string::trim($insight_type));
+                  string::lowercase(string::trim($insight_type))
+            """,
+            {
+                "source_id": ensure_record_id(source_id),
+                "insight_type": transformation.title,
+            },
+        )
 
+        # Step 2: Create new generation record
+        await repo_query(
+            """
             CREATE source_insight_generation CONTENT {
                 source: $source_id,
                 insight_type: $insight_type,
                 generation_id: $generation_id
-            };
+            }
             """,
             {
                 "source_id": ensure_record_id(source_id),
@@ -3801,7 +3923,7 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
         # Get model name for logging
         model_name = "default"
         model_id_to_use = request.model_id or transformation.model_id
-        
+
         if model_id_to_use:
             try:
                 from open_notebook.ai.models import Model

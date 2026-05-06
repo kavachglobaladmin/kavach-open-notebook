@@ -5,16 +5,8 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronRight, Trash2 } from 'lucide-react'
 import { Transformation } from '@/lib/types/transformations'
-import { useDeleteTransformation, useUpdateTransformation } from '@/lib/hooks/use-transformations'
+import { useDeleteTransformation } from '@/lib/hooks/use-transformations'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { ModelSelector } from '@/components/common/ModelSelector'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 
 interface TransformationCardProps {
   transformation: Transformation
@@ -26,30 +18,11 @@ export function TransformationCard({ transformation, onPlayground, onEdit }: Tra
   const { t } = useTranslation()
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [showModelDialog, setShowModelDialog] = useState(false)
-  const [selectedModelId, setSelectedModelId] = useState(transformation.model_id || '')
   const deleteTransformation = useDeleteTransformation()
-  const updateTransformation = useUpdateTransformation()
 
   const handleDelete = () => {
     deleteTransformation.mutate(transformation.id)
     setShowDeleteDialog(false)
-  }
-
-  const handleSaveModel = async () => {
-    if (selectedModelId !== transformation.model_id) {
-      await updateTransformation.mutateAsync({
-        id: transformation.id,
-        data: { model_id: selectedModelId || undefined }
-      })
-    }
-    setShowModelDialog(false)
-    setSelectedModelId(transformation.model_id || '')
-  }
-
-  const handleCloseModelDialog = () => {
-    setShowModelDialog(false)
-    setSelectedModelId(transformation.model_id || '')
   }
 
   return (
@@ -75,15 +48,6 @@ export function TransformationCard({ transformation, onPlayground, onEdit }: Tra
 
             {/* Right: action buttons — outside CollapsibleTrigger, no nesting issue */}
             <div className="flex items-center gap-2 shrink-0">
-              {/* Model selector button */}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowModelDialog(true) }}
-                className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold transition-colors"
-                title={t.transformations.selectModel || 'Select Model'}
-              >
-                {t.transformations.selectModel || 'Select Model'}
-              </button>
               {onPlayground && (
                 <button
                   type="button"
@@ -148,44 +112,6 @@ export function TransformationCard({ transformation, onPlayground, onEdit }: Tra
           </CollapsibleContent>
         </div>
       </Collapsible>
-
-      {/* Model selector dialog - Compact */}
-      <Dialog open={showModelDialog} onOpenChange={(open) => {
-        if (!open) {
-          handleCloseModelDialog()
-        } else {
-          setShowModelDialog(true)
-        }
-      }}>
-        <DialogContent className="max-w-xs w-80">
-          <DialogHeader className="pb-2">
-            <DialogTitle className="text-base font-bold">{t.transformations.selectModel || 'Select Model'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            <ModelSelector
-              modelType="language"
-              value={selectedModelId}
-              onChange={setSelectedModelId}
-              placeholder={t.transformations.noModelSelected || 'Use default model'}
-            />
-            <div className="flex gap-2 justify-end pt-1">
-              <button
-                onClick={handleCloseModelDialog}
-                className="px-2.5 py-1 rounded text-slate-700 hover:bg-slate-50 text-xs font-medium transition-colors border border-slate-200"
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                onClick={handleSaveModel}
-                disabled={updateTransformation.isPending}
-                className="px-2.5 py-1 rounded bg-[#FF7043] hover:bg-[#f4622e] text-white text-xs font-medium transition-colors disabled:opacity-50"
-              >
-                {updateTransformation.isPending ? t.common.saving : t.common.save}
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <ConfirmDialog
         open={showDeleteDialog}

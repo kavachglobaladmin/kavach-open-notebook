@@ -156,7 +156,7 @@ class TransformationExecuteRequest(BaseModel):
         ..., description="ID of the transformation to execute"
     )
     input_text: str = Field(..., description="Text to transform")
-    model_id: str = Field(..., description="Model ID to use for the transformation")
+    model_id: Optional[str] = Field(None, description="Model ID to use (uses default transformation model if not provided)")
 
 
 class TransformationExecuteResponse(BaseModel):

@@ -561,14 +561,17 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
                 "Write in flowing prose. Do NOT use bullet points. Do NOT add meta-commentary.\n\nTEXT:\n"
             )
         elif is_structured_json:
-            # For structured JSON outputs: extract all relevant data as bullet points
-            # The merge step will assemble the final JSON
             system = (
                 f"{transformation_prompt}\n\n"
-                "Extract ALL relevant data from the text below as detailed bullet points. "
-                "Include every name, date, FIR number, case detail, associate, event, and fact. "
-                "Do NOT output JSON yet — just extract all facts as bullet points. "
-                "Do NOT skip any information. Do NOT add commentary.\n\nTEXT:\n"
+                "Extract ALL relevant data from the text below as detailed bullet points.\n"
+                "For EACH item extract ALL sub-fields:\n"
+                "- Associates: name AND their exact relation/role (gang leader, co-accused, family member, etc.)\n"
+                "- Timeline events: exact date AND complete event description (what happened, where, who)\n"
+                "- Highlights: key finding AND category (Crime/Legal/Personal) AND specific factual detail\n"
+                "- Case details: FIR number, IPC section, date, police station name, current status\n"
+                "- stat: most important single number (total FIRs, years active, prison time, etc.)\n"
+                "CRITICAL: Do NOT leave any sub-field empty. If relation unknown write 'associate'.\n"
+                "Do NOT output JSON yet — just extract all facts as bullet points.\n\nTEXT:\n"
             )
         else:
             system = (
@@ -637,14 +640,21 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
     elif is_structured_json:
         merge_system = (
             f"{transformation_prompt}\n\n"
-            "You are given multiple JSON fragments or fact lists extracted from different sections of a document. "
-            "Merge them into ONE complete, valid JSON object following the exact structure specified in the prompt above. "
-            "Combine ALL data from all fragments:\n"
-            "- Merge arrays (timeline_events, case_details, associates, highlights, etc.) by concatenating them\n"
-            "- Fill in ALL fields with complete data from across all fragments\n"
-            "- Do NOT leave fields empty if data exists in any fragment\n"
-            "- Ensure the output is valid, complete JSON with no missing brackets or commas\n"
-            "Output ONLY the merged JSON, no explanation or meta-commentary.\n\nFRAGMENTS:\n"
+            "You are given multiple fact lists extracted from different sections of a document.\n"
+            "Merge them into ONE complete, valid JSON object following the exact structure above.\n\n"
+            "STRICT MERGE RULES:\n"
+            "- Concatenate ALL arrays: timeline_events, case_details, associates, highlights\n"
+            "- Remove exact duplicate entries only\n"
+            "- highlights: EVERY entry MUST have title + subtitle + description - NO empty strings allowed\n"
+            "  subtitle = category like 'Crime' or 'Legal' or 'Personal'\n"
+            "  description = one specific factual detail about that highlight\n"
+            "- associates: EVERY entry MUST have name + relation - if unknown write 'associate'\n"
+            "- timeline_events: EVERY entry MUST have date + full event description - NO empty events\n"
+            "- case_details: use fields fir_no, section, date, police_station, status\n"
+            "- stat.value = total number of FIR cases OR years active (pick most relevant number)\n"
+            "- NEVER use empty string, '...', null, or placeholder text anywhere\n"
+            "- If a field truly has no data, omit that field entirely\n"
+            "Output ONLY valid JSON, no explanation, no markdown.\n\nFACTS:\n"
         )
     elif is_dense:
         merge_system = (
@@ -729,13 +739,6 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             final_output = _json.dumps(mind_map_dict, ensure_ascii=False, indent=2)
             _logger.info(f"[MindMap] Done — {len(mind_map_dict.get('children', []))} top-level categories")
 
-            if source:
-                await source.add_insight(
-                    transformation.title,
-                    final_output,
-                    generation_id=generation_id,
-                )
-
             return {"output": final_output}
 
         # ── All other transformations ─────────────────────────────────────
@@ -763,13 +766,6 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             final_output = await _run_with_prompt(
                 model_id, content_str, transformation_prompt,
                 transformation_name=t_name
-            )
-
-        if source:
-            await source.add_insight(
-                transformation.title,
-                final_output,
-                generation_id=generation_id,
             )
 
         return {"output": final_output}

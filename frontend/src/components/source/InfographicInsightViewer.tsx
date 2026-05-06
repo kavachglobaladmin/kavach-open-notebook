@@ -40,6 +40,13 @@ function clean(text: unknown): string {
   return s.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '').replace(/#+\s/g, '').trim()
 }
 
+function hasValue(text: unknown): boolean {
+  const value = clean(text)
+  if (!value) return false
+  const lowered = value.toLowerCase()
+  return !['null', 'none', 'n/a', 'na', '...', '-', '--', 'unknown'].includes(lowered)
+}
+
 function repairJson(raw: string): string {
   // Fix comma-formatted numbers: 15,099.00 → 15099.00 (only when after : or in array)
   let s = raw
@@ -120,8 +127,20 @@ export function extractAndMergeJson(raw: string): InfographicResponse | null {
   if (merged.timeline_events) {
     const seen = new Set<string>()
     merged.timeline_events = merged.timeline_events
+      .filter(e => hasValue(e.date) && hasValue(e.event))
       .filter(e => { const k = `${e.date}|${e.event?.slice(0, 30)}`; if (seen.has(k)) return false; seen.add(k); return true })
       .sort((a, b) => a.date.localeCompare(b.date))
+  }
+  if (merged.highlights) {
+    merged.highlights = merged.highlights.filter(h => hasValue(h.title) || hasValue(h.description))
+  }
+  if (merged.case_details) {
+    merged.case_details = merged.case_details.filter(c =>
+      hasValue(c.fir_no) || hasValue(c.section) || hasValue(c.date) || hasValue(c.police_station) || hasValue(c.status)
+    )
+  }
+  if (merged.associates) {
+    merged.associates = merged.associates.filter(a => hasValue(a.name) || hasValue(a.relation))
   }
   return merged
 }
@@ -154,6 +173,9 @@ function flattenSubject(subject: unknown): Record<string, string> {
       } else {
         result[k] = String(v)
       }
+    }
+    for (const [k, v] of Object.entries(result)) {
+      if (!hasValue(k) || !hasValue(v)) delete result[k]
     }
     return result
   }
