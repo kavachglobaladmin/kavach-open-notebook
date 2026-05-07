@@ -176,7 +176,6 @@ function CredentialFormDialog({
   const [project, setProject] = useState('')
   const [location, setLocation] = useState('')
   const [credentialsPath, setCredentialsPath] = useState('')
-  // Modalities
   const [modalities, setModalities] = useState<string[]>([])
 
   useEffect(() => {
@@ -254,7 +253,6 @@ function CredentialFormDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name */}
           <div className="space-y-2">
             <Label htmlFor="cred-name">{t.apiKeys.configName}</Label>
             <input
@@ -268,7 +266,6 @@ function CredentialFormDialog({
             <p className="text-xs text-muted-foreground">{t.apiKeys.configNameHint}</p>
           </div>
 
-          {/* Vertex fields */}
           {isVertex ? (
             <>
               <div className="space-y-2">
@@ -309,7 +306,6 @@ function CredentialFormDialog({
               </div>
             </>
           ) : (
-            /* API Key */
             <div className="space-y-2">
               <Label htmlFor="api-key">
                 {t.models.apiKey}
@@ -344,7 +340,6 @@ function CredentialFormDialog({
             </div>
           )}
 
-          {/* Base URL (non-Vertex) */}
           {!isVertex && (
             <div className="space-y-2">
               <Label htmlFor="base-url" className="text-muted-foreground">{t.apiKeys.baseUrl}</Label>
@@ -361,7 +356,6 @@ function CredentialFormDialog({
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               {t.common.cancel}
@@ -399,7 +393,6 @@ function DiscoverModelsDialog({
   const [discoveryError, setDiscoveryError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [customModelSelected, setCustomModelSelected] = useState(false)
-  // Model type selector - default to credential's first modality
   const [selectedType, setSelectedType] = useState<ModelType>(
     (credential.modalities[0] as ModelType) || 'language'
   )
@@ -435,22 +428,18 @@ function DiscoverModelsDialog({
       setCustomModelSelected(false)
       setSelectedType((credential.modalities[0] as ModelType) || 'language')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open/close
   }, [open])
 
-  // Reset custom selection when search changes
   useEffect(() => {
     setCustomModelSelected(false)
   }, [searchQuery])
 
-  // Filter discovered models by search query
   const filteredModels = useMemo(() => {
     if (!searchQuery.trim()) return discoveredModels
     const q = searchQuery.toLowerCase()
     return discoveredModels.filter(m => m.name.toLowerCase().includes(q))
   }, [discoveredModels, searchQuery])
 
-  // Show custom model option when search doesn't exactly match any discovered model
   const showCustomOption = useMemo(() => {
     if (!searchQuery.trim()) return false
     const q = searchQuery.trim().toLowerCase()
@@ -530,7 +519,6 @@ function DiscoverModelsDialog({
           </Alert>
         ) : (
           <div className="space-y-4">
-            {/* Model type selector */}
             <div className="space-y-2">
               <Label>{t.models.modelType}</Label>
               <Select value={selectedType} onValueChange={(v) => setSelectedType(v as ModelType)}>
@@ -551,7 +539,6 @@ function DiscoverModelsDialog({
               <p className="text-xs text-muted-foreground">{t.models.modelTypeHint}</p>
             </div>
 
-            {/* Search input */}
             <input
               type="text"
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm placeholder:text-muted-foreground"
@@ -560,7 +547,6 @@ function DiscoverModelsDialog({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
 
-            {/* Select all / count (only when there are discovered models to select) */}
             {filteredModels.length > 0 && (
               <div className="flex items-center justify-between">
                 <Button variant="outline" size="sm" onClick={toggleAll}>
@@ -570,7 +556,6 @@ function DiscoverModelsDialog({
               </div>
             )}
 
-            {/* Model list */}
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {filteredModels.map((model) => (
                 <label
@@ -590,7 +575,6 @@ function DiscoverModelsDialog({
                 </label>
               ))}
 
-              {/* Custom model option */}
               {showCustomOption && (
                 <label className={`flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm${filteredModels.length > 0 ? ' border-t mt-1 pt-2' : ''}`}>
                   <input
@@ -755,18 +739,15 @@ function CredentialItem({
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [discoverOpen, setDiscoverOpen] = useState(false)
-  // Full credential data needed for edit form
   const { data: fullCredential } = useCredential(editOpen ? credential.id : '')
 
   const linkedModels = models.filter(m => m.credential === credential.id)
   const activeTypes = new Set(linkedModels.map(m => m.type))
   const testResult = testResults[credential.id]
 
-  // Extract translations used in model badge loops to avoid excessive Proxy accesses
   const testModelLabel = t.models.testModel
   const deleteModelLabel = t.models.deleteModel
 
-  // Check which models are defaults
   const defaultSlots: Record<string, string> = {}
   if (defaults) {
     const slotMap: Record<string, string | null | undefined> = {
@@ -785,8 +766,7 @@ function CredentialItem({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 space-y-2">
-        {/* Header row: name + modality badges + action buttons */}
+      <div className="rounded-2xl border border-slate-100 bg-white p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="font-semibold text-sm text-slate-800 truncate">{credential.name}</span>
@@ -819,7 +799,7 @@ function CredentialItem({
               onClick={() => testCredential(credential.id)}
               disabled={isTestPending}
               title={t.apiKeys.testConnection}
-              className="h-7 px-2 text-slate-500 hover:text-[#FF7043] hover:bg-orange-50"
+              className="h-7 px-2 text-slate-500 hover:text-white hover:bg-[#8B5CF6]"
             >
               {isTestPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
               <span className="hidden sm:inline text-xs ml-1">Test</span>
@@ -828,7 +808,7 @@ function CredentialItem({
               variant="ghost" size="sm"
               onClick={() => setDiscoverOpen(true)}
               title={t.apiKeys.syncModels}
-              className="h-7 px-2 text-slate-500 hover:text-[#FF7043] hover:bg-orange-50"
+              className="h-7 px-2 text-slate-500 hover:text-white hover:bg-[#8B5CF6]"
             >
               <Bot className="h-3.5 w-3.5" />
               <span className="hidden sm:inline text-xs ml-1">Models</span>
@@ -852,7 +832,6 @@ function CredentialItem({
           </div>
         </div>
 
-        {/* Linked models grouped by type */}
         {linkedModels.length > 0 && (
           <div className="space-y-1.5 pt-1 border-t border-slate-100">
             {(['language', 'embedding', 'text_to_speech', 'speech_to_text'] as ModelType[])
@@ -871,7 +850,7 @@ function CredentialItem({
                       return (
                         <span
                           key={model.id}
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium group/model ${defaultSlot ? 'bg-[#FF7043] text-white' : 'bg-slate-100 text-slate-700'}`}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium group/model ${defaultSlot ? 'bg-[#8B5CF6] text-white' : 'bg-slate-100 text-slate-700'}`}
                         >
                           {model.name}
                           {defaultSlot && <span className="ml-0.5 opacity-80 text-[10px]">({defaultSlot})</span>}
@@ -903,7 +882,6 @@ function CredentialItem({
         )}
       </div>
 
-      {/* Edit dialog */}
       {editOpen && (
         <CredentialFormDialog
           open={editOpen}
@@ -913,7 +891,6 @@ function CredentialItem({
         />
       )}
 
-      {/* Delete dialog */}
       {deleteOpen && (
         <DeleteCredentialDialog
           open={deleteOpen}
@@ -923,7 +900,6 @@ function CredentialItem({
         />
       )}
 
-      {/* Discover models dialog */}
       {discoverOpen && (
         <DiscoverModelsDialog
           open={discoverOpen}
@@ -932,7 +908,6 @@ function CredentialItem({
         />
       )}
 
-      {/* Model test result dialog */}
       <ModelTestResultDialog
         open={modelTestResult !== null}
         onOpenChange={(open) => { if (!open) clearModelTestResult() }}
@@ -969,7 +944,6 @@ function ProviderSection({
   const modalities = PROVIDER_MODALITIES[provider] || ['language']
   const hasCredentials = credentials.length > 0
 
-  // Models linked to any credential of this provider
   const providerModels = models.filter(m =>
     credentials.some(c => c.id === m.credential)
   )
@@ -977,7 +951,6 @@ function ProviderSection({
 
   return (
     <div className={`rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col${!hasCredentials ? ' opacity-80' : ''}`}>
-      {/* Card header */}
       <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1.5 min-w-0">
           <span className="font-bold text-base text-slate-900">{displayName}</span>
@@ -1008,7 +981,6 @@ function ProviderSection({
         </div>
       </div>
 
-      {/* Credential items */}
       {credentials.length > 0 && (
         <div className="px-4 space-y-2 pb-2">
           {credentials.map(cred => (
@@ -1023,15 +995,14 @@ function ProviderSection({
         </div>
       )}
 
-      {/* Add configuration button */}
       <div className="px-4 pb-4 mt-auto pt-2">
         <button
           onClick={() => setAddOpen(true)}
           disabled={!encryptionReady}
-          className="w-full flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold tracking-wide uppercase text-white bg-[#FF7043] hover:bg-[#f4622e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white bg-[#8B5CF6] hover:bg-[#7c3aed] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
-          <Plus className="h-3.5 w-3.5" />
-          {t.apiKeys.addConfig}
+          <Plus className="h-4 w-4" />
+          Add Configuration
         </button>
       </div>
 
@@ -1086,16 +1057,16 @@ function DefaultModelSelectors({
   }
 
   const primaryConfigs: DefaultConfig[] = [
-    { key: 'default_chat_model', label: t.models.chatModelLabel, description: t.models.chatModelDesc, modelType: 'language', required: true, id: `${generatedId}-chat` },
-    { key: 'default_embedding_model', label: t.models.embeddingModelLabel, description: t.models.embeddingModelDesc, modelType: 'embedding', required: true, id: `${generatedId}-embed` },
-    { key: 'default_text_to_speech_model', label: t.models.ttsModelLabel, description: t.models.ttsModelDesc, modelType: 'text_to_speech', id: `${generatedId}-tts` },
-    { key: 'default_speech_to_text_model', label: t.models.sttModelLabel, description: t.models.sttModelDesc, modelType: 'speech_to_text', id: `${generatedId}-stt` },
+    { key: 'default_chat_model', label: 'Chat Model', description: t.models.chatModelDesc, modelType: 'language', required: true, id: `${generatedId}-chat` },
+    { key: 'default_embedding_model', label: 'Embedding Model', description: t.models.embeddingModelDesc, modelType: 'embedding', required: true, id: `${generatedId}-embed` },
+    { key: 'default_text_to_speech_model', label: 'Text-To-Speech Model', description: t.models.ttsModelDesc, modelType: 'text_to_speech', id: `${generatedId}-tts` },
+    { key: 'default_speech_to_text_model', label: 'Speech-To-Text Model', description: t.models.sttModelDesc, modelType: 'speech_to_text', id: `${generatedId}-stt` },
   ]
 
   const advancedConfigs: DefaultConfig[] = [
-    { key: 'default_transformation_model', label: t.models.transformationModelLabel, description: t.models.transformationModelDesc, modelType: 'language', required: true, id: `${generatedId}-transform` },
-    { key: 'default_tools_model', label: t.models.toolsModelLabel, description: t.models.toolsModelDesc, modelType: 'language', id: `${generatedId}-tools` },
-    { key: 'large_context_model', label: t.models.largeContextModelLabel, description: t.models.largeContextModelDesc, modelType: 'language', id: `${generatedId}-large` },
+    { key: 'default_transformation_model', label: 'Transformation Model', description: 'Used for executing custom transformations', modelType: 'language', id: `${generatedId}-transform` },
+    { key: 'default_tools_model', label: 'Tools Model', description: 'Used for tools calling / Agent for RAG recommended', modelType: 'language', id: `${generatedId}-tools` },
+    { key: 'large_context_model', label: 'Large Context Model', description: 'Used for processing large content Model for RAG recommended', modelType: 'language', id: `${generatedId}-large` },
   ]
 
   const defaultConfigs = [...primaryConfigs, ...advancedConfigs]
@@ -1131,138 +1102,128 @@ function DefaultModelSelectors({
     .map(c => c.label)
 
   return (
-    <Card className="rounded-2xl border border-slate-100 shadow-sm bg-white">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-6">
+      <Card className="rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white">
+        <CardHeader className="pb-3 pt-6 px-7">
           <div>
-            <CardTitle className="text-lg font-bold text-slate-900">{t.models.defaultAssignments}</CardTitle>
-            <CardDescription className="text-slate-500 mt-0.5">{t.models.defaultAssignmentsDesc}</CardDescription>
+            <CardTitle className="text-xl font-bold text-slate-950">Default Model Assignments</CardTitle>
+            <CardDescription className="text-slate-500 mt-1 text-[13px]">Configure which models to use for different purposes across Open Notebook</CardDescription>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {missingRequired.length > 0 && (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between gap-4">
-              <span>{t.models.missingRequiredModels.replace('{models}', missingRequired.join(', '))}</span>
-              <Button
-                variant="outline" size="sm"
-                onClick={() => autoAssign.mutate()}
-                disabled={autoAssign.isPending}
-                className="shrink-0 gap-1.5 border-[#FF7043] text-[#FF7043] hover:bg-orange-50"
-              >
-                {autoAssign.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-                {autoAssign.isPending ? t.models.autoAssigning : t.models.autoAssign}
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+        </CardHeader>
+        <CardContent className="px-7 pb-7 space-y-6">
+          {missingRequired.length > 0 && (
+            <Alert className="rounded-2xl bg-orange-50/50 border border-orange-100">
+              <AlertCircle className="h-4 w-4 text-[#FF7043]" />
+              <AlertDescription className="flex items-center justify-between gap-4 text-[#FF7043] text-sm">
+                <span>{t.models.missingRequiredModels.replace('{models}', missingRequired.join(', '))}</span>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => autoAssign.mutate()}
+                  disabled={autoAssign.isPending}
+                  className="shrink-0 gap-1.5 border-[#FF7043] text-[#FF7043] hover:bg-orange-50 rounded-lg h-8"
+                >
+                  {autoAssign.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                  {autoAssign.isPending ? t.models.autoAssigning : t.models.autoAssign}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
-        {/* Primary models: Chat, Embedding, TTS, STT */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {primaryConfigs.map(config => {
-            const available = getModelsForType(config.modelType)
-            const currentValue = watch(config.key) || undefined
-            const isValid = currentValue && available.some(m => m.id === currentValue)
+          <div className="grid gap-x-6 gap-y-4 grid-cols-1 md:grid-cols-2">
+            {primaryConfigs.map(config => {
+              const available = getModelsForType(config.modelType)
+              const currentValue = watch(config.key) || undefined
+              const isValid = currentValue && available.some(m => m.id === currentValue)
 
-            return (
-              <div key={config.key} className="space-y-1.5">
-                <Label htmlFor={config.id} className="text-xs font-semibold text-slate-700">
-                  {config.label}
-                  {config.required && <span className="text-[#FF7043] ml-0.5">*</span>}
-                </Label>
-                <div className="flex gap-1">
-                  <Select
-                    value={currentValue || ""}
-                    onValueChange={(v) => handleChange(config.key, v)}
-                  >
-                    <SelectTrigger
-                      id={config.id}
-                      className={`h-9 text-xs rounded-lg border-slate-200 focus:ring-[#FF7043] focus:border-[#FF7043] ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
-                    >
-                      <SelectValue placeholder={
-                        config.required && !isValid && available.length > 0
-                          ? t.models.requiredModelPlaceholder
-                          : t.models.selectModelPlaceholder
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
-                        <SelectItem key={model.id} value={model.id}>
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span>{model.name}</span>
-                            <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{model.provider}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!config.required && currentValue && (
-                    <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-9 w-9 shrink-0 text-slate-400 hover:text-slate-700">
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Advanced models: Transformation, Tools, Large Context */}
-        <div className="border-t border-slate-100 pt-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">{t.navigation.advanced}</p>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {advancedConfigs.map(config => {
-                const available = getModelsForType(config.modelType)
-                const currentValue = watch(config.key) || undefined
-                const isValid = currentValue && available.some(m => m.id === currentValue)
-
-                return (
-                  <div key={config.key} className="space-y-1.5">
+              return (
+                <div key={config.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
                     <Label htmlFor={config.id} className="text-xs font-semibold text-slate-700">
                       {config.label}
-                      {config.required && <span className="text-[#FF7043] ml-0.5">*</span>}
+                      {config.required && <span className="text-[#EF4444] ml-0.5">*</span>}
                     </Label>
-                    <div className="flex gap-1">
-                      <Select
-                        value={currentValue || ""}
-                        onValueChange={(v) => handleChange(config.key, v)}
-                      >
-                        <SelectTrigger
-                          id={config.id}
-                          className={`h-9 text-xs rounded-lg border-slate-200 focus:ring-[#FF7043] focus:border-[#FF7043] ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
-                        >
-                          <SelectValue placeholder={
-                            config.required && !isValid && available.length > 0
-                              ? t.models.requiredModelPlaceholder
-                              : t.models.selectModelPlaceholder
-                          } />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
-                            <SelectItem key={model.id} value={model.id}>
-                              <div className="flex items-center justify-between w-full gap-2">
-                                <span>{model.name}</span>
-                                <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{model.provider}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!config.required && currentValue && (
-                        <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-9 w-9 shrink-0 text-slate-400 hover:text-slate-700">
-                          <X className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-400 leading-tight">{config.description}</p>
                   </div>
-                )
-              })}
-            </div>
-        </div>
-      </CardContent>
+                  <div className="flex gap-1">
+                    <Select
+                      value={currentValue || ""}
+                      onValueChange={(v) => handleChange(config.key, v)}
+                    >
+                      <SelectTrigger
+                        id={config.id}
+                        className={`h-11 text-sm rounded-xl border-slate-200 focus:ring-1 focus:ring-[#8B5CF6] focus:border-[#8B5CF6] bg-white ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
+                      >
+                        <SelectValue placeholder={t.models.selectModelPlaceholder} />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl">
+                        {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
+                          <SelectItem key={model.id} value={model.id} className="text-sm">
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span>{model.name}</span>
+                              <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{model.provider}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white">
+        <CardHeader className="pb-3 pt-6 px-7">
+          <CardTitle className="text-xl font-bold text-slate-950">Advanced</CardTitle>
+        </CardHeader>
+        <CardContent className="px-7 pb-7">
+          <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+            {advancedConfigs.map(config => {
+              const available = getModelsForType(config.modelType)
+              const currentValue = watch(config.key) || undefined
+              const isValid = currentValue && available.some(m => m.id === currentValue)
+
+              return (
+                <div key={config.key} className="space-y-1.5">
+                  <Label htmlFor={config.id} className="text-xs font-semibold text-slate-700">
+                    {config.label}
+                  </Label>
+                  <div className="flex gap-1">
+                    <Select
+                      value={currentValue || ""}
+                      onValueChange={(v) => handleChange(config.key, v)}
+                    >
+                      <SelectTrigger
+                        id={config.id}
+                        className={`h-11 text-sm rounded-xl border-slate-200 focus:ring-1 focus:ring-[#8B5CF6] focus:border-[#8B5CF6] bg-white ${config.required && !isValid && available.length > 0 ? 'border-destructive' : ''}`}
+                      >
+                        <SelectValue placeholder={t.models.selectModelPlaceholder} />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl">
+                        {available.sort((a, b) => a.name.localeCompare(b.name)).map(model => (
+                          <SelectItem key={model.id} value={model.id} className="text-sm">
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span>{model.name}</span>
+                              <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{model.provider}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {config.key !== 'default_transformation_model' && currentValue && (
+                      <Button variant="ghost" size="icon" onClick={() => handleChange(config.key, "")} className="h-11 w-11 shrink-0 text-slate-400 hover:text-slate-700 rounded-xl">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-normal pt-0.5">{config.description}</p>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <EmbeddingModelChangeDialog
         open={showEmbeddingDialog}
@@ -1271,7 +1232,7 @@ function DefaultModelSelectors({
         oldModelName={pendingEmbeddingChange?.oldModelId ? models.find(m => m.id === pendingEmbeddingChange.oldModelId)?.name : undefined}
         newModelName={pendingEmbeddingChange?.newModelId ? models.find(m => m.id === pendingEmbeddingChange.newModelId)?.name : undefined}
       />
-    </Card>
+    </div>
   )
 }
 
@@ -1282,7 +1243,6 @@ function DefaultModelSelectors({
 export default function ApiKeysPage() {
   const { t } = useTranslation()
 
-  // Data
   const { data: credentials, isLoading: credentialsLoading } = useCredentials()
   const { data: models, isLoading: modelsLoading } = useModels()
   const { data: defaults, isLoading: defaultsLoading } = useModelDefaults()
@@ -1291,7 +1251,6 @@ export default function ApiKeysPage() {
 
   const encryptionReady = credentialStatus?.encryption_configured ?? true
 
-  // Group credentials by provider
   const credentialsByProvider = useMemo(() => {
     const grouped: Record<string, Credential[]> = {}
     for (const provider of ALL_PROVIDERS) {
@@ -1306,7 +1265,6 @@ export default function ApiKeysPage() {
     return grouped
   }, [credentials])
 
-  // Providers needing migration
   const providersToMigrate = useMemo(() => {
     if (!envStatus || !credentialStatus) return []
     const providers: string[] = []
@@ -1318,7 +1276,6 @@ export default function ApiKeysPage() {
     return providers
   }, [envStatus, credentialStatus])
 
-  // Sort: configured providers first
   const sortedProviders = useMemo(() => {
     return [...ALL_PROVIDERS].sort((a, b) => {
       const aHas = (credentialsByProvider[a]?.length || 0) > 0 ? 1 : 0
@@ -1343,28 +1300,24 @@ export default function ApiKeysPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 flex flex-col min-h-0 bg-white">
-        {/* Shared page header */}
-        <PageHeader
-          searchValue={searchTerm}
-          onSearchChange={setSearchTerm}
-          searchPlaceholder="Search..."
-          hideNew
+      <div className="flex-1 flex flex-col min-h-0 bg-[#F5F8FF] relative overflow-hidden">
+        <PageHeader 
+          searchValue={searchTerm} 
+          onSearchChange={(val) => setSearchTerm(val)} 
+          newLabel="NOTEBOOK"
         />
 
         <div className="flex-1 overflow-y-auto">
-          <div className="p-8 space-y-8">
-            {/* Page title */}
+          <div className="p-10 space-y-9">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 leading-tight">
+              <h1 className="text-3xl font-extrabold text-[#7c3aed] leading-tight tracking-tight">
                 Configure Your AI With Your Own API Keys
               </h1>
-              <p className="text-slate-500 mt-2 text-base">{t.apiKeys.description}</p>
+              <p className="text-slate-600 mt-2 text-[15px] font-medium">{t.apiKeys.description}</p>
             </div>
 
-          {/* Encryption warning */}
           {!encryptionReady && (
-            <Alert className="border-red-500/50 bg-red-50 dark:bg-red-950/20">
+            <Alert className="border-red-500/50 bg-red-50 dark:bg-red-950/20 rounded-2xl">
               <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
               <AlertTitle className="text-red-800 dark:text-red-200">{t.apiKeys.encryptionRequired}</AlertTitle>
               <AlertDescription className="text-red-700 dark:text-red-300">
@@ -1375,16 +1328,13 @@ export default function ApiKeysPage() {
             </Alert>
           )}
 
-          {/* Migration banner */}
           {encryptionReady && <MigrationBanner providersToMigrate={providersToMigrate} />}
 
-          {/* Default Model Selectors */}
           {models && defaults && (
             <DefaultModelSelectors models={models} defaults={defaults} />
           )}
 
-          {/* Provider Cards — 3-column grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {sortedProviders.map(provider => (
               <ProviderSection
                 key={provider}
@@ -1398,13 +1348,12 @@ export default function ApiKeysPage() {
             ))}
           </div>
 
-          {/* Help link */}
-          <div className="border-t border-slate-100 pt-4">
+          <div className="border-t border-slate-100 pt-5">
             <a
               href="https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-[#FF7043] hover:underline"
+              className="text-sm font-semibold text-[#8B5CF6] hover:underline"
             >
               {t.apiKeys.learnMore}
             </a>

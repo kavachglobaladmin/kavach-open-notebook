@@ -19,7 +19,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useCreateNotebook } from '@/lib/hooks/use-notebooks'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { HardDrive } from 'lucide-react'
+import { HardDrive, BookOpen } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const createNotebookSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -38,7 +39,7 @@ interface CreateNotebookDialogProps {
 export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialogProps) {
   const { t } = useTranslation()
   const createNotebook = useCreateNotebook()
-  const [storageLimitMb, setStorageLimitMb] = useState<number | null>(null)
+  const [storageLimitMb, setStorageLimitMb] = useState<number | null>(5) // Defaulted to first option
   const [storageLimitError, setStorageLimitError] = useState<string | null>(null)
 
   const {
@@ -66,33 +67,46 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
     })
     closeDialog()
     reset()
-    setStorageLimitMb(null)
+    setStorageLimitMb(5)
     setStorageLimitError(null)
   }
 
   useEffect(() => {
     if (!open) {
       reset()
-      setStorageLimitMb(null)
+      setStorageLimitMb(5)
       setStorageLimitError(null)
     }
   }, [open, reset])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>{t.notebooks.createNew}</DialogTitle>
-          <DialogDescription>{t.notebooks.createNewDesc}</DialogDescription>
+      <DialogContent className="sm:max-w-[520px] rounded-[32px] p-8 border-none shadow-2xl">
+        <DialogHeader className="flex flex-row items-start gap-4 space-y-0 text-left">
+          {/* Icon with Gradient Background matching reference */}
+          <div className="w-14 h-14 rounded-[18px] bg-gradient-to-br from-[#7B3AED] to-[#9333EA] flex items-center justify-center shadow-lg shrink-0">
+            <BookOpen className="h-7 w-7 text-white" />
+          </div>
+          <div className="flex-1">
+            <DialogTitle className="text-2xl font-bold text-slate-900 leading-tight">
+              {t.notebooks.createNew}
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 text-[15px] mt-1">
+              {t.notebooks.createNewDesc}
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="notebook-name">{t.common.name} *</Label>
+            <Label htmlFor="notebook-name" className="text-[14px] font-bold text-slate-700">
+              {t.common.name} <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="notebook-name"
               {...register('name')}
               placeholder={t.notebooks.namePlaceholder}
+              className="h-12 rounded-[14px] border-slate-200 bg-white px-4 focus-visible:ring-[#7B3AED]"
               autoComplete="off"
             />
             {errors.name && (
@@ -101,21 +115,26 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notebook-description">{t.common.description}</Label>
+            <Label htmlFor="notebook-description" className="text-[14px] font-bold text-slate-700">
+              {t.common.description}
+            </Label>
             <Textarea
               id="notebook-description"
               {...register('description')}
               placeholder={t.notebooks.descPlaceholder}
-              rows={3}
+              rows={4}
+              className="rounded-[14px] border-slate-200 bg-white p-4 focus-visible:ring-[#7B3AED] resize-none"
             />
           </div>
 
+          {/* Storage Selection Grid matching the Image UI */}
           <div className="space-y-2">
-            <Label className="flex items-center gap-1.5">
-              <HardDrive className="h-3.5 w-3.5" />
-              {t.notebooks.storageLimitLabel} *
+            <Label className="text-[14px] font-bold text-slate-700 flex items-center gap-1.5">
+              <HardDrive className="h-3.5 w-3.5 text-[#7B3AED]" />
+              {t.notebooks.storageLimitLabel} <span className="text-red-500">*</span>
             </Label>
-            <div className="grid grid-cols-3 gap-2">
+            
+            <div className="grid grid-cols-3 gap-3">
               {STORAGE_OPTIONS.map((mb) => {
                 const selected = storageLimitMb === mb
                 return (
@@ -126,40 +145,44 @@ export function CreateNotebookDialog({ open, onOpenChange }: CreateNotebookDialo
                       setStorageLimitMb(selected ? null : mb)
                       setStorageLimitError(null)
                     }}
-                    className={[
-                      'flex flex-col items-center justify-center rounded-lg border py-2.5 text-sm font-medium transition-all',
+                    className={cn(
+                      'flex flex-col items-center justify-center rounded-[18px] border-2 h-24 transition-all duration-200',
                       selected
-                        ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-500'
-                        : 'border-border bg-background text-muted-foreground hover:border-blue-400 hover:text-foreground',
-                    ].join(' ')}
+                        ? 'border-[#7B3AED] bg-[#F5F3FF] text-[#7B3AED]'
+                        : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200 hover:bg-slate-50'
+                    )}
                   >
-                    <span className="font-semibold">{mb}</span>
-                    <span className="text-xs">MB</span>
+                    <span className="text-2xl font-bold">{mb}</span>
+                    <span className="text-[13px] font-medium opacity-80 uppercase">MB</span>
                   </button>
                 )
               })}
             </div>
+            
             {storageLimitError ? (
-              <p className="text-xs text-destructive">{storageLimitError}</p>
+              <p className="text-xs text-destructive mt-2">{storageLimitError}</p>
             ) : (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[12px] text-slate-400 mt-2">
                 {storageLimitMb != null
-                  ? t.notebooks.storageLimitHelperSelected.replace(
-                      '{mb}',
-                      String(storageLimitMb)
-                    )
+                  ? t.notebooks.storageLimitHelperSelected.replace('{mb}', String(storageLimitMb))
                   : t.notebooks.storageLimitHelper}
               </p>
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={closeDialog}>
+          <DialogFooter className="flex-row gap-3 pt-4">
+            <Button 
+              type="button" 
+              variant="ghost" 
+              onClick={closeDialog}
+              className="flex-1 h-12 rounded-[16px] bg-[#F8FAFC] text-slate-600 hover:bg-slate-100 font-bold"
+            >
               {t.common.cancel}
             </Button>
             <Button
               type="submit"
               disabled={!isValid || storageLimitMb == null || createNotebook.isPending}
+              className="flex-1 h-12 rounded-[16px] bg-gradient-to-r from-[#A78BFA] to-[#C084FC] hover:opacity-90 text-white font-bold shadow-md transition-all border-none"
             >
               {createNotebook.isPending ? t.common.creating : t.notebooks.createNew}
             </Button>

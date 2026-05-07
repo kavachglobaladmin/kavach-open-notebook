@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { NotebookHeader } from '../components/NotebookHeader'
 import { SourcesColumn } from '../components/SourcesColumn'
 import { NotesColumn } from '../components/NotesColumn'
@@ -52,6 +53,9 @@ export default function NotebookPage() {
 
   // Mobile tab state (Sources, Notes, or Chat)
   const [mobileActiveTab, setMobileActiveTab] = useState<'sources' | 'notes' | 'chat'>('chat')
+
+  // Search term for PageHeader
+  const [searchTerm, setSearchTerm] = useState('')
 
   // Context selection state
   const [contextSelections, setContextSelections] = useState<ContextSelections>({
@@ -130,6 +134,12 @@ export default function NotebookPage() {
   return (
     <AppShell>
       <div className="flex flex-col flex-1 min-h-0">
+        <PageHeader
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search notebook..."
+          hideNew
+        />
         <div className="flex-shrink-0 p-6 pb-0">
           <NotebookHeader notebook={notebook} />
         </div>

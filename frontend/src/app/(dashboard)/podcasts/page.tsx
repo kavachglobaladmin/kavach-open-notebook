@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { EpisodesTab } from '@/components/podcasts/EpisodesTab'
@@ -16,6 +17,7 @@ import { needsModelSetup } from '@/lib/types/podcasts'
 export default function PodcastsPage() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'episodes' | 'templates'>('episodes')
+  const [searchTerm, setSearchTerm] = useState('')
 
   const { episodeProfiles } = useEpisodeProfiles()
   const { speakerProfiles } = useSpeakerProfiles(episodeProfiles)
@@ -26,52 +28,61 @@ export default function PodcastsPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-6 py-6 space-y-6">
-          <header className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{t.podcasts.listTitle}</h1>
-            <p className="text-muted-foreground">
-              {t.podcasts.listDesc}
-            </p>
-          </header>
+      <div className="flex-1 flex flex-col min-h-0">
+        <PageHeader
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search podcasts..."
+          hideNew
+        />
 
-          {hasUnconfiguredProfiles ? (
-            <Alert className="bg-amber-50 text-amber-900 border-amber-200">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{t.podcasts.setupRequired}</AlertTitle>
-              <AlertDescription>
-                {t.podcasts.setupRequiredDesc}
-              </AlertDescription>
-            </Alert>
-          ) : null}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 py-6 space-y-6">
+            <header className="space-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight">{t.podcasts.listTitle}</h1>
+              <p className="text-muted-foreground">
+                {t.podcasts.listDesc}
+              </p>
+            </header>
 
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => setActiveTab(value as 'episodes' | 'templates')}
-            className="space-y-6"
-          >
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.podcasts.chooseAView}</p>
-              <TabsList aria-label={t.common.accessibility.podcastViews} className="w-full max-w-md">
-                <TabsTrigger value="episodes">
-                  <Mic className="h-4 w-4" />
-                  {t.podcasts.episodesTab}
-                </TabsTrigger>
-                <TabsTrigger value="templates">
-                  <LayoutTemplate className="h-4 w-4" />
-                  {t.podcasts.templatesTab}
-                </TabsTrigger>
-              </TabsList>
-            </div>
+            {hasUnconfiguredProfiles ? (
+              <Alert className="bg-amber-50 text-amber-900 border-amber-200">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>{t.podcasts.setupRequired}</AlertTitle>
+                <AlertDescription>
+                  {t.podcasts.setupRequiredDesc}
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
-            <TabsContent value="episodes">
-              <EpisodesTab />
-            </TabsContent>
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as 'episodes' | 'templates')}
+              className="space-y-6"
+            >
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.podcasts.chooseAView}</p>
+                <TabsList aria-label={t.common.accessibility.podcastViews} className="w-full max-w-md">
+                  <TabsTrigger value="episodes">
+                    <Mic className="h-4 w-4" />
+                    {t.podcasts.episodesTab}
+                  </TabsTrigger>
+                  <TabsTrigger value="templates">
+                    <LayoutTemplate className="h-4 w-4" />
+                    {t.podcasts.templatesTab}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-            <TabsContent value="templates">
-              <TemplatesTab />
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="episodes">
+                <EpisodesTab />
+              </TabsContent>
+
+              <TabsContent value="templates">
+                <TemplatesTab />
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
     </AppShell>

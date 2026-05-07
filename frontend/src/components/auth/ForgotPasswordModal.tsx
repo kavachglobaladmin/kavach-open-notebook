@@ -6,16 +6,12 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { getApiUrl } from '@/lib/config'
 import Image from 'next/image'
 
-// ── Illustration imports — one per step ───────────────────────────────────────
+// ── Illustration imports ──────────────────────────────────────────────────────
 import KavachLogo    from '@/assets/kavach_logo.png'
-import emailIllust   from '@/assets/account.png'      // Step 1: email  — confused person / question marks
-import otpIllust     from '@/assets/Hand.png'          // Step 2: OTP    — hand holding phone with lock
-import resetIllust   from '@/assets/flat.png'          // Step 3: reset  — lock + password + shield
-import successIllust from '@/assets/68470301.png'      // Success        — password reset laptop scene
+import authIllust    from '@/assets/Wavy_Tech-24_Single-02.jpg' 
 
-// ── User helpers (localStorage — same as LoginForm) ───────────────────────────
+// ── User helpers (localStorage) ───────────────────────────
 function emailExists(email: string): boolean {
-
   try {
     const users = JSON.parse(localStorage.getItem('kavach_users') || '[]')
     return users.some((u: { email: string }) => u.email.toLowerCase() === email.toLowerCase())
@@ -56,9 +52,9 @@ function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
   return getPasswordChecks(pw).filter(c => c.pass).length as 0 | 1 | 2 | 3 | 4
 }
 const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
-const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#FF7043']
+const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82F6', '#8B5CF6']
 
-// ── API helpers — calls /api/otp/* routes ─────────────────────────────────────
+// ── API helpers ─────────────────────────────────────
 async function apiSendOTP(email: string): Promise<void> {
   const base = await getApiUrl()
   const res = await fetch(`${base}/api/otp/send`, {
@@ -103,45 +99,20 @@ interface Props {
 
 type Step = 'email' | 'otp' | 'newPassword'
 
-// ── Left illustration panel — same style as LoginForm's ThemedPanel ───────────
-function IllustrationPanel({ step, success }: { step: Step; success: boolean }) {
-  // Pick illustration based on current step
-  const src = success ? successIllust
-    : step === 'email'       ? emailIllust
-    : step === 'otp'         ? otpIllust
-    : resetIllust
-
-  const alt = success ? 'Password reset success'
-    : step === 'email'       ? 'Forgot password'
-    : step === 'otp'         ? 'Verify OTP'
-    : 'Reset password'
-
+// ── Left illustration panel — Updated for full-height coverage ────────────────
+function IllustrationPanel() {
   return (
-    <div
-      className="flex flex-col relative overflow-hidden w-1/2 flex-shrink-0"
-      style={{ backgroundColor: '#FFF0EC' }}
-    >
-      {/* Decorative glows — same as LoginForm */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#FF7043]/10 blur-[80px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#FF7043]/10 blur-[80px]" />
-
-      {/* Illustration — fills the panel */}
-      <div className="absolute inset-0 z-0 flex items-center justify-center p-8 pointer-events-none">
-        <div className="relative w-full h-full flex items-center justify-center scale-110">
-          <Image
-            src={src}
-            alt={alt}
-            fill
-            className="object-contain object-center drop-shadow-2xl"
-            quality={100}
-            priority
-          />
-        </div>
-      </div>
-
-      {/* Logo */}
-      <div className="relative z-10 flex w-full justify-center pt-10">
-        <Image src={KavachLogo} alt="Kavach Logo" width={160} height={60} className="object-contain" />
+    <div className="hidden md:flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 bg-[#02041A]">
+      {/* Background Illustration Container - Set to cover full height */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        <Image
+          src={authIllust}
+          alt="Authentication Security"
+          fill
+          className="object-cover object-center z-0"
+          quality={100}
+          priority
+        />
       </div>
 
       <div className="flex-1" />
@@ -167,7 +138,6 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // OTP countdown timer
   useEffect(() => {
     if (step !== 'otp') return
     setTimeLeft(60)
@@ -181,34 +151,23 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
     return () => clearInterval(interval)
   }, [step])
 
-  // Reset everything when closed
   useEffect(() => {
     if (!open) {
-      setStep('email')
-      setEmail('')
-      setOtpDigits(['', '', '', '', '', ''])
-      setNewPassword('')
-      setConfirmPassword('')
-      setError('')
-      setLoading(false)
-      setSuccess(false)
-      setNewPasswordTouched(false)
+      setStep('email'); setEmail(''); setOtpDigits(['', '', '', '', '', '']);
+      setNewPassword(''); setConfirmPassword(''); setError('');
+      setLoading(false); setSuccess(false); setNewPasswordTouched(false);
     }
   }, [open])
 
-  // Auto-focus first OTP box when entering OTP step
   useEffect(() => {
     if (step === 'otp') setTimeout(() => otpRefs.current[0]?.focus(), 50)
   }, [step])
 
   if (!open) return null
 
-  // ── OTP box handlers ────────────────────────────────────────────────────────
   const handleOtpChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, '').slice(-1)
-    const next = [...otpDigits]
-    next[index] = digit
-    setOtpDigits(next)
+    const next = [...otpDigits]; next[index] = digit; setOtpDigits(next)
     if (digit && index < 5) otpRefs.current[index + 1]?.focus()
   }
 
@@ -231,7 +190,6 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
     otpRefs.current[Math.min(pasted.length, 5)]?.focus()
   }
 
-  // ── Step handlers ───────────────────────────────────────────────────────────
   const handleSendOTP = async () => {
     setError('')
     if (!email.trim()) { setError('Email is required.'); return }
@@ -263,7 +221,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
     setError('')
     if (!newPassword.trim()) { setError('New password is required.'); return }
     if (!isPasswordValid(newPassword)) {
-      setError('Password must have 8+ chars, 1 uppercase, 1 lowercase, and 1 special character.')
+      setError('Password must meet all security requirements.')
       return
     }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
@@ -279,68 +237,61 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
   }
 
   const handleResendOTP = async () => {
-    setError('')
-    setLoading(true)
+    setError(''); setLoading(true)
     try {
       await apiSendOTP(email.trim().toLowerCase())
-      setOtpDigits(['', '', '', '', '', ''])
-      setTimeLeft(60)
-      setCanResend(false)
+      setOtpDigits(['', '', '', '', '', '']); setTimeLeft(60); setCanResend(false)
       setTimeout(() => otpRefs.current[0]?.focus(), 50)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend OTP.')
     } finally { setLoading(false) }
   }
 
-  // ── Render — full two-panel layout matching LoginForm ──────────────────────
   return (
-    <>
-      {/* Left: illustration panel — changes per step */}
-      <IllustrationPanel step={step} success={success} />
+    <div className="flex flex-col md:flex-row w-full h-full overflow-y-auto md:overflow-hidden">
+      <IllustrationPanel />
 
-      {/* Right: form panel */}
-      <div className="flex flex-col justify-center bg-white px-12 sm:px-16 py-12 relative w-1/2">
-
-        {/* ── Success screen ── */}
+      <div className="flex flex-col justify-center bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12 relative w-full md:w-1/2">
         {success ? (
           <div className="flex flex-col items-center text-center gap-6">
-            <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center border-4 border-white shadow-lg shadow-orange-100">
-              <CheckCircle2 className="h-8 w-8 text-[#FF7043]" />
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-purple-50 flex items-center justify-center border-4 border-white shadow-xl shadow-purple-100">
+              <CheckCircle2 className="h-8 w-8 sm:h-10 sm:w-10 text-[#8B5CF6]" />
             </div>
             <div>
-              <h2 className="font-black text-slate-900 text-[28px] mb-2 tracking-tight">Password Updated!</h2>
-              <div className="h-1.5 w-12 bg-[#FF7043] rounded-full mx-auto mb-3" />
-              <p className="text-sm text-slate-500">Your account is secured with your new password.</p>
+              <h2 className="font-black text-slate-900 text-[24px] sm:text-[28px] mb-2 tracking-tight">Success!</h2>
+              <p className="text-sm text-slate-500 font-medium">Your password has been reset successfully.</p>
             </div>
             <button
               onClick={() => { onClose(); onSignIn() }}
-              className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98]"
-              style={{ background: '#FF7043' }}
+              className="w-full py-3.5 sm:py-4 rounded-xl text-white text-[14px] sm:text-[15px] font-bold shadow-lg shadow-purple-200 transition-all active:scale-[0.98]"
+              style={{ background: '#8B5CF6' }}
             >
-              SIGN IN NOW
+              BACK TO SIGN IN
             </button>
           </div>
         ) : (
           <>
-            {/* ── Header ── */}
-            <div className="mb-10">
-              <h2 className="font-black text-slate-900 text-[32px] mb-2 tracking-tight">
+            {/* Added Kavach Logo above the header text */}
+            <div className="flex justify-center mb-6">
+              <Image src={KavachLogo} alt="Kavach Logo" width={120} height={40} className="object-contain sm:w-[140px] sm:h-[50px]" />
+            </div>
+
+            <div className="mb-8 sm:mb-10 text-center">
+              <h2 className="font-black text-[#0B101E] text-[26px] sm:text-[34px] tracking-tight mb-2">
                 {step === 'email'       && 'Forgot Password?'}
                 {step === 'otp'         && 'Verify OTP'}
                 {step === 'newPassword' && 'Reset Password'}
               </h2>
-              <div className="h-1.5 w-12 bg-[#FF7043] rounded-full mb-3" />
-              <p className="text-sm text-slate-500 font-medium">
+              <p className="text-[14px] sm:text-[15px] text-slate-500 font-medium leading-relaxed px-2">
                 {step === 'email'       && 'Enter your registered email to receive a recovery code.'}
-                {step === 'otp'         && `A 6-digit code was sent to ${email}`}
-                {step === 'newPassword' && 'Create a strong new password for your account.'}
+                {step === 'otp'         && `We've sent a 6-digit code to ${email}`}
+                {step === 'newPassword' && 'Set a new secure password for your account.'}
               </p>
             </div>
 
-            <div className="space-y-6">
-              {/* ── Step 1: Email ── */}
+            <div className="space-y-5 sm:space-y-6">
               {step === 'email' && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
                   <input
                     type="email"
@@ -349,15 +300,14 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                     onChange={e => setEmail(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleSendOTP()}
                     disabled={loading}
-                    className="w-full px-4 py-4 border border-slate-200 rounded-xl bg-slate-50/50 focus:outline-none focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 transition-all placeholder:text-slate-400"
+                    className="w-full px-4 sm:px-5 py-3.5 sm:py-4 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50/50 transition-all placeholder:text-slate-400 text-[14px] sm:text-[15px]"
                   />
                 </div>
               )}
 
-              {/* ── Step 2: OTP boxes ── */}
               {step === 'otp' && (
-                <div className="space-y-5">
-                  <div className="flex gap-3 justify-center">
+                <div className="space-y-6">
+                  <div className="flex gap-2 sm:gap-3 justify-center">
                     {otpDigits.map((digit, i) => (
                       <input
                         key={i}
@@ -371,41 +321,31 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         onPaste={i === 0 ? handleOtpPaste : undefined}
                         disabled={loading}
                         className={[
-                          'w-12 h-14 text-center text-xl font-black rounded-xl border-2 transition-all focus:outline-none',
-                          digit
-                            ? 'border-[#FF7043] bg-orange-50 text-[#FF7043]'
-                            : 'border-slate-200 bg-slate-50/50 focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50 text-slate-800',
+                          'w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-black rounded-xl border-2 transition-all focus:outline-none bg-white',
+                          digit ? 'border-[#8B5CF6] text-[#8B5CF6]' : 'border-slate-200 focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 text-slate-800',
                         ].join(' ')}
                       />
                     ))}
                   </div>
-                  <div className="flex items-center justify-between text-xs px-1">
-                    <span className={timeLeft > 0 ? 'text-slate-400' : 'text-red-500 font-semibold'}>
-                      {timeLeft > 0 ? `OTP expires in ${timeLeft}s` : 'OTP expired'}
+                  <div className="flex items-center justify-between text-[11px] sm:text-xs px-1">
+                    <span className={timeLeft > 0 ? 'text-slate-400 font-medium' : 'text-red-500 font-bold'}>
+                      {timeLeft > 0 ? `Resend in ${timeLeft}s` : 'Code expired'}
                     </span>
-                    <span className="text-slate-400">
-                      Didn&apos;t receive it?{' '}
-                      {canResend ? (
-                        <button
-                          type="button"
-                          onClick={handleResendOTP}
-                          disabled={loading}
-                          className="text-[#FF7043] font-bold hover:underline disabled:opacity-50"
-                        >
-                          Resend OTP
-                        </button>
-                      ) : (
-                        <span className="text-slate-300">Resend OTP</span>
-                      )}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={handleResendOTP}
+                      disabled={!canResend || loading}
+                      className="text-[#8B5CF6] font-bold hover:underline disabled:text-slate-300 disabled:no-underline"
+                    >
+                      Resend OTP
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* ── Step 3: New Password ── */}
               {step === 'newPassword' && (
                 <>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 ml-1">New Password</label>
                     <div className="relative">
                       <input
@@ -413,64 +353,16 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         placeholder="Enter New Password"
                         value={newPassword}
                         onChange={e => { setNewPassword(e.target.value); setNewPasswordTouched(true) }}
-                        onBlur={() => setNewPasswordTouched(true)}
                         disabled={loading}
-                        className={[
-                          'w-full px-4 py-4 pr-12 rounded-xl bg-slate-50/50 focus:outline-none transition-all border placeholder:text-slate-400',
-                          newPasswordTouched && newPassword
-                            ? isPasswordValid(newPassword)
-                              ? 'border-green-400 focus:border-green-500 focus:ring-4 focus:ring-green-50'
-                              : 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-50'
-                            : 'border-slate-200 focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50',
-                        ].join(' ')}
+                        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 transition-all text-[14px] sm:text-[15px]"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(v => !v)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        tabIndex={-1}
-                      >
+                      <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                         {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
-
-                    {/* Strength bar + checklist */}
-                    {newPasswordTouched && newPassword && (() => {
-                      const checks = getPasswordChecks(newPassword)
-                      const strength = getStrengthLevel(newPassword)
-                      return (
-                        <div className="mt-2 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex gap-1 flex-1">
-                              {[1, 2, 3, 4].map(i => (
-                                <div
-                                  key={i}
-                                  className="h-1.5 flex-1 rounded-full transition-all duration-300"
-                                  style={{ background: i <= strength ? STRENGTH_COLOR[strength] : '#e5e7eb' }}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-xs font-semibold w-12 text-right" style={{ color: STRENGTH_COLOR[strength] }}>
-                              {STRENGTH_LABEL[strength]}
-                            </span>
-                          </div>
-                          <ul className="space-y-1">
-                            {checks.map(c => (
-                              <li key={c.label} className="flex items-center gap-1.5 text-xs">
-                                {c.pass
-                                  ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                                  : <XCircle     className="h-3.5 w-3.5 text-red-400   shrink-0" />
-                                }
-                                <span className={c.pass ? 'text-green-600' : 'text-red-400'}>{c.label}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )
-                    })()}
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 ml-1">Confirm Password</label>
                     <div className="relative">
                       <input
@@ -479,45 +371,23 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
                         disabled={loading}
-                        className={[
-                          'w-full px-4 py-4 pr-12 rounded-xl bg-slate-50/50 focus:outline-none transition-all border placeholder:text-slate-400',
-                          confirmPassword && newPassword
-                            ? newPassword === confirmPassword
-                              ? 'border-green-400 focus:border-green-500 focus:ring-4 focus:ring-green-50'
-                              : 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-50'
-                            : 'border-slate-200 focus:border-[#FF7043] focus:ring-4 focus:ring-orange-50',
-                        ].join(' ')}
+                        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 transition-all text-[14px] sm:text-[15px]"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(v => !v)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        tabIndex={-1}
-                      >
+                      <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                         {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
-                    {confirmPassword && newPassword && (
-                      <p className={`text-xs flex items-center gap-1 mt-1 ${newPassword === confirmPassword ? 'text-green-600' : 'text-red-500'}`}>
-                        {newPassword === confirmPassword
-                          ? <><CheckCircle2 className="h-3 w-3" /> Passwords match</>
-                          : <><XCircle className="h-3 w-3" /> Passwords do not match</>
-                        }
-                      </p>
-                    )}
                   </div>
                 </>
               )}
 
-              {/* Error */}
               {error && (
-                <div className="flex items-start gap-2 text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-50 border border-red-100 rounded-lg p-3">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
                   {error}
                 </div>
               )}
 
-              {/* Action button */}
               <button
                 type="button"
                 onClick={() => {
@@ -526,33 +396,21 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                   else handleResetPassword()
                 }}
                 disabled={loading}
-                className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98] disabled:opacity-60"
-                style={{ background: '#FF7043' }}
+                className="w-full py-3.5 sm:py-4 rounded-xl text-white text-[14px] sm:text-[15px] font-bold shadow-lg shadow-purple-200 transition-all active:scale-[0.98] disabled:opacity-70 mt-2"
+                style={{ background: '#8B5CF6' }}
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <LoadingSpinner />
-                    {step === 'email'       && 'Sending OTP...'}
-                    {step === 'otp'         && 'Verifying...'}
-                    {step === 'newPassword' && 'Updating...'}
-                  </span>
-                ) : (
+                {loading ? <LoadingSpinner /> : (
                   <>
-                    {step === 'email'       && 'SEND OTP'}
-                    {step === 'otp'         && 'VERIFY OTP'}
+                    {step === 'email' && 'SEND OTP'}
+                    {step === 'otp' && 'VERIFY OTP'}
                     {step === 'newPassword' && 'RESET PASSWORD'}
                   </>
                 )}
               </button>
 
-              {/* Back to sign in */}
-              <p className="text-sm text-slate-400 font-bold text-center">
+              <p className="text-[13px] sm:text-[14px] text-slate-500 font-semibold text-center pt-2">
                 Remember Your Password?{' '}
-                <button
-                  type="button"
-                  onClick={() => { onClose(); onSignIn() }}
-                  className="text-[#FF7043] font-bold hover:underline"
-                >
+                <button type="button" onClick={() => { onClose(); onSignIn() }} className="text-[#8B5CF6] font-bold hover:underline">
                   Sign In
                 </button>
               </p>
@@ -560,6 +418,6 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
           </>
         )}
       </div>
-    </>
+    </div>
   )
 }

@@ -12,8 +12,7 @@ import { ForgotPasswordModal } from './ForgotPasswordModal'
 
 // Image Imports
 import KavachLogo from '@/assets/kavach_logo.png'
-import signInIllustration from '@/assets/10241279-01.png'
-import signUpIllustration from '@/assets/Data_security_011.png'
+import signUpIllustration from '@/assets/Wavy_Gen-01_Single-071.jpg'
 
 // ── Local user store ──────────────────────────────────────────────────────────
 interface LocalUser { name: string; email: string; password: string }
@@ -83,65 +82,71 @@ function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
   return getPasswordChecks(pw).filter(c => c.pass).length as 0 | 1 | 2 | 3 | 4
 }
 const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
-const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#FF7043']
+const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#A855F7']
 
 // ── Themed Panel ──────────────────────────────────────────────────────────────
 function ThemedPanel({
   mode,
+  onSwitch,
 }: {
   mode: 'signin' | 'signup' | 'forgot'
   onSwitch: () => void
-  illustration?: typeof signInIllustration
 }) {
-  const bgImage = mode === 'signin' ? signInIllustration : signUpIllustration
   return (
-    <div
-      className="flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 animate-in fade-in duration-700"
-      style={{ backgroundColor: '#FFF0EC' }}
-    >
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#FF7043]/10 blur-[80px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#FF7043]/10 blur-[80px]" />
-      <div className="absolute inset-0 z-0 flex items-center justify-center p-8 pointer-events-none">
-        <div className="relative w-full h-full flex items-center justify-center scale-110">
-          <Image
-            src={bgImage}
-            alt={`${mode} illustration`}
-            fill
-            className="object-contain object-center drop-shadow-2xl"
-            quality={100}
-            priority
-          />
-        </div>
+    <div className="hidden md:flex flex-col relative overflow-hidden md:w-1/2  flex-shrink-0 p-8 lg:p-10 text-white bg-[#02041A]">
+      <style>{`
+        @keyframes btnFadeIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .btn-anim {
+          opacity: 0;
+          animation: btnFadeIn 1s ease-out 0.5s forwards;
+        }
+      `}</style>
+
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        <Image
+          src={signUpIllustration}
+          alt="Background Illustration"
+          fill
+          className="object-cover object-center z-0 "
+          priority
+        />
       </div>
-      <div className="relative z-10 flex w-full justify-center pt-10">
-        <Image src={KavachLogo} alt="Kavach Logo" width={160} height={60} className="object-contain" />
+
+      <div className="relative z-20 flex flex-col flex-grow justify-end items-center max-w-[80%] mx-auto w-full">
+        <button
+          onClick={onSwitch}
+          className="px-10 py-4 w-[240px] rounded-xl text-white text-[16px] font-black shadow-lg shadow-violet-900/40 transition-all active:scale-[0.98] btn-anim"
+          style={{ background: 'linear-gradient(90deg, #8B5CF6 0%, #7C3AED 100%)' }}
+        >
+          {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+        </button>
       </div>
-      <div className="flex-1" />
     </div>
   )
 }
 
 // ── Field border helper ───────────────────────────────────────────────────────
 function inputClass(hasError: boolean) {
-  return `w-full px-4 py-4 border rounded-xl bg-slate-50/50 focus:outline-none focus:ring-4 transition-all ${
+  return `w-full px-4 py-3 sm:py-4 border rounded-xl bg-slate-50/50 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all ${
     hasError
       ? 'border-red-400 focus:border-red-400 focus:ring-red-50'
-      : 'border-slate-200 focus:border-[#FF7043] focus:ring-orange-50'
+      : 'border-slate-200 focus:border-[#8B5CF6] focus:ring-violet-50'
   }`
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function LoginForm() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' | 'signup' }) {
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
 
-  // Shared fields
   const [email, setEmail] = useState('')
   const [emailTouched, setEmailTouched] = useState(false)
   const [password, setPassword] = useState('')
   const [passwordTouched, setPasswordTouched] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
-  // Sign-up only
   const [name, setName] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
   const [agreed, setAgreed] = useState(false)
@@ -160,17 +165,15 @@ export function LoginForm() {
   const isLoading = authLoading || localLoading
   const emailState = getEmailState(email)
 
-  // Derived inline validation (only shown after field is touched)
-  const emailError = emailTouched && emailState === 'invalid' ? 'Enter a valid email address (e.g. user@example.com).' : ''
+  const emailError = emailTouched && emailState === 'invalid' ? 'Enter a valid email address.' : ''
   const nameError = nameTouched && name.trim().length < 2 ? 'Name must be at least 2 characters.' : ''
   const passwordChecks = getPasswordChecks(password)
   const strengthLevel = getStrengthLevel(password)
-  // Sign-in: just require non-empty. Sign-up: full strength check.
   const passwordError =
     mode === 'signin'
       ? passwordTouched && !password.trim() ? 'Password is required.' : ''
       : passwordTouched && password.length > 0 && !isPasswordValid(password)
-        ? 'Password does not meet the requirements below.'
+        ? 'Password does not meet requirements.'
         : ''
 
   useEffect(() => {
@@ -201,7 +204,7 @@ export function LoginForm() {
 
   if (!hasHydrated || isCheckingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#FFF0EC]">
+      <div className="fixed inset-0 flex items-center justify-center bg-[#EBEFFE]" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
         <LoadingSpinner />
       </div>
     )
@@ -212,6 +215,8 @@ export function LoginForm() {
     setAnimating(true)
     setTimeout(() => {
       setMode(m)
+      // Keep the URL in sync with the active mode
+      router.replace(m === 'signup' ? '/signup' : '/login')
       setLocalError('')
       setName(''); setNameTouched(false)
       setEmail(''); setEmailTouched(false)
@@ -221,70 +226,28 @@ export function LoginForm() {
     }, 200)
   }
 
-  // ── Sign-up ─────────────────────────────────────────────────────────────────
   const handleSignUp = async () => {
     setNameTouched(true); setEmailTouched(true); setPasswordTouched(true)
-    setLocalError('')
-
-    if (name.trim().length < 2) { setLocalError('Name must be at least 2 characters.'); return }
-    if (emailState !== 'valid') { setLocalError('Enter a valid email address.'); return }
-    if (!isPasswordValid(password)) { setLocalError('Password does not meet the strength requirements.'); return }
-    if (!agreed) { setLocalError('Please agree to the Terms & Conditions.'); return }
-
+    if (name.trim().length < 2 || emailState !== 'valid' || !isPasswordValid(password)) {
+       setLocalError('Please correct the errors before continuing.')
+       return 
+    }
     setLocalLoading(true)
     const result = await registerUserBackend(name.trim(), email.trim().toLowerCase(), password)
-    if (result.conflict) {
-      setLocalError('An account with this email already exists. Please sign in.')
-      setLocalLoading(false)
-      return
-    }
-    if (!result.ok) {
-      setLocalError(result.error ?? 'Registration failed. Please try again.')
-      setLocalLoading(false)
-      return
-    }
-    // Cache locally for fast name resolution
+    if (result.conflict) { setLocalError('Email already exists.'); setLocalLoading(false); return }
+    if (!result.ok) { setLocalError(result.error ?? 'Failed.'); setLocalLoading(false); return }
     saveUserLocally({ name: name.trim(), email: email.trim().toLowerCase(), password })
     setLocalLoading(false)
     switchMode('signin')
   }
 
-  // ── Sign-in ─────────────────────────────────────────────────────────────────
   const handleSignIn = async () => {
     setEmailTouched(true); setPasswordTouched(true)
-    setLocalError('')
-
-    if (emailState !== 'valid') { setLocalError('Enter a valid email address.'); return }
-    if (!password.trim()) { setLocalError('Password is required.'); return }
-
-    const normalizedEmail = email.trim().toLowerCase()
+    if (emailState !== 'valid' || !password.trim()) return
     setLocalLoading(true)
-
-    // Single call to /api/auth/login — validates kavach_user credentials
-    // and returns the global api_token. No global password needed.
-    const ok = await login(normalizedEmail, password)
-    if (!ok) {
-      setLocalError('Invalid email or password.')
-      setLocalLoading(false)
-      return
-    }
-
-    // Claim any notebooks with owner = NONE and assign to this user
-    try {
-      const apiUrl = await getApiUrl()
-      const apiToken = sessionStorage.getItem('kavach_api_password') ?? ''
-      await fetch(`${apiUrl}/api/notebooks/claim-unowned`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiToken}`,
-          'X-User-Email': normalizedEmail,
-        },
-      })
-    } catch { /* non-fatal */ }
-
+    const ok = await login(email.trim().toLowerCase(), password)
+    if (!ok) { setLocalError('Invalid credentials.'); setLocalLoading(false); return }
     localStorage.setItem('kavach_session', 'true')
-    // Navigation is handled by use-auth handleLogin → router.push('/notebooks')
     setLocalLoading(false)
   }
 
@@ -294,298 +257,69 @@ export function LoginForm() {
     else void handleSignIn()
   }
 
-  const isSignIn = mode === 'signin'
-
-  if (forgotOpen) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-[#FFF0EC] p-4 sm:p-8 relative overflow-hidden">
-        <div className="flex w-full max-w-[1100px] min-h-[720px] bg-white rounded-[40px] shadow-[0_32px_64px_-12px_rgba(255,112,67,0.15)] overflow-hidden border border-white z-10">
-          <ForgotPasswordModal
-            open={forgotOpen}
-            onClose={() => setForgotOpen(false)}
-            onSignIn={() => { setForgotOpen(false); switchMode('signin') }}
-          />
-        </div>
-        <p className="absolute bottom-6 right-8 text-slate-300 text-[11px] font-bold tracking-widest uppercase">
-          v{configInfo?.version ?? '1.8.1'} • SECURE
-        </p>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#FFF0EC] p-4 sm:p-8 relative overflow-hidden">
-      <div className="flex w-full max-w-[1100px] min-h-[720px] bg-white rounded-[40px] shadow-[0_32px_64px_-12px_rgba(255,112,67,0.15)] overflow-hidden border border-white z-10">
-
-        {/* ── SIGN IN ─────────────────────────────────────────────────────── */}
-        {isSignIn ? (
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#EBEFFE] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
+      <div className="flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-hidden border border-white z-10">
+        
+        {forgotOpen ? (
+          <ForgotPasswordModal open={forgotOpen} onClose={() => setForgotOpen(false)} onSignIn={() => { setForgotOpen(false); switchMode('signin') }} />
+        ) : (
           <>
-            <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />
-            <div
-              className="flex flex-col justify-center bg-white px-12 sm:px-16 py-12 relative w-1/2"
-              style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}
-            >
-              <div className="mb-10">
-                <h2 className="font-black text-slate-900 text-[32px] mb-2 tracking-tight">Welcome Back</h2>
-                <div className="h-1.5 w-12 bg-[#FF7043] rounded-full" />
+            {mode === 'signin' && <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />}
+            
+            <div className={`flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-1/2 ${mode === 'signup' ? 'order-2 md:order-1' : ''}`} style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}>
+              <div className="flex justify-center mb-6">
+                <Image src={KavachLogo} alt="Kavach Logo" width={140} height={50} className="object-contain" />
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-                {/* Global error banner */}
-                {localError && (
-                  <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    {localError}
+              <div className="mb-6 sm:mb-10">
+                <h2 className="font-black text-slate-900 text-[24px] sm:text-[32px] tracking-tight text-center mb-2">{mode === 'signin' ? 'Welcome Back' : 'Create Account'}</h2>
+                <p className="text-sm text-[#8B5CF6] font-bold text-center">{mode === 'signin' ? 'Sign In To Get Started' : 'Sign Up To Get Started'}</p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5" noValidate>
+                {localError && <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs sm:text-sm font-medium"><AlertCircle className="w-4 h-4 shrink-0" />{localError}</div>}
+                
+                {mode === 'signup' && (
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
+                    <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} className={inputClass(!!nameError)} />
                   </div>
                 )}
 
-                {/* Email */}
                 <div className="space-y-1">
                   <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="Enter your registered email"
-                    value={email}
-                    onChange={e => { setEmail(e.target.value); if (localError) setLocalError('') }}
-                    onBlur={() => setEmailTouched(true)}
-                    className={inputClass(!!emailError)}
-                    autoComplete="email"
-                  />
-                  {emailError && (
-                    <p className="text-xs text-red-500 ml-1 flex items-center gap-1 mt-0.5">
-                      <XCircle className="w-3 h-3 shrink-0" /> {emailError}
-                    </p>
-                  )}
+                  <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass(!!emailError)} />
                 </div>
 
-                {/* Password */}
                 <div className="space-y-1">
                   <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
                   <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={e => { setPassword(e.target.value); if (localError) setLocalError('') }}
-                      onBlur={() => setPasswordTouched(true)}
-                      className={inputClass(!!passwordError)}
-                      autoComplete="current-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
+                    <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass(!!passwordError)} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button>
                   </div>
-                  {passwordError && (
-                    <p className="text-xs text-red-500 ml-1 flex items-center gap-1 mt-0.5">
-                      <XCircle className="w-3 h-3 shrink-0" /> {passwordError}
-                    </p>
+                  {mode === 'signin' && (
+                    <div className="flex justify-end pt-1">
+                      <button type="button" onClick={() => setForgotOpen(true)} className="text-[11px] sm:text-[12px] text-[#8B5CF6] font-bold uppercase">Forgot Password?</button>
+                    </div>
                   )}
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setForgotOpen(true)}
-                      className="text-[12px] text-[#FF7043] font-bold uppercase"
-                    >
-                      Forgot Password?
-                    </button>
-                  </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98] disabled:opacity-60"
-                  style={{ background: '#FF7043' }}
-                >
-                  {isLoading ? <LoadingSpinner /> : 'SIGN IN'}
-                </button>
+                <button type="submit" disabled={isLoading} className="w-full py-3 sm:py-4 rounded-2xl text-white text-[15px] sm:text-[16px] font-black shadow-xl transition-all active:scale-[0.98] bg-[#8B5CF6]">{isLoading ? <LoadingSpinner /> : (mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT')}</button>
               </form>
 
               <p className="text-sm text-slate-400 font-bold text-center pt-6">
-                New to Kavach?{' '}
-                <button onClick={() => switchMode('signup')} className="text-[#FF7043]">
-                  Create an Account
+                {mode === 'signin' ? "New to Kavach?" : "Already have an account?"}{' '}
+                <button onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')} className="text-[#8B5CF6]">
+                  {mode === 'signin' ? 'Create an Account' : 'Sign In'}
                 </button>
               </p>
             </div>
-          </>
-        ) : (
 
-        /* ── SIGN UP ────────────────────────────────────────────────────── */
-          <>
-            <div
-              className="flex flex-col justify-center bg-white px-12 sm:px-16 py-12 relative w-1/2 overflow-y-auto"
-              style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}
-            >
-              <div className="mb-8">
-                <h2 className="font-black text-slate-900 text-[28px] mb-2 tracking-tight">Create Account</h2>
-                <div className="h-1.5 w-12 bg-[#FF7043] rounded-full" />
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-                {/* Global error banner */}
-                {localError && (
-                  <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    {localError}
-                  </div>
-                )}
-
-                {/* Name */}
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
-                  <input
-                    type="text"
-                    placeholder="Enter your full name"
-                    value={name}
-                    onChange={e => { setName(e.target.value); if (localError) setLocalError('') }}
-                    onBlur={() => setNameTouched(true)}
-                    className={inputClass(!!nameError)}
-                    autoComplete="name"
-                  />
-                  {nameError && (
-                    <p className="text-xs text-red-500 ml-1 flex items-center gap-1 mt-0.5">
-                      <XCircle className="w-3 h-3 shrink-0" /> {nameError}
-                    </p>
-                  )}
-                </div>
-
-                {/* Email */}
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="Enter your email address"
-                    value={email}
-                    onChange={e => { setEmail(e.target.value); if (localError) setLocalError('') }}
-                    onBlur={() => setEmailTouched(true)}
-                    className={inputClass(!!emailError)}
-                    autoComplete="email"
-                  />
-                  {emailError && (
-                    <p className="text-xs text-red-500 ml-1 flex items-center gap-1 mt-0.5">
-                      <XCircle className="w-3 h-3 shrink-0" /> {emailError}
-                    </p>
-                  )}
-                </div>
-
-                {/* Password + strength meter */}
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Create a strong password"
-                      value={password}
-                      onChange={e => { setPassword(e.target.value); if (localError) setLocalError('') }}
-                      onBlur={() => setPasswordTouched(true)}
-                      className={inputClass(!!passwordError)}
-                      autoComplete="new-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-
-                  {/* Strength bar — shown as soon as user starts typing */}
-                  {password.length > 0 && (
-                    <div className="pt-1 space-y-1">
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4].map(i => (
-                          <div
-                            key={i}
-                            className="h-1.5 flex-1 rounded-full transition-all duration-300"
-                            style={{
-                              backgroundColor: i <= strengthLevel ? STRENGTH_COLOR[strengthLevel] : '#e2e8f0',
-                            }}
-                          />
-                        ))}
-                      </div>
-                      {strengthLevel > 0 && (
-                        <p className="text-xs font-semibold" style={{ color: STRENGTH_COLOR[strengthLevel] }}>
-                          {STRENGTH_LABEL[strengthLevel]}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Per-rule checklist — shown after password field is touched */}
-                  {passwordTouched && password.length > 0 && (
-                    <ul className="mt-1 space-y-0.5">
-                      {passwordChecks.map(c => (
-                        <li
-                          key={c.label}
-                          className={`flex items-center gap-1.5 text-xs ${c.pass ? 'text-green-600' : 'text-slate-400'}`}
-                        >
-                          {c.pass
-                            ? <CheckCircle2 className="w-3 h-3 shrink-0" />
-                            : <XCircle className="w-3 h-3 shrink-0" />}
-                          {c.label}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                {/* Terms & Conditions */}
-                <label className="flex items-start gap-3 cursor-pointer select-none group">
-                  <div className="relative mt-0.5 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={e => { setAgreed(e.target.checked); if (localError.includes('Terms')) setLocalError('') }}
-                      className="sr-only"
-                    />
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${agreed ? 'bg-[#FF7043] border-[#FF7043]' : 'border-slate-300 bg-white group-hover:border-[#FF7043]'}`}>
-                      {agreed && (
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-sm text-slate-500 leading-snug">
-                    I agree to the{' '}
-                    <span className="text-[#FF7043] font-semibold">Terms & Conditions</span>
-                    {' '}and{' '}
-                    <span className="text-[#FF7043] font-semibold">Privacy Policy</span>
-                  </span>
-                </label>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-4 rounded-2xl text-white text-[16px] font-black shadow-xl shadow-orange-100 transition-all active:scale-[0.98] disabled:opacity-60"
-                  style={{ background: '#FF7043' }}
-                >
-                  {isLoading ? <LoadingSpinner /> : 'CREATE ACCOUNT'}
-                </button>
-              </form>
-
-              <p className="text-sm text-slate-400 font-bold text-center pt-4">
-                Already have an account?{' '}
-                <button onClick={() => switchMode('signin')} className="text-[#FF7043]">
-                  Sign In
-                </button>
-              </p>
-            </div>
-            <ThemedPanel mode="signup" onSwitch={() => switchMode('signin')} />
+            {mode === 'signup' && <ThemedPanel mode="signup" onSwitch={() => switchMode('signin')} />}
           </>
         )}
       </div>
-      <p className="absolute bottom-6 right-8 text-slate-300 text-[11px] font-bold tracking-widest uppercase">
-        v{configInfo?.version ?? '1.8.1'} • SECURE
-      </p>
     </div>
   )
 }

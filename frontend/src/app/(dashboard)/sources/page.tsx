@@ -5,43 +5,45 @@ import { useRouter } from 'next/navigation'
 import { sourcesApi } from '@/lib/api/sources'
 import { SourceListResponse } from '@/lib/types/api'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { EmptyState } from '@/components/common/EmptyState'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { FileText, Trash2, ArrowUpDown, Upload, Link as LinkIcon, AlignLeft } from 'lucide-react'
+import { 
+  FileText, 
+  Trash2, 
+  LayoutGrid, 
+  List, 
+  Search, 
+  Filter 
+} from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
 import { toast } from '@/lib/notifications/toast'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 
 export default function SourcesPage() {
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
+  const router = useRouter()
   const [sources, setSources] = useState<SourceListResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedIndex, setSelectedIndex] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; source: SourceListResponse | null }>({
     open: false,
     source: null
   })
   
-  const router = useRouter()
-  const tableRef = useRef<HTMLTableElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef(0)
   const loadingMoreRef = useRef(false)
   const hasMoreRef = useRef(true)
   const PAGE_SIZE = 30
 
-  const [sortBy, setSortBy] = useState<'created' | 'updated'>('updated')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortBy] = useState<'created' | 'updated'>('updated')
+  const [sortOrder] = useState<'asc' | 'desc'>('desc')
 
   // --- Logic Preserved ---
   const fetchSources = useCallback(async (reset = false) => {
@@ -81,12 +83,6 @@ export default function SourcesPage() {
 
   useEffect(() => { fetchSources(true) }, [fetchSources])
 
-  const getSourceType = (source: SourceListResponse) => {
-    if (source.asset?.url) return 'Link'
-    if (source.asset?.file_path) return 'File'
-    return 'Text'
-  }
-
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.source) return
     try {
@@ -99,88 +95,197 @@ export default function SourcesPage() {
     }
   }
 
-  if (loading) return <AppShell><div className="flex h-full items-center justify-center"><LoadingSpinner /></div></AppShell>
-  if (error) return <AppShell><div className="flex h-full items-center justify-center text-red-500">{error}</div></AppShell>
+  // Filter logic for search
+  const filteredSources = sources.filter(source => 
+    source.title?.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  // Navigate to the source detail / chat page
+  const handleSourceClick = (sourceId: string) => {
+    router.push(`/sources/${encodeURIComponent(sourceId)}`)
+  }
+
+  if (loading) return <AppShell><div className="flex h-full items-center justify-center bg-[#F9FAFF]"><LoadingSpinner /></div></AppShell>
+  if (error) return <AppShell><div className="flex h-full items-center justify-center text-red-500 bg-[#F9FAFF]">{error}</div></AppShell>
 
   return (
     <AppShell>
-      <div className="flex-1 flex flex-col min-h-0 bg-white">
-        {/* Shared page header — search + NEW + logged-in user */}
+      <div className="flex-1 flex flex-col min-h-0 bg-[#F9FAFF] relative overflow-hidden">
+        {/* Background Gradient Effect - Exact match to shared reference */}
+        <div className="absolute top-0 right-[-10%] w-[800px] h-[800px] bg-[#E0D7FF]/50 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#D7E4FF]/40 rounded-full blur-[100px] pointer-events-none" />
+
         <PageHeader
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="Search..."
-          newLabel="NEW"
-          onNew={() => {/* sources add dialog handled inline below */}}
+          searchPlaceholder="Search sources..."
+          newLabel="NOTEBOOK"
+          onNew={() => {}} 
         />
 
-        <main className="flex-1 overflow-hidden flex flex-col p-8">
-          <div className="mb-10">
-            <h1 className="text-[26px] font-bold text-slate-900 leading-tight">All Sources</h1>
-            <p className="text-slate-500 text-sm mt-1">
-              View All Your Sources Here. You Can Add New Sources Or Manage Existing Ones.
-            </p>
+        <main className="relative z-10 flex-1 flex flex-col p-6 md:p-10 overflow-y-auto">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+            <div>
+              <h1 className="text-3xl font-extrabold text-[#6334E3] tracking-tight">All Sources</h1>
+              <p className="text-slate-500 text-sm font-medium mt-1">
+                Manage your document library and knowledge base sources
+              </p>
+            </div>
+            
+            <div className="bg-white/70 backdrop-blur-md border border-white shadow-sm rounded-xl p-1.5 flex items-center gap-2">
+               <Button variant="ghost" size="sm" className="text-slate-500 gap-2 h-8 font-semibold">
+                <Filter className="h-4 w-4" />
+                Filter
+              </Button>
+              <div className="w-px h-4 bg-slate-200 mx-1" />
+              <div className="flex items-center gap-1 bg-slate-100/50 rounded-lg p-0.5">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn("h-7 w-7 rounded-md transition-all", viewMode === 'list' ? "bg-white shadow-sm text-[#6334E3]" : "text-slate-400")}
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn("h-7 w-7 rounded-md transition-all", viewMode === 'grid' ? "bg-white shadow-sm text-[#6334E3]" : "text-slate-400")}
+                  onClick={() => setViewMode('grid')}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-auto rounded-2xl border border-slate-100 shadow-sm">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-[#FFF5F3] text-slate-700">
-                  <th className="h-14 px-8 text-left text-[14px] font-semibold first:rounded-tl-2xl">Type</th>
-                  <th className="h-14 px-4 text-left text-[14px] font-semibold">Title</th>
-                  <th className="h-14 px-4 text-center text-[14px] font-semibold">
-                    <button onClick={() => setSortBy('created')} className="inline-flex items-center gap-2 hover:text-slate-900">
-                      Created <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />
-                    </button>
-                  </th>
-                  <th className="h-14 px-4 text-center text-[14px] font-semibold">Insights</th>
-                  <th className="h-14 px-4 text-center text-[14px] font-semibold">Embedded</th>
-                  <th className="h-14 px-8 text-right text-[14px] font-semibold last:rounded-tr-2xl">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {sources.map((source, index) => (
-                  <tr key={source.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="h-16 px-8">
-                      <Badge className="bg-[#FFF0EB] text-[#FF7043] border-none shadow-none hover:bg-[#FFF0EB] px-3 py-1 rounded-lg gap-1.5 font-medium">
-                        <Upload className="h-3 w-3" />
-                        {getSourceType(source)}
-                      </Badge>
-                    </td>
-                    <td className="h-16 px-4">
-                      <span className="font-semibold text-slate-800 text-[14px] block truncate max-w-xs">
-                        {source.title || "Untitled Document"}
-                      </span>
-                    </td>
-                    <td className="h-16 px-4 text-center text-slate-500 text-[13px] font-medium">
-                      {formatDistanceToNow(new Date(source.created), { addSuffix: true })}
-                    </td>
-                    <td className="h-16 px-4 text-center text-slate-600 font-medium text-[14px]">
-                      {source.insights_count || 1}
-                    </td>
-                    <td className="h-16 px-4 text-center">
-                      <Badge className={cn(
-                        "border-none shadow-none px-5 py-1 rounded-full text-[12px] font-bold uppercase",
-                        source.embedded ? "bg-[#FFF0EB] text-[#FF7043]" : "bg-slate-100 text-slate-400"
-                      )}>
-                        {source.embedded ? 'Yes' : 'No'}
-                      </Badge>
-                    </td>
-                    <td className="h-16 px-8 text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => { e.stopPropagation(); setDeleteDialog({ open: true, source }); }}
-                        className="text-[#FF7043] hover:text-white hover:bg-red-500 h-8 w-8 rounded-lg"
+          {viewMode === 'list' ? (
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-white shadow-2xl shadow-purple-100/50 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="text-slate-400 border-b border-slate-50">
+                      <th className="px-8 py-6 text-left text-[11px] font-bold uppercase tracking-widest">Document</th>
+                      <th className="px-4 py-6 text-left text-[11px] font-bold uppercase tracking-widest">Size</th>
+                      <th className="px-4 py-6 text-left text-[11px] font-bold uppercase tracking-widest">Created</th>
+                      <th className="px-4 py-6 text-center text-[11px] font-bold uppercase tracking-widest">Insights</th>
+                      <th className="px-4 py-6 text-left text-[11px] font-bold uppercase tracking-widest">Status</th>
+                      <th className="px-8 py-6 text-right text-[11px] font-bold uppercase tracking-widest">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredSources.map((source) => (
+                      <tr
+                        key={source.id}
+                        className="hover:bg-slate-50/50 transition-all cursor-pointer"
+                        onClick={() => handleSourceClick(source.id)}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        <td className="px-8 py-5">
+                          <div className="flex items-center gap-4">
+                            <div className="h-11 w-11 rounded-xl bg-[#4A6CF7] flex items-center justify-center shadow-lg shadow-blue-100">
+                              <FileText className="h-5 w-5 text-white" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 text-sm truncate max-w-[240px]">
+                                {source.title || "Untitled Document"}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">12 pages</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 text-sm font-semibold text-slate-600">2.4 MB</td>
+                        <td className="px-4 py-5 text-sm font-semibold text-slate-500">
+                          {formatDistanceToNow(new Date(source.created), { addSuffix: true })}
+                        </td>
+                        <td className="px-4 py-5 text-center">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-[#4A6CF7] text-[11px] font-bold border border-blue-100">
+                            {source.insights_count || 1}
+                          </span>
+                        </td>
+                        <td className="px-4 py-5">
+                          <div className="flex items-center gap-2">
+                            <div className={cn("h-2 w-2 rounded-full", source.embedded ? "bg-emerald-400" : "bg-amber-400")} />
+                            <span className={cn("text-[12px] font-bold", source.embedded ? "text-emerald-500" : "text-amber-500")}>
+                              {source.embedded ? 'Embedded' : 'Pending'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-8 py-5 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => { e.stopPropagation(); setDeleteDialog({ open: true, source }); }}
+                            className="text-slate-300 hover:text-red-500 h-9 w-9 rounded-xl"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* Grid View */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredSources.map((source) => (
+                <div
+                  key={source.id}
+                  className="bg-white rounded-[24px] border border-white/50 shadow-xl shadow-slate-200/40 p-5 flex flex-col hover:scale-[1.01] transition-transform duration-300 cursor-pointer"
+                  onClick={() => handleSourceClick(source.id)}
+                >
+                  {/* Card Icon Container */}
+                  <div className="aspect-[16/9] bg-[#F1EEFF] rounded-[20px] flex items-center justify-center mb-5 relative group">
+                    <FileText className="h-14 w-14 text-[#6334E3]" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => { e.stopPropagation(); setDeleteDialog({ open: true, source }); }}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-slate-400 hover:text-red-500"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Document Info */}
+                  <div className="px-1">
+                    <h3 className="font-bold text-slate-800 text-sm mb-2 truncate">
+                      {source.title || "Untitled Document"}
+                    </h3>
+                    
+                    <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 mb-4">
+                      <span>2.4 MB</span>
+                      <span>12 pages</span>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        source.embedded ? "bg-emerald-400" : "bg-amber-400"
+                      )} />
+                      <span className={cn(
+                        "text-[11px] font-bold",
+                        source.embedded ? "text-emerald-500" : "text-amber-500"
+                      )}>
+                        {source.embedded ? 'Embedded' : 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {filteredSources.length === 0 && !loading && (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="h-20 w-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                <Search className="h-8 w-8 text-slate-300" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">No sources found</h3>
+            </div>
+          )}
         </main>
       </div>
 

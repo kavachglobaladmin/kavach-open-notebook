@@ -1,116 +1,63 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
-import { useNotes } from '@/lib/hooks/use-notes'
 import { ChatPanel } from '@/components/source/ChatPanel'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Card, CardContent } from '@/components/ui/card'
-import { AlertCircle } from 'lucide-react'
-import { ContextSelections } from '../[id]/page'
+import { MessageSquare, Clock } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { SourceListResponse } from '@/lib/types/api'
 
-interface ChatColumnProps {
-  notebookId: string
-  contextSelections: ContextSelections
-  sources: SourceListResponse[]
-  sourcesLoading: boolean
-}
-
-export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoading }: ChatColumnProps) {
+export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoading }: any) {
   const { t } = useTranslation()
 
-  // Fetch notes for this notebook
-  const { data: notes = [], isLoading: notesLoading } = useNotes(notebookId)
-
-  // Initialize notebook chat hook
-  const chat = useNotebookChat({
-    notebookId,
-    sources,
-    notes,
-    contextSelections
-  })
-
-  // Calculate context stats for indicator
-  const contextStats = useMemo(() => {
-    let sourcesInsights = 0
-    let sourcesFull = 0
-    let notesCount = 0
-
-    // Count sources by mode
-    sources.forEach(source => {
-      const mode = contextSelections.sources[source.id]
-      if (mode === 'insights') {
-        sourcesInsights++
-      } else if (mode === 'full') {
-        sourcesFull++
-      }
-    })
-
-    // Count notes that are included (not 'off')
-    notes.forEach(note => {
-      const mode = contextSelections.notes[note.id]
-      if (mode === 'full') {
-        notesCount++
-      }
-    })
-
-    return {
-      sourcesInsights,
-      sourcesFull,
-      notesCount,
-      tokenCount: chat.tokenCount,
-      charCount: chat.charCount
-    }
-  }, [sources, notes, contextSelections, chat.tokenCount, chat.charCount])
-
-  // Show loading state while sources/notes are being fetched
-  if (sourcesLoading || notesLoading) {
-    return (
-      <Card className="h-full flex flex-col">
-        <CardContent className="flex-1 flex items-center justify-center">
-          <LoadingSpinner size="lg" />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Show error state if data fetch failed (unlikely but good to handle)
-  if (!sources && !notes) {
-    return (
-      <Card className="h-full flex flex-col">
-        <CardContent className="flex-1 flex items-center justify-center">
-          <div className="text-center text-muted-foreground">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-sm">{t.chat.unableToLoadChat}</p>
-            <p className="text-xs mt-2">{t.common.refreshPage || 'Please try refreshing the page'}</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
-    <ChatPanel
-      title={t.chat.chatWithNotebook}
-      contextType="notebook"
-      messages={chat.messages}
-      isStreaming={chat.isSending}
-      contextIndicators={null}
-      onSendMessage={(message, modelOverride) => chat.sendMessage(message, modelOverride)}
-      modelOverride={chat.currentSession?.model_override ?? chat.pendingModelOverride ?? undefined}
-      onModelChange={(model) => chat.setModelOverride(model ?? null)}
-      sessions={chat.sessions}
-      currentSessionId={chat.currentSessionId}
-      onCreateSession={(title) => chat.createSession(title)}
-      onSelectSession={chat.switchSession}
-      onUpdateSession={(sessionId, title) => chat.updateSession(sessionId, { title })}
-      onDeleteSession={chat.deleteSession}
-      loadingSessions={chat.loadingSessions}
-      notebookContextStats={contextStats}
-      notebookId={notebookId}
-      suggestedQuestions={chat.suggestedQuestions}
-    />
+    <Card className="h-full flex flex-col border-none bg-white rounded-[24px] shadow-[0_4px_25px_rgba(0,0,0,0.03)] overflow-hidden">
+      <div className="p-6 flex items-center justify-between border-none">
+        <div className="flex items-center gap-3">
+          <MessageSquare className="h-5 w-5 text-slate-900" />
+          <h2 className="text-[18px] font-bold text-slate-900">Chat with Notebook</h2>
+        </div>
+        <button className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-100 text-[13px] font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
+          <Clock className="h-4 w-4" />
+          Sessions
+        </button>
+      </div>
+
+      <CardContent className="flex-1 flex flex-col p-6 pt-0 min-h-[500px] lg:min-h-0">
+        {/* Placeholder for Empty State shown in Image */}
+        <div className="flex-1 flex flex-col items-center justify-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center">
+            <MessageSquare className="h-8 w-8 text-slate-300" />
+          </div>
+          <div className="text-center">
+            <h3 className="text-[16px] font-bold text-slate-900">Start a conversation about this Notebook</h3>
+            <p className="text-[13px] text-slate-500 mt-1">Ask questions to understand the content better</p>
+          </div>
+        </div>
+
+        {/* Info Box */}
+        <div className="bg-slate-50 rounded-[16px] p-4 border border-slate-100 mb-6">
+          <p className="text-[12px] text-slate-500 text-center">
+            No sources or notes included in context. Toggle icons on cards to include them.
+          </p>
+        </div>
+
+        {/* Input Area */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-[13px]">
+            <span className="font-bold text-slate-900">Model</span>
+            <span className="font-semibold text-slate-600">llama-3-latest</span>
+          </div>
+          <div className="relative">
+            <input
+              className="w-full h-[52px] bg-slate-50 border border-slate-100 rounded-[16px] px-5 pr-12 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#6F4FF2]/20"
+              placeholder="Ask anything about your sources... (Press Enter to send)"
+            />
+            <button className="absolute right-2 top-1/2 -translate-y-1/2 w-[36px] h-[36px] bg-[#6F4FF2] rounded-[12px] flex items-center justify-center text-white shadow-[0_4px_10px_rgba(111,79,242,0.3)]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
+            </button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

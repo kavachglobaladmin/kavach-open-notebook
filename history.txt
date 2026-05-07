@@ -3,3 +3,5 @@ cls
 SELECT * FROM information_schema.tables;
 SELECT * FROM openNoteBookDB;
 cls
+info for db;
+select * from kavach_user;

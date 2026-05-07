@@ -24,6 +24,7 @@ import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { CommonGraphModal } from '@/components/sources/CommonGraphModal'
+import { cn } from '@/lib/utils'
 
 interface SourcesColumnProps {
   sources?: SourceListResponse[]
@@ -33,7 +34,6 @@ interface SourcesColumnProps {
   onRefresh?: () => void
   contextSelections?: Record<string, ContextMode>
   onContextModeChange?: (sourceId: string, mode: ContextMode) => void
-  // Pagination props
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   fetchNextPage?: () => void
@@ -66,102 +66,53 @@ export function SourcesColumn({
   const retrySource = useRetrySource()
   const removeFromNotebook = useRemoveSourceFromNotebook()
 
-  // Collapsible column state
   const { sourcesCollapsed, toggleSources } = useNotebookColumnsStore()
   const collapseButton = useMemo(
     () => createCollapseButton(toggleSources, t.navigation.sources),
     [toggleSources, t.navigation.sources]
   )
 
-  // Scroll container ref for infinite scroll
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  // Handle scroll for infinite loading
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container || !hasNextPage || isFetchingNextPage || !fetchNextPage) return
-
     const { scrollTop, scrollHeight, clientHeight } = container
-    // Load more when user scrolls within 200px of the bottom
     if (scrollHeight - scrollTop - clientHeight < 200) {
       fetchNextPage()
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  // Attach scroll listener
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
-
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
   
-  const handleDeleteClick = (sourceId: string) => {
-    setSourceToDelete(sourceId)
-    setDeleteDialogOpen(true)
-  }
-
   const handleDeleteConfirm = async () => {
     if (!sourceToDelete) return
-
     try {
       await deleteSource.mutateAsync(sourceToDelete)
       setDeleteDialogOpen(false)
       setSourceToDelete(null)
       onRefresh?.()
-    } catch (error) {
-      console.error('Failed to delete source:', error)
-    }
-  }
-
-  const handleRemoveFromNotebook = (sourceId: string) => {
-    setSourceToRemove(sourceId)
-    setRemoveDialogOpen(true)
+    } catch (error) { console.error(error) }
   }
 
   const handleRemoveConfirm = async () => {
     if (!sourceToRemove) return
-
     try {
-      await removeFromNotebook.mutateAsync({
-        notebookId,
-        sourceId: sourceToRemove
-      })
+      await removeFromNotebook.mutateAsync({ notebookId, sourceId: sourceToRemove })
       setRemoveDialogOpen(false)
       setSourceToRemove(null)
-    } catch (error) {
-      console.error('Failed to remove source from notebook:', error)
-      // Error toast is handled by the hook
-    }
+    } catch (error) { console.error(error) }
   }
 
   const handleToggleSourceSelection = (sourceId: string, checked: boolean) => {
-    setSelectedSourceIds((prev) => {
-      if (checked) {
-        return prev.includes(sourceId) ? prev : [...prev, sourceId]
-      }
-      return prev.filter((id) => id !== sourceId)
-    })
-  }
-
-  const canCreateCommonGraph = selectedSourceIds.length >= 2
-
-  const handleCreateCommonGraph = () => {
-    if (!canCreateCommonGraph) return
-    setCommonGraphOpen(true)
-  }
-
-  const handleRetry = async (sourceId: string) => {
-    try {
-      await retrySource.mutateAsync({ sourceId, notebookId })
-    } catch (error) {
-      console.error('Failed to retry source:', error)
-    }
-  }
-
-  const handleSourceClick = (sourceId: string) => {
-    openModal('source', sourceId)
+    setSelectedSourceIds((prev) => checked 
+      ? (prev.includes(sourceId) ? prev : [...prev, sourceId]) 
+      : prev.filter((id) => id !== sourceId))
   }
 
   return (
@@ -172,91 +123,72 @@ export function SourcesColumn({
         collapsedIcon={FileText}
         collapsedLabel={t.navigation.sources}
       >
-        <Card className="h-full flex flex-col flex-1 overflow-hidden">
-          <CardHeader className="pb-3 flex-shrink-0">
-            <div className="flex flex-col gap-2">
+        <Card className="h-full flex flex-col flex-1 overflow-hidden bg-white border-none rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+          <CardHeader className="pb-3 pt-6 px-6 flex-shrink-0">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-lg">{t.navigation.sources}</CardTitle>
+                <CardTitle className="text-[20px] font-bold text-slate-900">{t.navigation.sources}</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={!canCreateCommonGraph}
-                    onClick={handleCreateCommonGraph}
-                    title="Create common graph"
-                  >
-                    {/* Org-chart / hierarchy icon */}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="2" width="6" height="5" rx="1"/>
-                      <rect x="2" y="17" width="6" height="5" rx="1"/>
-                      <rect x="16" y="17" width="6" height="5" rx="1"/>
-                      <path d="M12 7v4M12 11H6v3M12 11h6v3"/>
-                    </svg>
-                  </Button>
                   <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                     <DropdownMenuTrigger asChild>
-                      <Button size="sm">
-                        <Plus className="h-4 w-4 mr-2" />
+                      <Button size="sm" className="bg-[#6149f6] hover:bg-[#523cdb] text-white rounded-[12px] h-[40px] px-5 font-semibold shadow-[0_4px_12px_rgba(97,73,246,0.35)] transition-all">
+                        <Plus className="h-4 w-4 mr-1" />
                         {t.sources.addSource}
-                        <ChevronDown className="h-4 w-4 ml-2" />
+                        <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="rounded-xl p-1">
                       <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddDialogOpen(true); }}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        {t.sources.addSource}
+                        <Plus className="h-4 w-4 mr-2" /> {t.sources.addSource}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => { setDropdownOpen(false); setAddExistingDialogOpen(true); }}>
-                        <Link2 className="h-4 w-4 mr-2" />
-                        {t.sources.addExistingTitle}
+                        <Link2 className="h-4 w-4 mr-2" /> {t.sources.addExistingTitle}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   {collapseButton}
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-[13px] text-slate-500 font-medium leading-relaxed">
                 {selectedSourceIds.length > 0
-                  ? `${selectedSourceIds.length} source${selectedSourceIds.length === 1 ? '' : 's'} selected`
+                  ? `${selectedSourceIds.length} sources selected`
                   : 'Select at least two sources to create a common graph.'}
               </p>
             </div>
           </CardHeader>
 
-          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
+          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 pb-6">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <LoadingSpinner />
-              </div>
+              <div className="flex items-center justify-center py-12"><LoadingSpinner /></div>
             ) : !sources || sources.length === 0 ? (
-              <EmptyState
-                icon={FileText}
-                title={t.sources.noSourcesYet}
-                description={t.sources.createFirstSource}
-              />
+              <div className="h-full flex flex-col items-center justify-center pt-10">
+                <div className="w-16 h-16 bg-[#f1f3f6] rounded-2xl flex items-center justify-center mb-4">
+                  <FileText className="w-8 h-8 text-[#94a3b8]" />
+                </div>
+                <h3 className="text-[16px] font-bold text-slate-900 mb-1">{t.sources.noSourcesYet}</h3>
+                <p className="text-[13px] text-slate-500 text-center max-w-[200px] leading-relaxed">
+                  {t.sources.createFirstSource}
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {sources.map((source) => (
                   <SourceCard
                     key={source.id}
                     source={source}
-                    onClick={handleSourceClick}
-                    onDelete={handleDeleteClick}
-                    onRetry={handleRetry}
-                    onRemoveFromNotebook={handleRemoveFromNotebook}
+                    onClick={() => openModal('source', source.id)}
+                    onDelete={(id) => { setSourceToDelete(id); setDeleteDialogOpen(true); }}
+                    onRetry={(id) => retrySource.mutateAsync({ sourceId: id, notebookId })}
+                    onRemoveFromNotebook={(id) => { setSourceToRemove(id); setRemoveDialogOpen(true); }}
                     onRefresh={onRefresh}
                     showRemoveFromNotebook={true}
                     contextMode={contextSelections?.[source.id]}
-                    onContextModeChange={onContextModeChange
-                      ? (mode) => onContextModeChange(source.id, mode)
-                      : undefined
-                    }
+                    onContextModeChange={onContextModeChange ? (mode) => onContextModeChange(source.id, mode) : undefined}
                     selectable={true}
                     selected={selectedSourceIds.includes(source.id)}
                     onSelectChange={(checked) => handleToggleSourceSelection(source.id, checked)}
                   />
                 ))}
-                {/* Loading indicator for infinite scroll */}
                 {isFetchingNextPage && (
                   <div className="flex items-center justify-center py-4">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -268,47 +200,11 @@ export function SourcesColumn({
         </Card>
       </CollapsibleColumn>
 
-      <AddSourceDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        defaultNotebookId={notebookId}
-        onSuccess={onRefresh}
-      />
-
-      <AddExistingSourceDialog
-        open={addExistingDialogOpen}
-        onOpenChange={setAddExistingDialogOpen}
-        notebookId={notebookId}
-        onSuccess={onRefresh}
-      />
-
-      <ConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title={t.sources.delete}
-        description={t.sources.deleteConfirm}
-        confirmText={t.common.delete}
-        onConfirm={handleDeleteConfirm}
-        isLoading={deleteSource.isPending}
-        confirmVariant="destructive"
-      />
-
-      <ConfirmDialog
-        open={removeDialogOpen}
-        onOpenChange={setRemoveDialogOpen}
-        title={t.sources.removeFromNotebook}
-        description={t.sources.removeConfirm}
-        confirmText={t.common.remove}
-        onConfirm={handleRemoveConfirm}
-        isLoading={removeFromNotebook.isPending}
-        confirmVariant="default"
-      />
-
-      <CommonGraphModal
-        open={commonGraphOpen}
-        onOpenChange={setCommonGraphOpen}
-        sourceIds={selectedSourceIds}
-      />
+      <AddSourceDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} defaultNotebookId={notebookId} onSuccess={onRefresh} />
+      <AddExistingSourceDialog open={addExistingDialogOpen} onOpenChange={setAddExistingDialogOpen} notebookId={notebookId} onSuccess={onRefresh} />
+      <ConfirmDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} title={t.sources.delete} description={t.sources.deleteConfirm} confirmText={t.common.delete} onConfirm={handleDeleteConfirm} isLoading={deleteSource.isPending} confirmVariant="destructive" />
+      <ConfirmDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen} title={t.sources.removeFromNotebook} description={t.sources.removeConfirm} confirmText={t.common.remove} onConfirm={handleRemoveConfirm} isLoading={removeFromNotebook.isPending} confirmVariant="default" />
+      <CommonGraphModal open={commonGraphOpen} onOpenChange={setCommonGraphOpen} sourceIds={selectedSourceIds} />
     </>
   )
 }
