@@ -202,6 +202,7 @@ class RunTransformationOutput(CommandOutput):
     transformation_id: str
     processing_time: float
     error_message: Optional[str] = None
+    insight_command_id: Optional[str] = None  # create_insight command ID for frontend tracking
 
 
 @command(
@@ -304,10 +305,11 @@ async def run_transformation_command(
             config={"configurable": {"model_id": input_data.model_id}},
         )
 
-        # Save insight once
+        # Save insight once and capture the create_insight command ID
         final_output = result.get("output", "") if result else ""
+        insight_command_id = None
         if source and final_output:
-            await source.add_insight(
+            insight_command_id = await source.add_insight(
                 transformation.title,
                 final_output,
                 generation_id=input_data.generation_id,
@@ -324,6 +326,7 @@ async def run_transformation_command(
             source_id=input_data.source_id,
             transformation_id=input_data.transformation_id,
             processing_time=processing_time,
+            insight_command_id=insight_command_id,
         )
 
     except (ValueError, NotFoundError) as e:

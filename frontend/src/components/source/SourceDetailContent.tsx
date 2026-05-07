@@ -572,6 +572,15 @@ export function SourceDetailContent({
     }
   }, [fetchInsights, fetchSource, fetchTransformations, sourceId])
 
+  // Poll insights every 3 seconds while a generation is in progress
+  useEffect(() => {
+    if (!creatingInsight) return
+    const interval = setInterval(() => {
+      void fetchInsights()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [creatingInsight, fetchInsights])
+
   const createInsight = async () => {
     // Prevent rapid double-clicks / repeated submits before React state updates
     if (createInsightLockRef.current) return
@@ -590,17 +599,27 @@ export function SourceDetailContent({
       setSelectedTransformation('')
 
       if (response.command_id) {
+        // Wait for run_transformation to complete (LLM processing)
+        // creatingInsight stays true → polling useEffect keeps fetching every 3s
         insightsApi.waitForCommand(response.command_id, {
           maxAttempts: 120,
           intervalMs: 2000
-        }).then(success => {
-          if (success) {
-            void fetchInsights()
-            queryClient.invalidateQueries({ queryKey: ['sources'] })
-          }
+        }).then(async (success) => {
+          console.log('[Insight] run_transformation completed, success=', success, 'waiting 4s for create_insight...')
+          // run_transformation done → create_insight + embed_insight fire async.
+          // Wait a moment for them to complete, then fetch once.
+          await new Promise(resolve => setTimeout(resolve, 4000))
+          console.log('[Insight] fetching insights now...')
+          void fetchInsights()
+          queryClient.invalidateQueries({ queryKey: ['sources'] })
         }).catch(err => {
-          console.error('Error waiting for insight command:', err)
+          console.error('[Insight] Error waiting for insight command:', err)
+        }).finally(() => {
+          setCreatingInsight(false)
+          createInsightLockRef.current = false
         })
+        // Don't set creatingInsight=false here — let the .finally() above do it
+        return
       } else {
         setTimeout(() => {
           void fetchInsights()

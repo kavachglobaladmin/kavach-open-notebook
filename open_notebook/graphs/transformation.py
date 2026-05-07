@@ -38,6 +38,10 @@ _DEFAULT_MINDMAP_PROMPT = """\
 You are an expert information architect. Build a comprehensive, deeply structured \
 JSON mind map from the document below.
 
+LANGUAGE RULE: ALL labels in the output must be in ENGLISH. If the document contains \
+Hindi, Gujarati, or any other language, translate all content to English before \
+building the mind map.
+
 HIERARCHY:
 - Level 0 (Root): Subject name/title
 - Level 1: Major logical groupings (Personal Profile, Family, Criminal Profile, Legal History, Associates, etc.)
@@ -52,8 +56,13 @@ RULES:
 - Each fact appears exactly ONCE (no duplication)
 - No empty arrays, no null values
 
-OUTPUT: Return ONLY raw valid JSON — no markdown, no explanation, no code fences.
-Format:
+OUTPUT RULES (CRITICAL):
+- Start your response with { and end with }
+- Do NOT write any text before or after the JSON
+- Do NOT use markdown code fences (no ```)
+- Do NOT write "Here is" or any introduction
+- Use ONLY this exact structure — no "nodes", no "id", no "text" fields:
+
 {
   "label": "Subject Name",
   "children": [
@@ -158,8 +167,42 @@ def _parse_mindmap_json(raw: str) -> dict:
     Robustly parse model JSON output into a mind map dict.
     Uses json-repair to handle unescaped quotes, trailing commas,
     and truncated JSON in a single pass.
+    Also converts non-standard formats (nodes/id/text) to label/children.
     """
     from loguru import logger as _logger
+
+    def _normalize_to_label_children(data: dict) -> dict | None:
+        """Convert various AI output formats to {label, children} format."""
+        if isinstance(data, dict):
+            # Standard format already
+            if "label" in data:
+                return data
+            # nodes format: {"nodes": [{"id": ..., "text": ..., "children": [...]}]}
+            if "nodes" in data and isinstance(data["nodes"], list):
+                nodes = data["nodes"]
+                # Find root node
+                root = next((n for n in nodes if n.get("id") == "root"), None)
+                if not root and nodes:
+                    root = nodes[0]
+                if root:
+                    def convert_node(n):
+                        label = n.get("text") or n.get("label") or n.get("id") or "Node"
+                        children = [convert_node(c) for c in n.get("children", [])]
+                        result = {"label": label}
+                        if children:
+                            result["children"] = children
+                        return result
+                    return convert_node(root)
+            # text/id format without nodes wrapper
+            if "text" in data or "id" in data:
+                label = data.get("text") or data.get("id") or "Root"
+                children = [_normalize_to_label_children(c) for c in data.get("children", [])]
+                children = [c for c in children if c]
+                result = {"label": label}
+                if children:
+                    result["children"] = children
+                return result
+        return None
 
     fence_match = _re.search(r"```(?:json)?\s*([\s\S]*?)```", raw, _re.IGNORECASE)
     cleaned = fence_match.group(1).strip() if fence_match else raw.strip()
@@ -174,37 +217,46 @@ def _parse_mindmap_json(raw: str) -> dict:
 
     cleaned = cleaned[start:]
 
-    # Attempt 1: direct parse (fast path for clean output)
-    try:
-        data = _json.loads(cleaned)
-        if isinstance(data, dict) and "label" in data:
-            _logger.info("[MindMap] Parsed from inside code fence")
-            return _sanitize_tree(data)
-    except _json.JSONDecodeError as e:
-        _logger.warning(f"[MindMap] Direct parse failed: {e}")
+    def _try_parse_and_normalize(s: str) -> dict | None:
+        try:
+            data = _json.loads(s)
+            if isinstance(data, dict):
+                normalized = _normalize_to_label_children(data)
+                if normalized and "label" in normalized:
+                    return _sanitize_tree(normalized)
+        except _json.JSONDecodeError:
+            pass
+        return None
 
-    # Attempt 1b: trim an obviously incomplete tail, then rebalance
+    # Attempt 1: direct parse
+    result = _try_parse_and_normalize(cleaned)
+    if result:
+        _logger.info("[MindMap] Parsed successfully (direct)")
+        return result
+
+    # Attempt 2: repair truncated JSON
     try:
-        repaired = _repair_truncated_json(cleaned)
-        data = _json.loads(repaired)
-        if isinstance(data, dict) and "label" in data:
+        repaired_str = _repair_truncated_json(cleaned)
+        result = _try_parse_and_normalize(repaired_str)
+        if result:
             _logger.info("[MindMap] Repaired parse succeeded")
-            return _sanitize_tree(data)
+            return result
     except Exception as e:
         _logger.warning(f"[MindMap] Repaired parse failed: {e}")
 
-    # Attempt 2: balance unclosed braces (truncated output)
+    # Attempt 3: json_repair library
     try:
         import json_repair
         repaired = json_repair.repair_json(cleaned, return_objects=True)
-        if isinstance(repaired, dict) and "label" in repaired:
-            _logger.info("[MindMap] Repaired parse succeeded (json-repair)")
-            return _sanitize_tree(repaired)
+        if isinstance(repaired, dict):
+            normalized = _normalize_to_label_children(repaired)
+            if normalized and "label" in normalized:
+                _logger.info("[MindMap] json_repair succeeded")
+                return _sanitize_tree(normalized)
     except Exception as e:
         _logger.warning(f"[MindMap] json-repair failed: {e}")
 
     _logger.error(f"[MindMap] All parse attempts failed. Raw:\n{raw[:800]}")
-    return _build_fallback_mind_map_from_text(cleaned or raw, title="Mind Map")
     return _build_fallback_mind_map_from_text(cleaned or raw, title="Mind Map")
 
 
