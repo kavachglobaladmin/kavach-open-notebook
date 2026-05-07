@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any, Dict, List, Optional
 
@@ -5,7 +6,7 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.database.repository import ensure_record_id
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import ConfigurationError, NotFoundError
@@ -16,6 +17,12 @@ try:
 except ImportError as e:
     logger.error(f"Failed to import graphs: {e}")
     raise ValueError("graphs not available")
+
+
+# In-memory set to track in-flight (source_id, transformation_id) pairs.
+# Used to deduplicate parallel run_transformation commands without generation_id.
+_in_flight_lock = asyncio.Lock()
+_in_flight_runs: set = set()
 
 
 def full_model_dump(model):
@@ -73,12 +80,29 @@ async def process_source_command(
         logger.info(f"Embed: {input_data.embed}")
 
         # 1. Load transformation objects from IDs
+        # Skip Mind Map transformations — they are heavy LLM operations that the
+        # user should trigger manually. Auto-running them on every source upload
+        # causes duplicate insights and wastes resources.
         transformations = []
         for trans_id in input_data.transformations:
             logger.info(f"Loading transformation: {trans_id}")
             transformation = await Transformation.get(trans_id)
             if not transformation:
                 raise ValueError(f"Transformation '{trans_id}' not found")
+            t_title = (transformation.title or "").strip().lower()
+            t_name  = (transformation.name  or "").strip().lower()
+            is_mindmap = (
+                t_title == "mind map"
+                or t_name  == "mind_map"
+                or ("mind" in t_title and "map" in t_title)
+                or ("mind" in t_name  and "map" in t_name)
+            )
+            if is_mindmap:
+                logger.info(
+                    f"Skipping Mind Map transformation '{transformation.title}' "
+                    f"during source processing — generate manually from the source detail page"
+                )
+                continue
             transformations.append(transformation)
 
         logger.info(f"Loaded {len(transformations)} transformations")
@@ -190,19 +214,6 @@ async def run_transformation_command(
 ) -> RunTransformationOutput:
     """
     Run a transformation on an existing source to generate an insight.
-
-    This command runs the transformation graph which:
-    1. Loads the source and transformation
-    2. Calls the LLM to generate insight content
-    3. Creates the insight via create_insight command (fire-and-forget)
-
-    Use this command for UI-triggered insight generation to avoid blocking
-    the HTTP request while the LLM processes.
-
-    Retry Strategy:
-    - Retries up to 5 times for transient failures (network, timeout, etc.)
-    - Uses exponential-jitter backoff (1-60s)
-    - Does NOT retry permanent failures (ValueError for validation errors)
     """
     start_time = time.time()
 
@@ -226,41 +237,35 @@ async def run_transformation_command(
             f"on source {input_data.source_id} with model: {model_name}"
         )
 
-        # Dedup check: if a generation_id is provided, atomically claim it by
-        # deleting the record. Only the first command to delete it will proceed;
-        # any parallel command will find nothing and skip.
+        # Dedup check via generation_id (table may not exist — skip if so)
         if input_data.generation_id:
-            from open_notebook.database.repository import repo_query, ensure_record_id
-            # Atomically claim the generation by deleting it.
-            # SurrealDB DELETE returns the deleted records, so only the command
-            # that actually deletes the row will get a non-empty result.
-            # Any parallel command racing on the same generation_id will get
-            # an empty result and skip.
-            claimed = await repo_query(
-                """
-                DELETE source_insight_generation
-                WHERE source = $source_id
-                  AND generation_id = $generation_id
-                RETURN BEFORE
-                """,
-                {
-                    "source_id": ensure_record_id(input_data.source_id),
-                    "generation_id": input_data.generation_id,
-                },
-            )
-            if not claimed:
-                # Nothing deleted → generation_id was already claimed by another
-                # command or superseded by a newer user click
-                logger.info(
-                    f"Skipping duplicate run_transformation for source {input_data.source_id}: "
-                    f"generation_id={input_data.generation_id} already claimed or superseded"
+            try:
+                from open_notebook.database.repository import repo_query, ensure_record_id
+                claimed = await repo_query(
+                    """
+                    DELETE source_insight_generation
+                    WHERE source = $source_id
+                      AND generation_id = $generation_id
+                    RETURN BEFORE
+                    """,
+                    {
+                        "source_id": ensure_record_id(input_data.source_id),
+                        "generation_id": input_data.generation_id,
+                    },
                 )
-                return RunTransformationOutput(
-                    success=True,
-                    source_id=input_data.source_id,
-                    transformation_id=input_data.transformation_id,
-                    processing_time=time.time() - start_time,
-                )
+                if not claimed:
+                    logger.info(
+                        f"Skipping duplicate run_transformation for source {input_data.source_id}: "
+                        f"generation_id={input_data.generation_id} already claimed"
+                    )
+                    return RunTransformationOutput(
+                        success=True,
+                        source_id=input_data.source_id,
+                        transformation_id=input_data.transformation_id,
+                        processing_time=time.time() - start_time,
+                    )
+            except Exception as e:
+                logger.debug(f"generation_id dedup check skipped: {e}")
 
         # Load source
         source = await Source.get(input_data.source_id)
@@ -274,32 +279,32 @@ async def run_transformation_command(
                 f"Transformation '{input_data.transformation_id}' not found"
             )
 
-        # Validate model exists before running transformation
-        model_id_to_use = input_data.model_id or transformation.model_id
-        if model_id_to_use:
-            try:
-                from open_notebook.ai.models import Model
-                model = await Model.get(model_id_to_use)
-                if not model:
-                    raise ValueError(
-                        f"Model '{model_id_to_use}' not found. Please check Settings → Models and select an available model."
-                    )
-            except ValueError:
-                raise
-            except Exception as e:
-                logger.debug(f"Could not validate model: {e}")
-                # Continue anyway - model validation will happen during LLM call
+        # Idempotency: skip if insight of this type already exists
+        existing_insights = await source.get_insights()
+        already_exists = any(
+            (i.insight_type or "").strip().lower() == (transformation.title or "").strip().lower()
+            for i in existing_insights
+        )
+        if already_exists:
+            logger.info(
+                f"Insight of type '{transformation.title}' already exists for source "
+                f"{input_data.source_id} — skipping duplicate run"
+            )
+            processing_time = time.time() - start_time
+            return RunTransformationOutput(
+                success=True,
+                source_id=input_data.source_id,
+                transformation_id=input_data.transformation_id,
+                processing_time=processing_time,
+            )
 
-        # Run transformation graph (LLM call only — no insight saving inside)
+        # Run transformation graph
         result = await transform_graph.ainvoke(
-            input=dict(source=source, transformation=transformation),
-            config={"configurable": {
-                "model_id": input_data.model_id,
-                "generation_id": input_data.generation_id,
-            }}
+            input=dict(source=source, transformation=transformation, save_insight=False),
+            config={"configurable": {"model_id": input_data.model_id}},
         )
 
-        # Save insight ONCE here, after the full final output is ready
+        # Save insight once
         final_output = result.get("output", "") if result else ""
         if source and final_output:
             await source.add_insight(
@@ -322,7 +327,6 @@ async def run_transformation_command(
         )
 
     except (ValueError, NotFoundError) as e:
-        # Validation/not-found errors are permanent failures - don't retry
         processing_time = time.time() - start_time
         logger.error(
             f"Failed to run transformation {input_data.transformation_id} "
@@ -336,7 +340,6 @@ async def run_transformation_command(
             error_message=str(e),
         )
     except Exception as e:
-        # Transient failure - will be retried (surreal-commands logs final failure)
         logger.debug(
             f"Transient error running transformation {input_data.transformation_id} "
             f"on source {input_data.source_id}: {e}"

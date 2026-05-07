@@ -54,6 +54,7 @@ dependencies = [
     "pdfplumber>=0.11.9",
     "pypdfium2>=5.7.1",
     "pytesseract>=0.3.13",
+    "json-repair>=0.59.5",
 ]
 
 [tool.setuptools]

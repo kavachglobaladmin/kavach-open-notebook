@@ -1,0 +1,3 @@
+-- Migration 23 rollback: Remove source_insight_tombstone table
+
+REMOVE TABLE source_insight_tombstone;

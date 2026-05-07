@@ -3,5 +3,56 @@ cls
 SELECT * FROM information_schema.tables;
 SELECT * FROM openNoteBookDB;
 cls
+<<<<<<< Updated upstream
 info for db;
 select * from kavach_user;
+=======
+DELETE command WHERE status = 'queued' AND app = 'open_notebook' AND name = 'run_transformation';
+SELECT id, name, status, created FROM command WHERE app = 'open_notebook' AND name = 'run_transformation' ORDER BY created DESC LIMIT 10;
+SELECT id, name, status, input FROM command WHERE app = 'open_notebook' AND name = 'run_transformation' AND id = 'command:0awujyvgm55ln3i2hmin';
+DELETE command WHERE status = 'queued' AND app = 'open_notebook';
+DELETE command WHERE status = 'queued' AND app = 'open_notebook' AND name = 'embed_insight';
+DELETE command 
+DELETE command WHERE app = 'open_notebook' AND status = 'queued'AND created < time::now() - 1h;
+select id from command
+SELECT id, input FROM command 
+SELECT * FROM command LIMIT 1
+INFO FOR DB;
+REMOVE TABLE note;
+REMOVE TABLE notebook;
+REMOVE TABLE source;
+REMOVE TABLE kavach_user;
+REMOVE TABLE source_embedding;
+REMOVE TABLE source_insight;
+REMOVE TABLE note;
+DELETE note;
+DELETE source;
+DELETE notebook;
+cls
+INFO FOR DB;
+REMOVE FUNCTION fn::text_search;
+REMOVE FUNCTION fn::vector_search;
+REMOVE ANALYZER my_analyzer;
+REMOVE USER openNoteBookUser ON DATABASE;
+REMOVE TABLE _sbl_migrations;
+REMOVE TABLE artifact;
+REMOVE TABLE chat_session;
+REMOVE TABLE command;
+REMOVE TABLE common_graph;
+REMOVE TABLE episode;
+REMOVE TABLE episode_profile;
+REMOVE TABLE model;
+REMOVE TABLE open_notebook;
+REMOVE TABLE podcast_config;
+REMOVE TABLE reference;
+REMOVE TABLE refers_to;
+REMOVE TABLE source_insight_generation;
+REMOVE TABLE source_insight_tombstone;
+REMOVE TABLE speaker_profile;
+REMOVE TABLE transformation;
+REMOVE TABLE credential;
+INFO FOR DB;
+cls
+INFO FOR DB
+cls
+>>>>>>> Stashed changes

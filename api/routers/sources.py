@@ -3875,50 +3875,60 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
 
         # If this insight type was previously deleted, clear the tombstone because
         # the user is explicitly asking to generate it again.
-        await repo_query(
-            """
-            DELETE source_insight_tombstone
-            WHERE source = $source_id
-              AND string::lowercase(string::trim(insight_type)) =
-                  string::lowercase(string::trim($insight_type))
-            """,
-            {
-                "source_id": ensure_record_id(source_id),
-                "insight_type": transformation.title,
-            },
-        )
+        # Note: table may not exist in all deployments — ignore errors
+        try:
+            await repo_query(
+                """
+                DELETE source_insight_tombstone
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                """,
+                {
+                    "source_id": ensure_record_id(source_id),
+                    "insight_type": transformation.title,
+                },
+            )
+        except Exception:
+            pass  # Table may not exist
 
         generation_id = str(uuid.uuid4())
 
         # Step 1: Delete old generation record (separate call - SurrealDB multi-statement ; unreliable)
-        await repo_query(
-            """
-            DELETE source_insight_generation
-            WHERE source = $source_id
-              AND string::lowercase(string::trim(insight_type)) =
-                  string::lowercase(string::trim($insight_type))
-            """,
+        try:
+            await repo_query(
+                """
+                DELETE source_insight_generation
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                """,
             {
                 "source_id": ensure_record_id(source_id),
                 "insight_type": transformation.title,
             },
         )
+        except Exception:
+            pass  # Table may not exist
 
         # Step 2: Create new generation record
-        await repo_query(
-            """
-            CREATE source_insight_generation CONTENT {
-                source: $source_id,
-                insight_type: $insight_type,
-                generation_id: $generation_id
-            }
-            """,
-            {
-                "source_id": ensure_record_id(source_id),
-                "insight_type": transformation.title,
-                "generation_id": generation_id,
-            },
-        )
+        try:
+            await repo_query(
+                """
+                CREATE source_insight_generation CONTENT {
+                    source: $source_id,
+                    insight_type: $insight_type,
+                    generation_id: $generation_id
+                }
+                """,
+                {
+                    "source_id": ensure_record_id(source_id),
+                    "insight_type": transformation.title,
+                    "generation_id": generation_id,
+                },
+            )
+        except Exception:
+            pass  # Table may not exist — generation_id still used for dedup
 
         # Get model name for logging
         model_name = "default"

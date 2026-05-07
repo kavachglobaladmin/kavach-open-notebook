@@ -585,11 +585,18 @@ async def content_process(state: SourceState) -> dict:
     content_text = processed_state.content or ""
     is_pdf = file_path and str(file_path).lower().endswith(".pdf")
 
-    # ── Bank Statement Pipeline: har PDF file mate pehla run karo ──
-    # For scanned/image PDFs: use _ocr_fallback to extract raw text first (fast, page-by-page).
-    # Store that as full_text. The bank_statement pipeline (transaction parsing) runs later
-    # when the user opens "Financial Analysis Report" — it uses source.full_text directly.
-    if is_pdf and file_path:
+    # ── Bank Statement Pipeline: only run for PDFs that look like bank statements ──
+    # Check filename for bank-statement keywords to avoid running the slow pipeline on every PDF.
+    # The pipeline can take up to 3 minutes; non-bank PDFs should skip it entirely.
+    _BANK_KEYWORDS = {
+        "statement", "bank", "account", "passbook", "transaction",
+        "hdfc", "sbi", "icici", "axis", "kotak", "canara", "federal",
+        "pnb", "bob", "ubi", "idbi", "yes bank", "indusind",
+    }
+    _fname_lower = str(file_path).lower() if file_path else ""
+    _is_bank_pdf = is_pdf and file_path and any(kw in _fname_lower for kw in _BANK_KEYWORDS)
+
+    if _is_bank_pdf:
         logger.info(f"PDF detected: '{file_path}'. Extracting text for storage...")
         try:
             from open_notebook.bank_statement.pipeline import run_pipeline
@@ -805,7 +812,12 @@ async def transform_content(state: TransformationState) -> Optional[dict]:
 
     logger.debug(f"Applying transformation {transformation.name}")
     result = await transform_graph.ainvoke(
-        dict(input_text=content, transformation=transformation)  # type: ignore[arg-type]
+        dict(
+            source=source,
+            input_text=content,
+            transformation=transformation,
+            save_insight=False,  # We save here after LLM completes, not inside run_transformation
+        )  # type: ignore[arg-type]
     )
     # Note: transform_graph.ainvoke() already calls source.add_insight() internally
     # in the run_transformation() node, so we don't duplicate it here

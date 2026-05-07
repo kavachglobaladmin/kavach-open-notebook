@@ -116,6 +116,28 @@ async def lifespan(app: FastAPI):
 
     logger.success("API initialization completed successfully")
 
+    # Fix stuck 'running' commands from previous worker sessions.
+    # When the worker crashes or restarts, commands stay in 'running' state
+    # and get re-executed on next startup — causing duplicate insights.
+    try:
+        from open_notebook.database.repository import repo_query as _rq, ensure_record_id as _eid
+        stuck = await _rq(
+            "SELECT id, result FROM command WHERE status = 'running'"
+        )
+        fixed_count = 0
+        for cmd in (stuck or []):
+            res = cmd.get("result") or {}
+            if res.get("execution_time") is not None and res.get("success") is True:
+                await _rq(
+                    "UPDATE $rid SET status = 'completed'",
+                    {"rid": _eid(str(cmd["id"]))},
+                )
+                fixed_count += 1
+        if fixed_count:
+            logger.info(f"Fixed {fixed_count} stuck 'running' command(s) from previous session")
+    except Exception as e:
+        logger.warning(f"Could not fix stuck commands: {e}")
+
     # Start Kafka mind map consumer as a background task
     kafka_consumer_task = None
     try:
