@@ -187,7 +187,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
         const required = await checkAuthRequired()
         if (!required) {
           const hasSession = localStorage.getItem('kavach_session') === 'true'
-          if (hasSession) router.push('/notebooks')
+          if (hasSession) router.push('/')
           else setIsCheckingAuth(false)
         }
       } catch { setIsCheckingAuth(false) }
@@ -196,7 +196,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     if (authRequired !== null) {
       if (!authRequired) {
         const hasSession = localStorage.getItem('kavach_session') === 'true'
-        if (hasSession && isAuthenticated) router.push('/notebooks')
+        if (hasSession && isAuthenticated) router.push('/')
         else setIsCheckingAuth(false)
       } else { setIsCheckingAuth(false) }
     } else { void checkAuth() }
@@ -249,6 +249,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     if (!ok) { setLocalError('Invalid credentials.'); setLocalLoading(false); return }
     localStorage.setItem('kavach_session', 'true')
     setLocalLoading(false)
+    router.push('/')
   }
 
   const handleSubmit = (e: React.FormEvent) => {

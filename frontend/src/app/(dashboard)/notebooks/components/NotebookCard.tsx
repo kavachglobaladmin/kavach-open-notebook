@@ -97,25 +97,25 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
     <>
       <div
         onClick={handleCardClick}
-        className="bg-white p-8 rounded-[28px] shadow-[0_2px_16px_rgba(99,52,227,0.08)] border border-slate-100/80 space-y-6 relative group cursor-pointer transition-all hover:shadow-[0_12px_40px_rgba(99,52,227,0.14)] hover:-translate-y-1.5 min-h-[220px]"
+        className="bg-white p-6 rounded-[20px] shadow-[0_2px_16px_rgba(0,0,0,0.04)] border border-slate-100/80 space-y-4 relative group cursor-pointer transition-all hover:shadow-[0_6px_28px_rgba(0,0,0,0.07)] hover:-translate-y-0.5"
       >
         {/* Top Row: Tags & Menu */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {notebook.archived ? (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
                 {t.notebooks.archived || 'Archived'}
               </span>
             ) : (
               <>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-[#F8F9FA] text-slate-500 border border-slate-100/60">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#F3F4F6] text-slate-500">
                   {categoryTag}
                 </span>
                 <span className={cn(
-                  "inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold tracking-wide",
-                  priorityTag === 'High Priority' && "bg-[#FDF2F2] text-[#F05252]",
-                  priorityTag === 'Medium' && "bg-[#FFF8E1] text-[#F59E0B]",
-                  priorityTag === 'Low' && "bg-[#EBF5FF] text-[#3B82F6]"
+                  "inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold",
+                  priorityTag === 'High Priority' && "bg-[#FEF2F2] text-[#EF4444]",
+                  priorityTag === 'Medium'        && "bg-[#FFFBEB] text-[#F59E0B]",
+                  priorityTag === 'Low'           && "bg-[#EFF6FF] text-[#3B82F6]"
                 )}>
                   {priorityTag}
                 </span>
@@ -128,10 +128,10 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-slate-400 hover:bg-slate-50 group-hover:text-slate-600 -mr-2 rounded-full h-8 w-8"
+                className="text-slate-400 hover:bg-slate-50 -mr-1 rounded-full h-8 w-8 shrink-0"
                 onClick={(e) => e.stopPropagation()}
               >
-                <MoreVertical className="h-[18px] w-[18px]" />
+                <MoreVertical className="h-[17px] w-[17px]" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()} className="rounded-xl shadow-lg">
@@ -154,41 +154,38 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
         </div>
 
         {/* Title and Description */}
-        <div className="pt-1">
-          <h3 className={cn(
-            "text-[24px] font-bold tracking-tight leading-snug",
-            colorScheme === 'blue' && !notebook.archived ? "text-[#5B52C6]" : "text-slate-900"
-          )}>
+        <div>
+          <h3 className="text-[20px] font-bold text-slate-900 tracking-tight leading-snug">
             {notebook.name}
           </h3>
-          <p className="text-[13px] text-slate-500 font-medium mt-1.5 line-clamp-1">
+          <p className="text-[13px] text-slate-500 font-medium mt-1 line-clamp-1">
             {notebook.description || t.chat.noDescription}
           </p>
         </div>
 
-        {/* Progress Section */}
-        <div className="space-y-2 pt-2">
-          <div className="flex items-center justify-between text-[13px] font-bold">
-            <span className="text-slate-500">{hasLimit ? "Storage Progress" : "Progress"}</span>
-            <span className="text-slate-900">{displayProgress}%</span>
+        {/* Progress bar */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[12px] font-semibold">
+            <span className="text-slate-500">{hasLimit ? 'Storage' : 'Progress'}</span>
+            <span className="text-slate-800">{displayProgress}%</span>
           </div>
-          <div className="relative h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
+          <div className="relative h-[6px] w-full rounded-full bg-slate-100 overflow-hidden">
             <div
               className={cn(
                 "absolute left-0 top-0 h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r",
-                colorScheme === 'blue'   && "from-[#4665F0] to-[#7851EB]",
+                colorScheme === 'blue'   && "from-[#4665F0] to-[#7C3AED]",
                 colorScheme === 'pink'   && "from-[#D946EF] to-[#EC4899]",
-                colorScheme === 'green'  && "from-[#10B981] to-[#10B981]",
-                colorScheme === 'purple' && "from-[#A855F7] to-[#B026FF]"
+                colorScheme === 'green'  && "from-[#10B981] to-[#34D399]",
+                colorScheme === 'purple' && "from-[#A855F7] to-[#7C3AED]"
               )}
               style={{ width: `${displayProgress}%` }}
             />
           </div>
         </div>
 
-        {/* Bottom Row: Metadata & Actions */}
-        <div className="flex items-center justify-between pt-3 mt-1">
-          <div className="flex items-center gap-4 text-[12px] font-medium text-slate-500">
+        {/* Bottom Row: Metadata + action icon */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-4 text-[12px] font-medium text-slate-400">
             <div className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" />
               Updated {formatDistanceToNow(new Date(notebook.updated), { addSuffix: true, locale: getDateLocale(language) })}
@@ -200,19 +197,21 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
             {hasLimit && (
               <div className="flex items-center gap-1.5">
                 <HardDrive className="h-3.5 w-3.5" />
-                {usedMb.toFixed(1)}MB
+                {usedMb.toFixed(1)} MB
               </div>
             )}
           </div>
 
           <div className={cn(
-            "p-2 rounded-full flex items-center justify-center transition-colors",
-            displayProgress === 100 || !showPause ? "bg-[#4665F0]/10 text-[#4665F0]" : "bg-[#10B981]/10 text-[#10B981]"
+            "h-7 w-7 rounded-full flex items-center justify-center transition-colors",
+            displayProgress === 100 || !showPause
+              ? "bg-[#EEF2FF] text-[#4665F0]"
+              : "bg-[#ECFDF5] text-[#10B981]"
           )}>
             {displayProgress === 100 || !showPause ? (
-              <Play className="h-3.5 w-3.5 ml-0.5 fill-current" />
+              <Play className="h-3 w-3 ml-0.5 fill-current" />
             ) : (
-              <Pause className="h-3.5 w-3.5 fill-current" />
+              <Pause className="h-3 w-3 fill-current" />
             )}
           </div>
         </div>
