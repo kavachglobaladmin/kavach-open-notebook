@@ -110,17 +110,9 @@ export default function NotebooksPage() {
 
   return (
     <AppShell>
-      {/* ── Background: solid lavender base + single top-right purple glow ── */}
-      <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden" style={{ background: '#ECEDF8' }}>
-
-        {/* Single large soft purple glow — top-right, exactly as in the reference image */}
-        <div
-          className="absolute top-[-10%] right-[-5%] w-[55%] h-[70%] rounded-full pointer-events-none z-0"
-          style={{
-            background: 'radial-gradient(ellipse at 70% 30%, rgba(180,160,255,0.60) 0%, rgba(200,185,255,0.35) 30%, rgba(220,210,255,0.15) 55%, transparent 75%)',
-            filter: 'blur(60px)',
-          }}
-        />
+      {/* ── Background: Soft, page-wide radial gradient from top-right to bottom-left ── */}
+      <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden" style={{ background: 'radial-gradient(ellipse at 80% 20%, #E9E1FE 0%, #ECEDF8 100%)' }}>
+        
         {/* Content Layer */}
         <div className="relative z-10 flex flex-col min-h-0">
           <PageHeader
@@ -134,26 +126,17 @@ export default function NotebooksPage() {
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-8">
 
-              {/* ── Heading + New Case button ── */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h1 className="text-[32px] font-bold text-[#1e1b4b] tracking-tight leading-none">
-                    Active Cases
-                  </h1>
-                  <p className="text-[14px] text-slate-500 font-medium mt-2">
-                    Monitor and manage your ongoing projects and workflows
-                  </p>
-                </div>
-                {/* <Button
-                  onClick={() => setCreateDialogOpen(true)}
-                  className="bg-[#6F4FF2] hover:bg-[#5D3ED9] text-white rounded-[14px] h-[44px] px-6 font-semibold text-[14px] gap-2 shadow-[0_6px_20px_rgba(111,79,242,0.30)] transition-all hover:scale-[1.02]"
-                >
-                  <Plus className="h-4 w-4" />
-                  New Case
-                </Button> */}
+              {/* ── Heading ── */}
+              <div>
+                <h1 className="text-[32px] font-bold text-[#6334E3] tracking-tight">
+                  Active Cases
+                </h1>
+                <p className="text-[14px] text-slate-500 font-medium mt-2">
+                  Monitor and manage your ongoing projects and workflows
+                </p>
               </div>
 
-              {/* ── KPI Cards — solid white, clean shadow, matches reference ── */}
+              {/* ── KPI Cards — style updated to match reference, preserving dynamic data ── */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                 {[
                   { label: 'Active Cases',    val: stats.activeCount,        icon: Disc,       color: '#4665F0' },

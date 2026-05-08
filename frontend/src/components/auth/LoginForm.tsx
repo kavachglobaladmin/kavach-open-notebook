@@ -5,13 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { getConfig, getApiUrl } from '@/lib/config'
-import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, BookOpen } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import Image from 'next/image'
-import { ForgotPasswordModal } from './ForgotPasswordModal'
 
 // Image Imports
-import KavachLogo from '@/assets/kavach_logo.png'
 import signUpIllustration from '@/assets/Wavy_Gen-01_Single-071.jpg'
 
 // ── Local user store ──────────────────────────────────────────────────────────
@@ -154,7 +152,6 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   const [localError, setLocalError] = useState('')
   const [localLoading, setLocalLoading] = useState(false)
   const [animating, setAnimating] = useState(false)
-  const [forgotOpen, setForgotOpen] = useState(false)
 
   const { login, isLoading: authLoading } = useAuth()
   const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } = useAuthStore()
@@ -187,7 +184,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
         const required = await checkAuthRequired()
         if (!required) {
           const hasSession = localStorage.getItem('kavach_session') === 'true'
-          if (hasSession) router.push('/')
+          if (hasSession) router.push('/dashboard')
           else setIsCheckingAuth(false)
         }
       } catch { setIsCheckingAuth(false) }
@@ -196,7 +193,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     if (authRequired !== null) {
       if (!authRequired) {
         const hasSession = localStorage.getItem('kavach_session') === 'true'
-        if (hasSession && isAuthenticated) router.push('/')
+        if (hasSession && isAuthenticated) router.push('/dashboard')
         else setIsCheckingAuth(false)
       } else { setIsCheckingAuth(false) }
     } else { void checkAuth() }
@@ -248,8 +245,8 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     const ok = await login(email.trim().toLowerCase(), password)
     if (!ok) { setLocalError('Invalid credentials.'); setLocalLoading(false); return }
     localStorage.setItem('kavach_session', 'true')
+    router.push('/dashboard')
     setLocalLoading(false)
-    router.push('/')
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -261,65 +258,85 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#EBEFFE] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
       <div className="flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-hidden border border-white z-10">
-        
-        {forgotOpen ? (
-          <ForgotPasswordModal open={forgotOpen} onClose={() => setForgotOpen(false)} onSignIn={() => { setForgotOpen(false); switchMode('signin') }} />
-        ) : (
-          <>
-            {mode === 'signin' && <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />}
-            
-            <div className={`flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-1/2 ${mode === 'signup' ? 'order-2 md:order-1' : ''}`} style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}>
-              <div className="flex justify-center mb-6">
-                <Image src={KavachLogo} alt="Kavach Logo" width={140} height={50} className="object-contain" />
+
+        {mode === 'signin' && <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />}
+
+        <div
+          className={`flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-1/2 ${mode === 'signup' ? 'order-2 md:order-1' : ''}`}
+          style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}
+        >
+          <div className="flex justify-center mb-6">
+            <div className="flex items-center gap-3 relative group">
+              <div className="absolute -left-4 -top-4 w-24 h-24 bg-[#7B3AED] opacity-[0.15] blur-[32px] rounded-full pointer-events-none" />
+              <div className="w-15 h-15 shrink-0 rounded-[14px] bg-gradient-to-br from-[#7B3AED] to-[#9333EA] flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(123,58,237,0.45)] relative overflow-hidden">
+                <BookOpen className="relative z-10 h-8 w-8 text-white transition-transform duration-500 ease-out group-hover:scale-110 group-hover:rotate-3" />
               </div>
-
-              <div className="mb-6 sm:mb-10">
-                <h2 className="font-black text-slate-900 text-[24px] sm:text-[32px] tracking-tight text-center mb-2">{mode === 'signin' ? 'Welcome Back' : 'Create Account'}</h2>
-                <p className="text-sm text-[#8B5CF6] font-bold text-center">{mode === 'signin' ? 'Sign In To Get Started' : 'Sign Up To Get Started'}</p>
+              <div className="flex flex-col text-left">
+                <span className="text-[25px] font-bold text-[#7B3AED] uppercase leading-none tracking-tight">NOTEBOOKS</span>
+                <span className="text-[16px] text-slate-500 font-medium leading-tight">AI Knowledge Base</span>
               </div>
+            </div>
+          </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5" noValidate>
-                {localError && <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs sm:text-sm font-medium"><AlertCircle className="w-4 h-4 shrink-0" />{localError}</div>}
-                
-                {mode === 'signup' && (
-                  <div className="space-y-1">
-                    <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
-                    <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} className={inputClass(!!nameError)} />
-                  </div>
-                )}
+          <div className="mb-6 sm:mb-10">
+            <h2 className="font-black text-slate-900 text-[24px] sm:text-[32px] tracking-tight text-center mb-2">
+              {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
+            </h2>
+            <p className="text-sm text-[#8B5CF6] font-bold text-center">
+              {mode === 'signin' ? 'Sign In To Get Started' : 'Sign Up To Get Started'}
+            </p>
+          </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
-                  <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass(!!emailError)} />
-                </div>
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5" noValidate>
+            {localError && (
+              <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs sm:text-sm font-medium">
+                <AlertCircle className="w-4 h-4 shrink-0" />{localError}
+              </div>
+            )}
 
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
-                  <div className="relative">
-                    <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass(!!passwordError)} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button>
-                  </div>
-                  {mode === 'signin' && (
-                    <div className="flex justify-end pt-1">
-                      <button type="button" onClick={() => setForgotOpen(true)} className="text-[11px] sm:text-[12px] text-[#8B5CF6] font-bold uppercase">Forgot Password?</button>
-                    </div>
-                  )}
-                </div>
+            {mode === 'signup' && (
+              <div className="space-y-1">
+                <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
+                <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} className={inputClass(!!nameError)} />
+              </div>
+            )}
 
-                <button type="submit" disabled={isLoading} className="w-full py-3 sm:py-4 rounded-2xl text-white text-[15px] sm:text-[16px] font-black shadow-xl transition-all active:scale-[0.98] bg-[#8B5CF6]">{isLoading ? <LoadingSpinner /> : (mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT')}</button>
-              </form>
-
-              <p className="text-sm text-slate-400 font-bold text-center pt-6">
-                {mode === 'signin' ? "New to Kavach?" : "Already have an account?"}{' '}
-                <button onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')} className="text-[#8B5CF6]">
-                  {mode === 'signin' ? 'Create an Account' : 'Sign In'}
-                </button>
-              </p>
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
+              <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass(!!emailError)} />
             </div>
 
-            {mode === 'signup' && <ThemedPanel mode="signup" onSwitch={() => switchMode('signin')} />}
-          </>
-        )}
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass(!!passwordError)} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+              {mode === 'signin' && (
+                <div className="flex justify-end pt-1">
+                  <button type="button" onClick={() => router.push('/forgot')} className="text-[11px] sm:text-[12px] text-[#8B5CF6] font-bold uppercase">
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button type="submit" disabled={isLoading} className="w-full py-3 sm:py-4 rounded-2xl text-white text-[15px] sm:text-[16px] font-black shadow-xl transition-all active:scale-[0.98] bg-[#8B5CF6]">
+              {isLoading ? <LoadingSpinner /> : (mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT')}
+            </button>
+          </form>
+
+          <p className="text-sm text-slate-400 font-bold text-center pt-6">
+            {mode === 'signin' ? 'New to Kavach?' : 'Already have an account?'}{' '}
+            <button onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')} className="text-[#8B5CF6]">
+              {mode === 'signin' ? 'Create an Account' : 'Sign In'}
+            </button>
+          </p>
+        </div>
+
+        {mode === 'signup' && <ThemedPanel mode="signup" onSwitch={() => switchMode('signin')} />}
       </div>
     </div>
   )

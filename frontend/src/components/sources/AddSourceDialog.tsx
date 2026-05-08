@@ -538,10 +538,10 @@ export function AddSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px] p-0">
+      <DialogContent className="sm:max-w-[700px] p-0 bg-white dark:bg-card overflow-hidden rounded-2xl">
         <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle>{t.sources.addNew}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-2xl font-bold text-gray-900 dark:text-foreground">{t.sources.addNew}</DialogTitle>
+          <DialogDescription className="text-gray-500 dark:text-muted-foreground">
             {t.sources.processDescription}
           </DialogDescription>
         </DialogHeader>
@@ -589,11 +589,12 @@ export function AddSourceDialog({
           </WizardContainer>
 
           {/* Navigation */}
-          <div className="flex justify-between items-center px-6 py-4 border-t border-border bg-muted">
+          <div className="flex justify-between items-center px-6 py-4 border-t border-border bg-white dark:bg-card">
             <Button 
               type="button" 
-              variant="outline" 
+              variant="outline"
               onClick={handleClose}
+              className="rounded-full px-8 py-2.5 font-semibold border-gray-200 text-gray-700 dark:border-gray-600 dark:text-gray-300"
             >
               {t.common.cancel}
             </Button>
@@ -604,28 +605,31 @@ export function AddSourceDialog({
                   type="button"
                   variant="outline"
                   onClick={handlePrevStep}
+                  className="rounded-full px-6 font-semibold border-gray-200 text-gray-700 dark:border-gray-600 dark:text-gray-300"
                 >
                   {t.common.back}
                 </Button>
               )}
 
-              {/* Show Next button on steps 1 and 2, styled as outline/secondary */}
+              {/* Show Next button on steps 1 and 2 */}
               {currentStep < 3 && (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={(e) => handleNextStep(e)}
                   disabled={!currentStepValid}
+                  className="rounded-full px-6 font-semibold border-gray-200 text-gray-700 dark:border-gray-600 dark:text-gray-300"
                 >
                   {t.common.next}
                 </Button>
               )}
 
-              {/* Show Done button on all steps, styled as primary */}
+              {/* Done button with gradient */}
               <Button
                 type="submit"
                 disabled={!currentStepValid || createSource.isPending}
-                className="min-w-[120px]"
+                className="min-w-[140px] rounded-2px px-8 py-2.5 font-semibold text-white border-0 shadow-[0_10px_20px_rgba(109,40,217,0.5)] transition-all"
+                style={{ background: 'linear-gradient(120deg, #3730a3 0%, #5422a4ff 50%, #811063ff 100%)' }}
               >
                 {createSource.isPending ? t.common.adding : t.common.done}
               </Button>

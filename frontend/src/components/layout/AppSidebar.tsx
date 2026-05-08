@@ -35,7 +35,7 @@ import {
 import { SourcePickerDialog } from '@/components/studio/SourcePickerDialog'
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutGrid, studio: null },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutGrid, studio: null },
   { name: 'Sources', href: '/sources', icon: FileText, studio: null },
   { name: 'Cases', href: '/notebooks', icon: Clipboard, studio: null },
   { name: 'Ask & Search', href: '/search', icon: Search, studio: null },
