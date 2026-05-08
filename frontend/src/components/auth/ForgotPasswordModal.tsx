@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { AlertCircle, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react'
+import { AlertCircle, CheckCircle2, XCircle, Eye, EyeOff, BookOpen } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { getApiUrl } from '@/lib/config'
 import Image from 'next/image'
 
 // ── Illustration imports ──────────────────────────────────────────────────────
-import KavachLogo    from '@/assets/kavach_logo.png'
 import authIllust    from '@/assets/Wavy_Tech-24_Single-02.jpg' 
 
 // ── User helpers (localStorage) ───────────────────────────
@@ -271,9 +270,18 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
           </div>
         ) : (
           <>
-            {/* Added Kavach Logo above the header text */}
+            
             <div className="flex justify-center mb-6">
-              <Image src={KavachLogo} alt="Kavach Logo" width={120} height={40} className="object-contain sm:w-[140px] sm:h-[50px]" />
+              <div className="flex items-center gap-3 relative group">
+                <div className="absolute -left-4 -top-4 w-24 h-24 bg-[#7B3AED] opacity-[0.15] blur-[32px] rounded-full pointer-events-none" />
+                <div className="w-12 h-12 shrink-0 rounded-[14px] bg-gradient-to-br from-[#7B3AED] to-[#9333EA] flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(123,58,237,0.45)] relative overflow-hidden">
+                  <BookOpen className="relative z-10 h-6 w-6 text-white transition-transform duration-500 ease-out group-hover:scale-110 group-hover:rotate-3" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-[18px] font-bold text-[#7B3AED] uppercase leading-none tracking-tight">NOTEBOOKS</span>
+                  <span className="text-[12px] text-slate-500 font-medium leading-tight">AI Knowledge Base</span>
+                </div>
+              </div>
             </div>
 
             <div className="mb-8 sm:mb-10 text-center">

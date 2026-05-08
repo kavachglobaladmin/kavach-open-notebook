@@ -766,7 +766,7 @@ function CredentialItem({
 
   return (
     <>
-      <div className="rounded-2xl border border-slate-100 bg-white p-3 space-y-2">
+      <div className="rounded-[16px] border border-slate-100 bg-white p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="font-semibold text-sm text-slate-800 truncate">{credential.name}</span>
@@ -950,10 +950,10 @@ function ProviderSection({
   const activeTypes = new Set(providerModels.map(m => m.type))
 
   return (
-    <div className={`rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col${!hasCredentials ? ' opacity-80' : ''}`}>
-      <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
+    <div className={`rounded-[24px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white flex flex-col${!hasCredentials ? ' opacity-80' : ''}`}>
+      <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1.5 min-w-0">
-          <span className="font-bold text-base text-slate-900">{displayName}</span>
+          <span className="font-bold text-[17px] text-slate-900">{displayName}</span>
           <div className="flex items-center gap-1 flex-wrap">
             {modalities.map((type) => (
               <span
@@ -982,7 +982,7 @@ function ProviderSection({
       </div>
 
       {credentials.length > 0 && (
-        <div className="px-4 space-y-2 pb-2">
+        <div className="px-5 space-y-3 pb-3">
           {credentials.map(cred => (
             <CredentialItem
               key={cred.id}
@@ -995,11 +995,11 @@ function ProviderSection({
         </div>
       )}
 
-      <div className="px-4 pb-4 mt-auto pt-2">
+      <div className="px-5 pb-5 mt-auto pt-3">
         <button
           onClick={() => setAddOpen(true)}
           disabled={!encryptionReady}
-          className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white bg-[#8B5CF6] hover:bg-[#7c3aed] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+          className="w-full flex items-center justify-center gap-2 rounded-[14px] py-3 text-[15px] font-bold text-white bg-[#8A2BE2] hover:bg-[#7a26c9] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_4px_14px_rgba(138,43,226,0.35)]"
         >
           <Plus className="h-4 w-4" />
           Add Configuration
@@ -1300,7 +1300,7 @@ export default function ApiKeysPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 flex flex-col min-h-0 bg-[#F5F8FF] relative overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 bg-[linear-gradient(110deg,#dbeafe_0%,#f0f7fa_45%,#e5d5f2_100%)] relative overflow-hidden">
         <PageHeader 
           searchValue={searchTerm} 
           onSearchChange={(val) => setSearchTerm(val)} 

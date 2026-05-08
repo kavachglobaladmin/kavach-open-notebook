@@ -9,7 +9,7 @@ import { TransformationEditorDialog } from './components/TransformationEditorDia
 import { useTransformations } from '@/lib/hooks/use-transformations'
 import { Transformation } from '@/lib/types/transformations'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { Plus, Copy, Pencil, Trash2, Play } from 'lucide-react'
+import { Plus, Copy, Pencil, Trash2, Play, ChevronDown } from 'lucide-react'
 
 // ─── Card icon color gradients (cycles per card index) ───────────────────────
 const ICON_GRADIENTS = [
@@ -88,7 +88,7 @@ function TransformationCard({
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Duplicate button — wired to onDuplicate */}
+          {/* Duplicate button */}
           <button
             onClick={() => onDuplicate?.(transformation)}
             className="flex items-center justify-center rounded-lg transition-colors hover:bg-slate-100"
@@ -97,7 +97,7 @@ function TransformationCard({
           >
             <Copy size={15} />
           </button>
-          {/* Edit button — wired to onEdit (same handler the original TransformationsList used) */}
+          {/* Edit button */}
           <button
             onClick={() => onEdit?.(transformation)}
             className="flex items-center justify-center rounded-lg transition-colors hover:bg-slate-100"
@@ -121,11 +121,10 @@ function TransformationCard({
 
       {/* Bottom row: runs count + Run button + delete */}
       <div className="flex items-center justify-between mt-4 pt-3" style={{ borderTop: '1px solid #F8FAFC' }}>
-        {/* runsCount: null-safe, no TS(18047) error */}
         <span className="text-slate-400 text-xs font-medium">{runsLabel}</span>
 
         <div className="flex items-center gap-2">
-          {/* Run button — soft indigo-to-purple pill */}
+          {/* Run button */}
           <button
             onClick={() => onPlayground(transformation)}
             className="flex items-center gap-1.5 font-semibold transition-all hover:opacity-90 active:scale-95"
@@ -142,7 +141,7 @@ function TransformationCard({
             Run
           </button>
 
-          {/* Delete button — wired to onDelete */}
+          {/* Delete button */}
           <button
             onClick={() => onDelete?.(transformation)}
             className="flex items-center justify-center rounded-lg transition-colors hover:bg-red-50"
@@ -208,48 +207,17 @@ export default function TransformationsPage() {
   }
 
   const handleDuplicate = (transformation: Transformation) => {
-    // e.g. duplicateMutation.mutate(transformation.id)
     console.log('duplicate', transformation.id)
   }
 
   const handleDelete = (transformation: Transformation) => {
-    // e.g. deleteMutation.mutate(transformation.id)
     console.log('delete', transformation.id)
   }
 
   return (
     <AppShell>
-      <div
-        className="flex-1 flex flex-col min-h-0 relative overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #EEF0FB 0%, #E8E4F5 50%, #EBF0FB 100%)' }}
-      >
-        {/* Top-right purple glow blob */}
-        <div
-          className="absolute top-0 right-0 pointer-events-none"
-          style={{
-            width: '560px',
-            height: '560px',
-            background: 'radial-gradient(circle, rgba(192,132,252,0.40) 0%, rgba(167,139,250,0.18) 50%, transparent 75%)',
-            borderRadius: '50%',
-            transform: 'translate(30%, -30%)',
-            filter: 'blur(6px)',
-          }}
-        />
-        {/* Mid-left blue glow blob */}
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            top: '28%',
-            left: 0,
-            width: '400px',
-            height: '400px',
-            background: 'radial-gradient(circle, rgba(147,197,253,0.30) 0%, rgba(196,181,253,0.10) 60%, transparent 80%)',
-            borderRadius: '50%',
-            transform: 'translateX(-42%)',
-            filter: 'blur(6px)',
-          }}
-        />
-
+      <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden bg-[linear-gradient(110deg,#dbeafe_0%,#f0f7fa_45%,#e5d5f2_100%)]">
+        
         <PageHeader
           searchValue={searchTerm}
           onSearchChange={(val) => setSearchTerm(val)}
@@ -257,58 +225,59 @@ export default function TransformationsPage() {
         />
 
         <div className="flex-1 overflow-y-auto relative z-10">
-          <div className="max-w-7xl mx-auto px-6 sm:px-8 py-8 space-y-6">
+          <div className="w-full px-6 md:px-12 py-10 pb-24 space-y-8 text-left">
 
             {/* Header row */}
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div>
-                <h1 className="text-4xl font-extrabold leading-tight" style={{ color: '#6D28D9' }}>
-                  {t.transformations.title}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
+              <div className="space-y-1.5">
+                {/* Dynamically changing the title based on the active tab */}
+                <h1 className="text-3xl md:text-[32px] font-bold text-[#8A2BE2] tracking-tight transition-all">
+                  {activeTab === 'transformations' ? 'Transformations' : 'Playground'}
                 </h1>
-                <p className="text-slate-500 mt-1 text-sm sm:text-base">
-                  {t.transformations.desc}
+                <p className="text-[14.5px] md:text-[15px] text-slate-500 font-medium transition-all">
+                  {activeTab === 'transformations' 
+                    ? 'Custom prompts for processing and analyzing your documents' 
+                    : 'Test and experiment with transformation prompts before saving'}
                 </p>
               </div>
-              <button
-                className="flex items-center gap-2 px-5 py-3 text-white font-semibold text-sm whitespace-nowrap transition-all hover:opacity-90 active:scale-95 self-start sm:self-auto"
-                style={{
-                  background: 'linear-gradient(90deg, #5B21B6 0%, #7C3AED 100%)',
-                  borderRadius: '999px',
-                  boxShadow: '0 4px 18px 0 rgba(109,40,217,0.28)',
-                }}
-              >
-                <Plus className="h-4 w-4 flex-shrink-0" />
-                {t.transformations.createNew}
-              </button>
+              
+              {/* Only show Create button if on Transformations tab */}
+              {activeTab === 'transformations' && (
+                <button
+                  onClick={() => {
+                    setEditingTransformation(undefined)
+                    setEditorOpen(true)
+                  }}
+                  className="flex items-center gap-2 px-6 py-3.5 text-white font-bold text-[14px] whitespace-nowrap transition-all hover:opacity-90 active:scale-95 self-start sm:self-auto rounded-full shadow-[0_4px_18px_0_rgba(138,43,226,0.30)] bg-gradient-to-r from-[#8A2BE2] to-[#A855F7]"
+                >
+                  <Plus className="h-5 w-5 flex-shrink-0" />
+                  Create Transformation
+                </button>
+              )}
             </div>
 
             {/* Tab Pills */}
-            <div className="flex items-center gap-2">
-              {(['transformations', 'playground'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className="px-6 py-2.5 text-sm font-semibold transition-all"
-                  style={
-                    activeTab === tab
-                      ? {
-                          background: 'linear-gradient(90deg, #6366F1 0%, #A855F7 100%)',
-                          color: '#fff',
-                          borderRadius: '999px',
-                          boxShadow: '0 2px 12px 0 rgba(139,92,246,0.28)',
-                          border: '2px solid transparent',
-                        }
-                      : {
-                          background: '#fff',
-                          color: '#64748b',
-                          borderRadius: '999px',
-                          border: '2px solid #E2E8F0',
-                        }
-                  }
-                >
-                  {tab === 'transformations' ? t.transformations.title : t.transformations.playground}
-                </button>
-              ))}
+            <div className="flex items-center gap-3 mb-6">
+              <button
+                onClick={() => setActiveTab('transformations')}
+                className={`px-6 py-3 rounded-full font-bold text-[14.5px] transition-all ${
+                  activeTab === 'transformations'
+                    ? 'bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md'
+                    : 'bg-white text-slate-600 shadow-sm border border-slate-100 hover:bg-slate-50'
+                }`}
+              >
+                My Transformations
+              </button>
+              <button
+                onClick={() => setActiveTab('playground')}
+                className={`px-6 py-3 rounded-full font-bold text-[14.5px] transition-all ${
+                  activeTab === 'playground'
+                    ? 'bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md'
+                    : 'bg-white text-slate-600 shadow-sm border border-slate-100 hover:bg-slate-50'
+                }`}
+              >
+                Playground
+              </button>
             </div>
 
             {/* Tab content */}
@@ -355,13 +324,13 @@ export default function TransformationsPage() {
                   <DefaultPromptEditor />
                 </div>
 
-                {/* Transformation Cards — 2-column responsive grid */}
+                {/* Transformation Cards — Responsive grid adapting to full width */}
                 {isLoading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                     {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                     {(transformations ?? []).map((transformation, index) => (
                       <TransformationCard
                         key={transformation.id}
@@ -378,17 +347,66 @@ export default function TransformationsPage() {
 
               </div>
             ) : (
-              <TransformationPlayground
-                transformations={transformations}
-                selectedTransformation={selectedTransformation}
-              />
+              /* Exact Figma Design Playground UI */
+              <div className="w-full bg-white rounded-3xl shadow-sm border border-slate-200/60 p-6 sm:p-8 lg:p-10 max-w-[1200px]">
+                <div className="space-y-8">
+                  {/* Prompt Textarea */}
+                  <div className="space-y-3">
+                    <label className="text-[14.5px] font-bold text-slate-700 block">Transformation Prompt</label>
+                    <textarea
+                      className="w-full min-h-[160px] p-5 bg-[#F8F9FA] border border-slate-200 rounded-2xl text-[14.5px] focus:outline-none focus:ring-2 focus:ring-[#8A2BE2]/30 resize-none placeholder:text-slate-400"
+                      placeholder="Enter your transformation prompt... e.g., 'Analyze this document and extract key insights, main themes, and actionable recommendations.'"
+                      defaultValue={selectedTransformation?.prompt || ""}
+                    ></textarea>
+                  </div>
+
+                  {/* Dropdowns */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <label className="text-[14.5px] font-bold text-slate-700 block">Select Model</label>
+                      <div className="relative">
+                        <select className="w-full h-[52px] px-5 bg-[#F5F3FF] border border-[#E0E7FF] rounded-xl text-[14.5px] text-[#7C3AED] font-bold focus:outline-none focus:ring-2 focus:ring-[#8A2BE2]/30 cursor-pointer appearance-none">
+                          <option>GPT-4 Turbo</option>
+                          <option>Claude 3 Opus</option>
+                          <option>Gemini 1.5 Pro</option>
+                        </select>
+                        <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#7C3AED] pointer-events-none" />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <label className="text-[14.5px] font-bold text-slate-700 block">Sample Document</label>
+                      <div className="relative">
+                        <select className="w-full h-[52px] px-5 bg-white border border-slate-200 rounded-xl text-[14.5px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#8A2BE2]/30 cursor-pointer appearance-none">
+                          <option>Research Paper - AI Trends.pdf</option>
+                          <option>Q3 Financial Report.xlsx</option>
+                        </select>
+                        <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Run Button */}
+                  <button className="w-full h-[56px] mt-4 bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] hover:from-[#7A26C9] hover:to-[#9333EA] text-white text-[15px] font-bold rounded-xl flex items-center justify-center gap-3 transition-colors shadow-[0_4px_14px_rgba(138,43,226,0.30)]">
+                    <Play className="w-5 h-5 fill-current" />
+                    Run Transformation
+                  </button>
+                </div>
+
+                {/* Hidden original component to preserve logic/imports if needed elsewhere in the component tree implicitly */}
+                <div className="hidden">
+                  <TransformationPlayground
+                    transformations={transformations}
+                    selectedTransformation={selectedTransformation}
+                  />
+                </div>
+              </div>
             )}
 
           </div>
         </div>
       </div>
-      {/* === UI CHANGES END === */}
-
+      
       {/* ── Edit Transformation Dialog (original popup) ─────────────────── */}
       <TransformationEditorDialog
         open={editorOpen}

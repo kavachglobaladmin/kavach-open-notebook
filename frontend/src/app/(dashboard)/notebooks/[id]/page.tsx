@@ -133,18 +133,29 @@ export default function NotebookPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col flex-1 min-h-0">
-        <PageHeader
-          searchValue={searchTerm}
-          onSearchChange={setSearchTerm}
-          searchPlaceholder="Search notebook..."
-          hideNew
-        />
-        <div className="flex-shrink-0 p-6 pb-0">
-          <NotebookHeader notebook={notebook} />
-        </div>
+      <div className="flex flex-col flex-1 min-h-0 relative overflow-hidden" style={{ background: '#ECEDF8' }}>
 
-        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col">
+        {/* Top-right purple glow — exact match to Cases page */}
+        <div
+          className="absolute top-[-10%] right-[-5%] w-[55%] h-[70%] rounded-full pointer-events-none z-0"
+          style={{
+            background: 'radial-gradient(ellipse at 70% 30%, rgba(180,160,255,0.60) 0%, rgba(200,185,255,0.35) 30%, rgba(220,210,255,0.15) 55%, transparent 75%)',
+            filter: 'blur(60px)',
+          }}
+        />
+
+        <div className="relative z-10 flex flex-col flex-1 min-h-0">
+          <PageHeader
+            searchValue={searchTerm}
+            onSearchChange={setSearchTerm}
+            searchPlaceholder="Search notebook..."
+            hideNew
+          />
+          <div className="flex-shrink-0 p-6 pb-0">
+            <NotebookHeader notebook={notebook} />
+          </div>
+
+          <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col">
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
@@ -253,7 +264,8 @@ export default function NotebookPage() {
             </div>
           </div>
         </div>
-      </div>
+        </div>{/* end relative z-10 */}
+      </div>{/* end background wrapper */}
     </AppShell>
   )
 }

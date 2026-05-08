@@ -5,15 +5,12 @@ import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Save, Sparkles, SendHorizontal, ArrowRight, Lightbulb, Link2, Brain, Zap } from 'lucide-react'
+import { ChevronDown, AlertCircle, Save, Sparkles, Search, SendHorizontal, ArrowRight, Lightbulb, Link2, Brain, Zap } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -126,194 +123,224 @@ export default function SearchPage() {
 
   return (
     <AppShell>
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden bg-[#FAFBFF]">
-        <div className="absolute top-[20%] -left-[10%] w-[50%] h-[60%] rounded-full bg-[#E0F2FE] mix-blend-multiply blur-[140px] opacity-70"></div>
-        <div className="absolute -top-[10%] right-[-5%] w-[55%] h-[65%] rounded-full bg-[#F3E8FF] mix-blend-multiply blur-[140px] opacity-90"></div>
-      </div>
+      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#FAFBFF]">
+        {/* Background Gradients */}
+        <div className="absolute top-[10%] -left-[10%] w-[50%] h-[60%] rounded-full bg-[#E0F2FE] mix-blend-multiply blur-[120px] opacity-60 pointer-events-none"></div>
+        <div className="absolute -top-[10%] right-[-5%] w-[45%] h-[65%] rounded-full bg-[#F3E8FF] mix-blend-multiply blur-[120px] opacity-80 pointer-events-none"></div>
 
-      <PageHeader 
-        searchValue={searchQuery} 
-        onSearchChange={(val) => setSearchQuery(val)}
-        newLabel="NOTEBOOK"
-      />
-      
-      <div className="p-4 md:p-8 max-w-[1200px] mx-auto w-full relative z-10">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-[2.5rem] font-bold text-[#A855F7] mb-2 tracking-tight">Ask & Search</h1>
-          <p className="text-[14px] md:text-[15px] text-gray-500 font-medium">Your AI-powered knowledge assistant</p>
-        </div>
+        <PageHeader 
+          searchValue={searchQuery} 
+          onSearchChange={(val) => setSearchQuery(val)}
+          newLabel="NOTEBOOK"
+        />
+        
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-8 pb-20 max-w-[1000px] mx-auto w-full relative z-10 min-h-full">
+            <div className="text-center mb-6">
+              <h1 className="text-3xl md:text-[32px] font-bold text-[#8A2BE2] mb-2 tracking-tight">Ask & Search</h1>
+              <p className="text-[14px] md:text-[15px] text-slate-500 font-medium">Your AI-powered knowledge assistant</p>
+            </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
-          {/* Updated Tabs List to match Button-style format */}
-          <div className="flex justify-center mb-10 px-4">
-            <TabsList className="bg-white/70 backdrop-blur-md border border-white/50 h-auto p-1.5 flex items-center justify-center rounded-[2rem] shadow-sm">
-              <TabsTrigger 
-                value="ask"
-                className="rounded-full px-6 md:px-10 py-2.5 text-sm font-bold transition-all duration-300 flex items-center gap-2
-                           data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#7C3AED] data-[state=active]:to-[#A855F7]
-                           data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-purple-500/40
-                           data-[state=inactive]:text-gray-500 hover:data-[state=inactive]:bg-gray-50"
-              >
-                <Sparkles className="h-4 w-4" />
-                Ask AI (Beta)
-              </TabsTrigger>
-              <TabsTrigger 
-                value="search"
-                className="rounded-full px-6 md:px-10 py-2.5 text-sm font-bold transition-all duration-300 flex items-center gap-2
-                           data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#7C3AED] data-[state=active]:to-[#A855F7]
-                           data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-purple-500/40
-                           data-[state=inactive]:text-gray-500 hover:data-[state=inactive]:bg-gray-50"
-              >
-                <Search className="h-4 w-4" />
-                Search
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <div className="bg-white/95 backdrop-blur-xl rounded-[1.5rem] md:rounded-[2.5rem] shadow-[0_8px_40px_rgb(0,0,0,0.03)] border border-white p-5 md:p-14">
-            
-            <TabsContent value="ask" className="mt-0 focus-visible:outline-none">
-              <div className="text-center mb-8">
-                <h2 className="text-xl md:text-[1.75rem] font-bold text-gray-900 mb-2">Ask Your Knowledge Base</h2>
-                <p className="text-gray-500 text-sm md:text-[15px] font-medium">Get AI-powered answers from your documents</p>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
+              <div className="flex justify-center mb-8 px-4 sticky top-0 z-20 pt-2 pb-4">
+                <div className="bg-white p-1.5 flex items-center justify-center rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 w-fit mx-auto">
+                  <Button 
+                    variant="ghost"
+                    onClick={() => setActiveTab('ask')}
+                    className={cn(
+                      "h-[48px] rounded-full px-6 sm:px-10 text-[14px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
+                      activeTab === 'ask' 
+                        ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
+                        : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
+                    )}
+                  >
+                    <Sparkles className="h-[18px] w-[18px]" />
+                    Ask AI (Beta)
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    onClick={() => setActiveTab('search')}
+                    className={cn(
+                      "h-[48px] rounded-full px-6 sm:px-10 text-[14px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
+                      activeTab === 'search' 
+                        ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
+                        : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
+                    )}
+                  >
+                    <Search className="h-[18px] w-[18px]" />
+                    Search
+                  </Button>
+                </div>
               </div>
 
-              <div className="max-w-4xl mx-auto space-y-6">
-                <div>
-                  <div className="relative mb-5">
-                    <Textarea
-                      placeholder="What are the connections between Project Alpha and the latest market trends?"
-                      value={askQuestion}
-                      onChange={(e) => setAskQuestion(e.target.value)}
-                      disabled={ask.isStreaming}
-                      className="border-none shadow-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-purple-100 resize-none text-base min-h-[140px] p-6 bg-[#F8F9FE] rounded-[1.25rem] w-full placeholder:text-gray-400"
+              <div className="bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-6 md:p-10 w-full mb-10">
+                
+                <TabsContent value="ask" className="mt-0 focus-visible:outline-none">
+                  <div className="text-center mb-8">
+                    <h2 className="text-[20px] md:text-[24px] font-bold text-slate-900 mb-1.5">Ask Your Knowledge Base</h2>
+                    <p className="text-slate-500 text-[14px]">Get AI-powered answers from your documents</p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <div className="relative mb-5">
+                        <Textarea
+                          placeholder="What are the connections between Project Alpha and the latest market trends?"
+                          value={askQuestion}
+                          onChange={(e) => setAskQuestion(e.target.value)}
+                          disabled={ask.isStreaming}
+                          className="border border-slate-100 shadow-sm transition-all duration-200 focus-visible:ring-1 focus-visible:ring-[#8A2BE2] resize-none text-[15px] min-h-[140px] p-5 pb-12 bg-[#F8F9FE] rounded-[16px] w-full placeholder:text-slate-400"
+                        />
+                        <div className="absolute right-5 bottom-5 w-6 h-6 rounded-full bg-purple-100/50"></div>
+                      </div>
+                      
+                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                        {!hasEmbeddingModel ? (
+                          <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-4 py-3 rounded-[12px] w-full font-medium">
+                            <AlertCircle className="h-5 w-5" />
+                            <span>{t.searchPage.noEmbeddingModel}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <Button
+                              variant="outline"
+                              onClick={() => setShowAdvancedModels(true)}
+                              disabled={ask.isStreaming}
+                              className="bg-[#F5F3FF] hover:bg-[#EDE9FE] border-none text-[#8A2BE2] font-bold h-[52px] px-6 rounded-[12px] w-full sm:w-auto shrink-0 transition-colors"
+                            >
+                              Advanced Mode <ChevronDown className="h-4 w-4 ml-2" />
+                            </Button>
+
+                            {ask.finalAnswer && (
+                              <Button
+                                onClick={() => setShowSaveDialog(true)}
+                                className="border-[#8A2BE2] text-[#8A2BE2] bg-transparent border-2 hover:bg-[#8A2BE2] hover:text-white h-[52px] px-6 rounded-[12px] font-bold w-full sm:w-auto transition-all"
+                              >
+                                <Save className="h-4 w-4 mr-2" /> Save
+                              </Button>
+                            )}
+                            
+                            <Button
+                              onClick={handleAsk}
+                              disabled={ask.isStreaming || !askQuestion.trim()}
+                              className="bg-[#8A2BE2] hover:bg-[#7A26C9] text-white h-[52px] rounded-[12px] px-8 font-bold flex-1 shadow-md shadow-purple-500/20 w-full sm:w-auto flex items-center justify-center gap-2.5 transition-all"
+                            >
+                              <Sparkles className="h-5 w-5" />
+                              {ask.isStreaming ? <LoadingSpinner size="sm" /> : "Ask AI"}
+                              {!ask.isStreaming && <SendHorizontal className="h-5 w-5" /> }
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <StreamingResponse
+                      isStreaming={ask.isStreaming}
+                      strategy={ask.strategy}
+                      answers={ask.answers}
+                      finalAnswer={ask.finalAnswer}
                     />
                   </div>
-                  
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    {!hasEmbeddingModel ? (
-                      <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-md">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>{t.searchPage.noEmbeddingModel}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowAdvancedModels(true)}
-                          disabled={ask.isStreaming}
-                          className="bg-[#F4EBFF] hover:bg-[#E9D5FF] border-none text-[#7E22CE] font-bold h-12 px-6 rounded-xl w-full sm:w-auto"
-                        >
-                          Advanced Mode <ChevronDown className="h-4 w-4 ml-2" />
-                        </Button>
+                </TabsContent>
 
-                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                          {ask.finalAnswer && (
-                            <Button
-                              onClick={() => setShowSaveDialog(true)}
-                              className="border-[#8C1BFA] text-[#8C1BFA] bg-transparent border hover:bg-[#8C1BFA] hover:text-white h-12 px-6 rounded-xl font-bold w-full sm:w-auto"
-                            >
-                              <Save className="h-4 w-4 mr-2" /> Save
-                            </Button>
-                          )}
-                          <Button
-                            onClick={handleAsk}
-                            disabled={ask.isStreaming || !askQuestion.trim()}
-                            className="bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white h-12 rounded-xl px-8 font-bold shadow-lg shadow-purple-500/20 w-full sm:w-auto"
-                          >
-                            {ask.isStreaming ? <LoadingSpinner size="sm" /> : "Ask AI"}
-                          </Button>
+                <TabsContent value="search" className="mt-0 focus-visible:outline-none">
+                  <div className="text-center mb-8">
+                    <div className="mx-auto w-[60px] h-[60px] rounded-2xl bg-[#8A2BE2] flex items-center justify-center shadow-lg shadow-purple-500/30 mb-5">
+                      <Search className="h-7 w-7 text-white" />
+                    </div>
+                    <h2 className="text-[20px] md:text-[24px] font-bold text-slate-900 mb-1.5">Search Your Knowledge Base</h2>
+                    <p className="text-slate-500 text-[14px]">Find documents or concepts instantly</p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-5">
+                      <Input
+                        placeholder="Enter search query..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        className="h-[56px] border border-slate-100 bg-[#F8F9FE] rounded-[16px] px-6 text-[15px] focus-visible:ring-1 focus-visible:ring-[#8A2BE2] shadow-sm"
+                      />
+                      
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <select
+                          value={searchType}
+                          onChange={(e) => setSearchType(e.target.value as 'text' | 'vector')}
+                          className="bg-[#F5F3FF] text-[#8A2BE2] text-[14px] font-bold px-6 py-3 rounded-[12px] outline-none border-none h-[52px] w-full sm:w-48 cursor-pointer"
+                        >
+                          <option value="text">All Documents</option>
+                          <option value="vector">Vector Only</option>
+                        </select>
+
+                        <Button
+                          onClick={handleSearch}
+                          disabled={searchMutation.isPending || !searchQuery.trim()}
+                          className="bg-[#8A2BE2] hover:bg-[#7A26C9] text-white h-[52px] rounded-[12px] px-10 font-bold shadow-md shadow-purple-500/20 flex-1 transition-all"
+                        >
+                          {searchMutation.isPending ? <LoadingSpinner size="sm" /> : "Search"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {searchMutation.data && (
+                      <div className="mt-8 space-y-4 text-left">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                          <span className="text-[14px] font-bold text-slate-600">Results ({searchMutation.data.total_count})</span>
                         </div>
-                      </>
+                        {searchMutation.data.results.map((result, index) => (
+                          <Card key={index} className="border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow rounded-[16px]">
+                            <CardContent className="p-5">
+                              <button 
+                                onClick={() => {
+                                  const [type, id] = result.parent_id.split(':')
+                                  openModal(type as any, id)
+                                }}
+                                className="text-[#8A2BE2] font-bold text-[16px] hover:underline text-left block w-full"
+                              >
+                                {result.title}
+                              </button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
                     )}
                   </div>
-                </div>
-
-                <StreamingResponse
-                  isStreaming={ask.isStreaming}
-                  strategy={ask.strategy}
-                  answers={ask.answers}
-                  finalAnswer={ask.finalAnswer}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="search" className="mt-0 focus-visible:outline-none">
-              <div className="text-center mb-8">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-[#7C3AED] to-[#A855F7] flex items-center justify-center shadow-lg shadow-purple-500/30 mb-5">
-                  <Search className="h-7 w-7 text-white" />
-                </div>
-                <h2 className="text-xl md:text-[1.75rem] font-bold text-gray-900 mb-2">Search Your Knowledge Base</h2>
-                <p className="text-gray-500 text-sm md:text-[15px]">Find documents or concepts instantly</p>
+                </TabsContent>
               </div>
 
-              <div className="max-w-3xl mx-auto space-y-6">
-                <div className="space-y-4">
-                  <Input
-                    placeholder="Enter search query..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="h-14 border-none bg-[#F8F9FE] rounded-[1rem] px-6 text-base focus-visible:ring-2 focus-visible:ring-purple-100"
+              <div className="w-full">
+                <h3 className="text-slate-800 font-bold text-[16px] mb-4 px-1">Quick Actions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <QuickActionCard 
+                    title="Summarize Sources" 
+                    desc="Get key insights from your entire knowledge base" 
+                    icon={<Lightbulb className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#FF8A00]" 
                   />
-                  
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <select
-                      value={searchType}
-                      onChange={(e) => setSearchType(e.target.value as 'text' | 'vector')}
-                      className="bg-[#F4EBFF] text-[#7E22CE] text-sm font-bold px-6 py-3 rounded-xl outline-none border-none h-12 w-full sm:w-48 cursor-pointer"
-                    >
-                      <option value="text">All Documents</option>
-                      <option value="vector">Vector Only</option>
-                    </select>
-
-                    <Button
-                      onClick={handleSearch}
-                      disabled={searchMutation.isPending || !searchQuery.trim()}
-                      className="bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white h-12 rounded-xl px-10 font-bold shadow-lg shadow-purple-500/20 flex-1"
-                    >
-                      {searchMutation.isPending ? <LoadingSpinner size="sm" /> : "Search"}
-                    </Button>
-                  </div>
+                  <QuickActionCard 
+                    title="Find Connections" 
+                    desc="Discover hidden relationships between documents" 
+                    icon={<Link2 className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#3B82F6]" 
+                  />
+                  <QuickActionCard 
+                    title="Deep Analysis" 
+                    desc="Comprehensive analysis across multiple sources" 
+                    icon={<Brain className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#E83E8C]" 
+                  />
+                  <QuickActionCard 
+                    title="Quick Insights" 
+                    desc="Fast answers from your knowledge base" 
+                    icon={<Zap className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#10B981]" 
+                  />
                 </div>
-
-                {searchMutation.data && (
-                  <div className="mt-8 space-y-4 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-gray-600">Results ({searchMutation.data.total_count})</span>
-                    </div>
-                    {/* Search Results Mapping logic remains identical to original content */}
-                    {searchMutation.data.results.map((result, index) => (
-                      <Card key={index} className="border-none bg-white shadow-sm hover:shadow-md transition-shadow rounded-xl">
-                        <CardContent className="p-5">
-                          <button 
-                            onClick={() => {
-                              const [type, id] = result.parent_id.split(':')
-                              openModal(type as any, id)
-                            }}
-                            className="text-[#7C3AED] font-bold text-lg hover:underline"
-                          >
-                            {result.title}
-                          </button>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
               </div>
-            </TabsContent>
+            </Tabs>
           </div>
-
-          <div className="mt-12 space-y-6">
-            <h3 className="text-slate-900 font-bold text-lg px-2">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <QuickActionCard title="Summarize Sources" desc="Get key insights quickly" icon={<Lightbulb className="text-white" />} iconBg="bg-orange-500" />
-              <QuickActionCard title="Find Connections" desc="Discover hidden relationships" icon={<Link2 className="text-white" />} iconBg="bg-blue-500" />
-              <QuickActionCard title="Deep Analysis" desc="Comprehensive reporting" icon={<Brain className="text-white" />} iconBg="bg-purple-500" />
-              <QuickActionCard title="Quick Insights" desc="Fast AI answers" icon={<Zap className="text-white" />} iconBg="bg-emerald-500" />
-            </div>
-          </div>
-        </Tabs>
+        </div>
       </div>
 
       <AdvancedModelsDialog
@@ -332,15 +359,15 @@ export default function SearchPage() {
 
 function QuickActionCard({ title, desc, icon, iconBg }: { title: string, desc: string, icon: React.ReactNode, iconBg: string }) {
   return (
-    <button className="flex items-center gap-4 p-5 bg-white rounded-2xl border border-slate-50 shadow-sm hover:shadow-md transition-all text-left w-full group">
-      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm", iconBg)}>
+    <button className="flex items-center gap-4 p-5 bg-white rounded-[16px] border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all text-left w-full group">
+      <div className={cn("w-[48px] h-[48px] rounded-[14px] flex items-center justify-center shrink-0 shadow-sm", iconBg)}>
         {icon}
       </div>
       <div className="flex-1">
-        <h4 className="font-bold text-slate-800 text-[15px]">{title}</h4>
-        <p className="text-slate-400 text-xs font-medium">{desc}</p>
+        <h4 className="font-bold text-slate-800 text-[15px] mb-1">{title}</h4>
+        <p className="text-slate-500 text-[13px] leading-snug">{desc}</p>
       </div>
-      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition-colors" />
+      <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
     </button>
   )
 }

@@ -23,7 +23,7 @@ function StepIndicator({ currentStep, steps, onStepClick }: {
   onStepClick?: (step: number) => void
 }) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted">
+    <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-white dark:bg-card">
       {steps.map((step, index) => {
         const isCompleted = currentStep > step.number
         const isCurrent = currentStep === step.number
@@ -37,28 +37,25 @@ function StepIndicator({ currentStep, steps, onStepClick }: {
             >
               <div
                 className={cn(
-                  'flex items-center justify-center w-8 h-8 rounded-full border-2 text-sm font-medium transition-colors',
-                  isCompleted 
-                    ? 'bg-primary border-primary text-primary-foreground' 
-                    : isCurrent 
-                      ? 'border-primary text-primary bg-primary/10'
-                      : 'border-border text-muted-foreground bg-card'
+                  'flex items-center justify-center w-9 h-9 rounded-full text-sm font-semibold transition-all',
+                  isCompleted || isCurrent
+                    ? 'text-white shadow-md'
+                    : 'border-2 border-gray-200 text-gray-400 bg-white dark:bg-card dark:border-gray-600 dark:text-gray-500'
                 )}
+                style={
+                  isCompleted || isCurrent
+                    ? { background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #5b21b6 100%)' }
+                    : undefined
+                }
               >
                 {isCompleted ? "✓" : step.number}
               </div>
               <div className="ml-3 min-w-0">
                 <p className={cn(
-                  'text-sm font-medium',
-                  isCurrent ? 'text-foreground' : 'text-muted-foreground'
+                  'text-sm font-semibold',
+                  isCurrent ? 'text-gray-900 dark:text-foreground' : 'text-gray-400 dark:text-muted-foreground'
                 )}>
                   {step.title}
-                </p>
-                <p className={cn(
-                  'text-xs',
-                  isCurrent ? 'text-muted-foreground' : 'text-muted-foreground/80'
-                )}>
-                  {step.description}
                 </p>
               </div>
             </div>
@@ -66,7 +63,7 @@ function StepIndicator({ currentStep, steps, onStepClick }: {
               <div 
                 className={cn(
                   'flex-1 border-t-2 mx-4 transition-colors',
-                  isCompleted ? 'border-primary' : 'border-border/60'
+                  isCompleted ? 'border-violet-500' : 'border-gray-200 dark:border-border/60'
                 )} 
               />
             )}
@@ -85,7 +82,7 @@ export function WizardContainer({
   className
 }: WizardContainerProps) {
   return (
-    <div className={cn('flex flex-col h-[500px] min-w-0 overflow-hidden bg-card rounded-lg border border-border', className)}>
+    <div className={cn('flex flex-col h-[500px] min-w-0 overflow-hidden bg-white dark:bg-card rounded-lg border border-border', className)}>
       <StepIndicator
         currentStep={currentStep}
         steps={steps}

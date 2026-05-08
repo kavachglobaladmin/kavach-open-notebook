@@ -156,7 +156,7 @@ export function PageHeader({
               onChange={e => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
               autoComplete="off"
-              className="pl-12 h-[46px] bg-[#F8FAFC] border-[#E2E8F0] rounded-[24px] text-[15px] placeholder:text-slate-400 text-slate-700 focus-visible:ring-[#8B5CF6] focus-visible:ring-offset-0 focus-visible:border-[#8B5CF6] transition-all hover:border-slate-300"
+              className="pl-12 h-[46px] bg-[#F8FAFC] border-[#E2E8F0] rounded-[13px] text-[15px] placeholder:text-slate-400 text-slate-700 focus-visible:ring-[#8B5CF6] focus-visible:ring-offset-0 focus-visible:border-[#8B5CF6] transition-all hover:border-slate-300"
             />
           </div>
         )}
