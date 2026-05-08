@@ -919,7 +919,6 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
     # Use model_id from config first, then fall back to transformation's model_id
     model_id = config.get("configurable", {}).get("model_id") or transformation.model_id
     generation_id = config.get("configurable", {}).get("generation_id")
-    generation_id = config.get("configurable", {}).get("generation_id")
 
     try:
         # Log the model being used

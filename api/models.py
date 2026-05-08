@@ -365,6 +365,8 @@ class SourceResponse(BaseModel):
     topics: Optional[List[str]]
     asset: Optional[AssetModel]
     full_text: Optional[str]
+    translated_content: Optional[str] = None   # English translation (if original is non-English)
+    content_language: Optional[str] = None     # Detected language code (e.g. "hi", "en")
     embedded: bool
     embedded_chunks: int
     file_available: Optional[bool] = None

@@ -301,7 +301,13 @@ async def run_transformation_command(
 
         # Run transformation graph
         result = await transform_graph.ainvoke(
-            input=dict(source=source, transformation=transformation, save_insight=False),
+            input=dict(
+                source=source,
+                transformation=transformation,
+                save_insight=False,
+                # Use translated content if available (better for non-English sources)
+                input_text=source.translated_content if source.translated_content else source.full_text,
+            ),
             config={"configurable": {"model_id": input_data.model_id}},
         )
 

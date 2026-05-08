@@ -1,0 +1,6 @@
+-- Migration 24: Add translated_content field to source table
+-- Stores English translation of non-English source content
+-- full_text always contains the original content
+
+DEFINE FIELD translated_content ON TABLE source TYPE option<string>;
+DEFINE FIELD content_language ON TABLE source TYPE option<string>;

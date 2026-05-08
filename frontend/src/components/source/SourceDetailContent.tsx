@@ -448,6 +448,7 @@ export function SourceDetailContent({
   const [insightToDelete, setInsightToDelete] = useState<string | null>(null)
   const [deletingInsight, setDeletingInsight] = useState(false)
   const [isMarkdownView, setIsMarkdownView] = useState(false)
+  const [showOriginalContent, setShowOriginalContent] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const fetchSource = useCallback(async () => {
@@ -924,17 +925,30 @@ export function SourceDetailContent({
                     </CardDescription>
                   )}
                 </div>
-                {!isYouTubeUrl && source.full_text && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 font-semibold border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950 transition-all"
-                    onClick={() => setIsMarkdownView(true)}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Formatted View
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {!isYouTubeUrl && source.full_text && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 font-semibold border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950 transition-all"
+                      onClick={() => setIsMarkdownView(true)}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Formatted View
+                    </Button>
+                  )}
+                  {!isYouTubeUrl && source.translated_content && (
+                    <Button
+                      variant={showOriginalContent ? 'default' : 'outline'}
+                      size="sm"
+                      className="gap-2 font-semibold"
+                      onClick={() => setShowOriginalContent(v => !v)}
+                      title={showOriginalContent ? 'Show English translation' : 'Show original language content'}
+                    >
+                      {showOriginalContent ? '🌐 English' : `📄 Original (${(source.content_language ?? '').toUpperCase()})`}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {isYouTubeUrl && youTubeVideoId && (
@@ -964,7 +978,15 @@ export function SourceDetailContent({
                   </div>
                 )}
                 {!isYouTubeUrl && source.full_text && (
-                  <SafeContent text={source.full_text || ''} noContentLabel={t.sources.noContent} />
+                  <SafeContent
+                    text={
+                      // Show original if toggled OR if no translation available
+                      showOriginalContent || !source.translated_content
+                        ? source.full_text
+                        : source.translated_content
+                    }
+                    noContentLabel={t.sources.noContent}
+                  />
                 )}
                 {!isYouTubeUrl && !source.full_text && (
                   <SafeContent text={''} noContentLabel={t.sources.noContent} />
@@ -974,7 +996,7 @@ export function SourceDetailContent({
 
             {isMarkdownView && source.full_text && (
               <FormattedViewDialog
-                text={source.full_text}
+                text={showOriginalContent || !source.translated_content ? source.full_text : source.translated_content}
                 sourceId={source.id}
                 open={isMarkdownView}
                 onClose={() => setIsMarkdownView(false)}

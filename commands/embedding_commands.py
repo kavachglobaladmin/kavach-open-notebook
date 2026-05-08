@@ -474,19 +474,13 @@ async def create_insight_command(
         vars = {
             "source_id": ensure_record_id(input_data.source_id),
             "insight_type": insight_type_clean,
+            "content": input_data.content,
         }
 
         logger.info(
             f"Creating insight for source {input_data.source_id}: "
             f"type={input_data.insight_type}"
         )
-
-        insight_type_clean = (input_data.insight_type or "").strip()
-        vars = {
-            "source_id": ensure_record_id(input_data.source_id),
-            "insight_type": insight_type_clean,
-            "content": input_data.content,
-        }
 
         if input_data.generation_id:
             active_generation = await repo_query(
@@ -516,17 +510,8 @@ async def create_insight_command(
                         processing_time=time.time() - start_time,
                     )
         else:
-            # No generation_id = old queued command from a previous session.
-            # Always skip — the current session's command (with generation_id) will handle it.
-            logger.info(
-                f"Skipping legacy (no generation_id) create_insight for source "
-                f"{input_data.source_id}: type={insight_type_clean}"
-            )
-            return CreateInsightOutput(
-                success=True,
-                insight_id=None,
-                processing_time=time.time() - start_time,
-            )
+            # No generation_id — proceed normally (process_source_command path)
+            pass
 
         # Respect user deletions: if this insight type was deleted, do not let a
         # stale background job recreate it. Explicit re-generation clears the

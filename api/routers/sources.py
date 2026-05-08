@@ -3300,6 +3300,8 @@ async def get_source(source_id: str, include_text: bool = True):
             if source.asset
             else None,
             full_text=source.full_text if include_text else None,
+            translated_content=source.translated_content if include_text else None,
+            content_language=source.content_language,
             embedded=embedded_chunks > 0,
             embedded_chunks=embedded_chunks,
             file_available=_is_source_file_available(source),
@@ -3713,6 +3715,39 @@ async def get_source_insights(source_id: str):
         raise HTTPException(
             status_code=500, detail=f"Error fetching insights: {str(e)}"
         )
+
+
+@router.post("/sources/{source_id}/translate")
+async def retranslate_source(source_id: str):
+    """Re-translate source content to English (for non-English sources)."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        if not source.full_text or not source.full_text.strip():
+            raise HTTPException(status_code=400, detail="Source has no text content to translate")
+
+        from open_notebook.utils.translation import translate_to_english
+        translated, lang = await translate_to_english(source.full_text)
+        source.content_language = lang
+        if lang != "en":
+            source.translated_content = translated
+        else:
+            source.translated_content = None
+        await source.save()
+
+        return {
+            "source_id": source_id,
+            "content_language": lang,
+            "translated": lang != "en",
+            "original_chars": len(source.full_text),
+            "translated_chars": len(translated) if lang != "en" else 0,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error translating source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 
 @router.delete("/sources/{source_id}/insights/mindmap")

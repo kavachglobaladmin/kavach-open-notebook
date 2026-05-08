@@ -295,6 +295,8 @@ class Source(ObjectModel):
     title: Optional[str] = None
     topics: Optional[List[str]] = Field(default_factory=list)
     full_text: Optional[str] = None
+    translated_content: Optional[str] = None  # English translation (if original is non-English)
+    content_language: Optional[str] = None    # Detected language code (e.g. "hi", "en")
     command: Optional[Union[str, RecordID]] = Field(
         default=None, description="Link to surreal-commands processing job"
     )

@@ -59,14 +59,18 @@ async def analyze_bank_statement(source_id: str):
             if result.get('total_transactions', 0) == 0:
                 logger.info("File extraction got 0 — trying full_text as fallback")
                 result = await asyncio.to_thread(run_pipeline, file_path, full_text)
+                print("Pipeline result:", result)
         elif full_text and len(full_text.strip()) > 100:
             # Raw extracted text — pass directly to avoid re-OCR
             logger.info("Using source.full_text as raw text (no OCR needed)")
             result = await asyncio.to_thread(run_pipeline, file_path, full_text)
+            print("Pipeline result:", result)
+
         else:
             # No stored text — run full extraction (may trigger OCR)
             logger.info("source.full_text is empty — running file extraction")
             result = await asyncio.to_thread(run_pipeline, file_path, None)
+            print("Pipeline result:", result)
 
         total = result.get('total_transactions', 0)
         logger.info(f"Bank analysis complete: {total} transactions")
