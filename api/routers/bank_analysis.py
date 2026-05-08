@@ -2,12 +2,84 @@
 Bank Statement Analysis API endpoint.
 Uses the bank_statement pipeline to extract and analyze PDF bank statements.
 """
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, HTTPException
 from loguru import logger
+from pydantic import BaseModel
 
 from open_notebook.domain.notebook import Source
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Bank Statement Config API
+# ---------------------------------------------------------------------------
+
+class ConfigUpdateRequest(BaseModel):
+    value: Any
+
+
+@router.get("/bank-statement/config")
+async def get_bank_config():
+    """Get all bank statement configuration values (DB overrides + defaults)."""
+    try:
+        from open_notebook.bank_statement.settings import get_all_settings, get_schema
+        settings = await get_all_settings()
+        schema = get_schema()
+        return {
+            "settings": settings,
+            "schema": {k: v["description"] for k, v in schema.items()},
+        }
+    except Exception as e:
+        logger.error(f"Failed to get bank config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/bank-statement/config/{key}")
+async def get_bank_config_key(key: str):
+    """Get a single bank statement config value."""
+    try:
+        from open_notebook.bank_statement.settings import get_setting, get_schema
+        schema = get_schema()
+        if key not in schema:
+            raise HTTPException(status_code=404, detail=f"Unknown config key: '{key}'")
+        value = await get_setting(key)
+        return {"key": key, "value": value, "description": schema[key]["description"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/bank-statement/config/{key}")
+async def set_bank_config_key(key: str, request: ConfigUpdateRequest):
+    """Override a bank statement config value in the database."""
+    try:
+        from open_notebook.bank_statement.settings import set_setting
+        await set_setting(key, request.value)
+        return {"key": key, "value": request.value, "status": "saved"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/bank-statement/config/{key}")
+async def reset_bank_config_key(key: str):
+    """Reset a bank statement config value to its default."""
+    try:
+        from open_notebook.bank_statement.settings import reset_setting, get_schema
+        schema = get_schema()
+        if key not in schema:
+            raise HTTPException(status_code=404, detail=f"Unknown config key: '{key}'")
+        await reset_setting(key)
+        return {"key": key, "status": "reset_to_default", "default": schema[key]["default"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/sources/{source_id}/bank-analysis")
@@ -34,43 +106,32 @@ async def analyze_bank_statement(source_id: str):
 
         logger.info(f"Running bank statement analysis for source {source_id}, file: {file_path}")
 
-        # Run pipeline in thread (CPU-bound)
-        import asyncio
-        from open_notebook.bank_statement.pipeline import run_pipeline
+        from open_notebook.bank_statement.pipeline import run_pipeline_async
 
-        # Strategy:
-        # 1. If full_text is raw OCR/extracted text → pass it to pipeline (avoids re-OCR).
-        # 2. If full_text is already structured pipeline output (starts with "=== ACCOUNT DETAILS")
-        #    → run pipeline directly on the file (text-based PDFs are fast; avoids parser confusion).
-        # 3. If full_text is empty → run pipeline on file (triggers OCR if needed).
         full_text = source.full_text if source.full_text else None
         logger.info(f"source.full_text length: {len(full_text) if full_text else 0}")
 
-        # Detect already-processed structured output — pipeline output starts with this marker
-        is_already_structured = (
-            full_text and full_text.strip().startswith("=== ACCOUNT DETAILS")
+        # If full_text is already structured pipeline output, always re-run from file
+        # to get fresh transaction data. Pass raw text only if it's actual bank statement text.
+        is_already_structured = bool(
+            full_text and (
+                full_text.strip().startswith("=== ACCOUNT DETAILS") or
+                full_text.strip().startswith("=== CASH FLOW")
+            )
         )
 
         if is_already_structured:
-            # full_text is structured pipeline output, not raw text — run on file directly
+            # full_text is a previous pipeline output — run fresh from file
             logger.info("full_text is structured output — running pipeline on file directly")
-            result = await asyncio.to_thread(run_pipeline, file_path, None)
-            # If file extraction also fails (e.g. scanned PDF), try with full_text anyway
-            if result.get('total_transactions', 0) == 0:
-                logger.info("File extraction got 0 — trying full_text as fallback")
-                result = await asyncio.to_thread(run_pipeline, file_path, full_text)
-                print("Pipeline result:", result)
+            result = await run_pipeline_async(file_path, None)
         elif full_text and len(full_text.strip()) > 100:
-            # Raw extracted text — pass directly to avoid re-OCR
+            # Raw extracted text — pass to avoid re-OCR
             logger.info("Using source.full_text as raw text (no OCR needed)")
-            result = await asyncio.to_thread(run_pipeline, file_path, full_text)
-            print("Pipeline result:", result)
-
+            result = await run_pipeline_async(file_path, full_text)
         else:
-            # No stored text — run full extraction (may trigger OCR)
+            # No stored text — run full extraction
             logger.info("source.full_text is empty — running file extraction")
-            result = await asyncio.to_thread(run_pipeline, file_path, None)
-            print("Pipeline result:", result)
+            result = await run_pipeline_async(file_path, None)
 
         total = result.get('total_transactions', 0)
         logger.info(f"Bank analysis complete: {total} transactions")
