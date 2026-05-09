@@ -18,7 +18,12 @@ import { PageHeader } from '@/components/layout/PageHeader'
 export default function SourceDetailPage() {
   const router = useRouter()
   const params = useParams()
-  const sourceId = params?.id ? decodeURIComponent(params.id as string) : ''
+  // Reconstruct the full SurrealDB record ID from the short URL param.
+  // The URL contains only the short ID (e.g. "abc123") to avoid colons in the
+  // path which Next.js rejects. We prepend "source:" here so the API gets the
+  // full record ID it expects.
+  const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
+  const sourceId = rawParam.includes(':') ? rawParam : (rawParam ? `source:${rawParam}` : '')
   const navigation = useNavigation()
 
   const [isConfigOpen, setIsConfigOpen] = useState(false)

@@ -102,7 +102,10 @@ export default function SourcesPage() {
 
   // Navigate to the source detail / chat page
   const handleSourceClick = (sourceId: string) => {
-    router.push(`/sources/${encodeURIComponent(sourceId)}`)
+    // Strip the SurrealDB table prefix (e.g. "source:xxx" → "xxx") to avoid
+    // colons in the URL path which Next.js rejects even when encoded.
+    const shortId = sourceId.includes(':') ? sourceId.split(':')[1] : sourceId
+    router.push(`/sources/${shortId}`)
   }
 
   if (loading) return <AppShell><div className="flex h-full items-center justify-center bg-[#F9FAFF]"><LoadingSpinner /></div></AppShell>
@@ -110,7 +113,8 @@ export default function SourcesPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 flex flex-col min-h-0 bg-[#F9FAFF] relative overflow-hidden">
+      {/* Changed to w-full h-full to constrain the container height to the viewport, ensuring overflow works correctly on the main element */}
+      <div className="flex flex-col w-full h-full bg-[#F9FAFF] relative overflow-hidden">
         {/* Background Gradient Effect - Exact match to shared reference */}
         <div className="absolute top-0 right-[-10%] w-[800px] h-[800px] bg-[#E0D7FF]/50 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#D7E4FF]/40 rounded-full blur-[100px] pointer-events-none" />
@@ -123,7 +127,8 @@ export default function SourcesPage() {
           onNew={() => {}} 
         />
 
-        <main className="relative z-10 flex-1 flex flex-col p-6 md:p-10 overflow-y-auto">
+        {/* Removed 'flex flex-col' so the block layout properly calculates inner heights, allowing robust scrolling */}
+        <main className="relative z-10 flex-1 overflow-y-auto p-6 md:p-10">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-extrabold text-[#6334E3] tracking-tight">All Sources</h1>
@@ -160,7 +165,7 @@ export default function SourcesPage() {
           </div>
 
           {viewMode === 'list' ? (
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-white shadow-2xl shadow-purple-100/50 overflow-hidden">
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-white shadow-2xl shadow-purple-100/50 overflow-hidden mb-10">
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
@@ -228,7 +233,7 @@ export default function SourcesPage() {
             </div>
           ) : (
             /* Grid View */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 pb-10">
               {filteredSources.map((source) => (
                 <div
                   key={source.id}

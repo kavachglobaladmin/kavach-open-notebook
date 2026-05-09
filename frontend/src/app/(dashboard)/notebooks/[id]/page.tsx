@@ -31,8 +31,12 @@ export default function NotebookPage() {
   const { t } = useTranslation()
   const params = useParams()
 
-  // Ensure the notebook ID is properly decoded from URL
-  const notebookId = params?.id ? decodeURIComponent(params.id as string) : ''
+  // Reconstruct the full SurrealDB record ID from the URL param.
+  // The URL contains only the short ID (e.g. "2jvvymcm2ls9dqvpw2kx") to avoid
+  // colons in the path which Next.js rejects. We prepend "notebook:" here so
+  // the API receives the full record ID it expects.
+  const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
+  const notebookId = rawParam.includes(':') ? rawParam : (rawParam ? `notebook:${rawParam}` : '')
 
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
   const {
@@ -207,8 +211,9 @@ export default function NotebookPage() {
                   <ChatColumn
                     notebookId={notebookId}
                     contextSelections={contextSelections}
-                    sources={sources}
+                    sources={sources ?? []}
                     sourcesLoading={sourcesLoading}
+                    notes={notes ?? []}
                   />
                 )}
               </div>
@@ -258,8 +263,9 @@ export default function NotebookPage() {
               <ChatColumn
                 notebookId={notebookId}
                 contextSelections={contextSelections}
-                sources={sources}
+                sources={sources ?? []}
                 sourcesLoading={sourcesLoading}
+                notes={notes ?? []}
               />
             </div>
           </div>

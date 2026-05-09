@@ -7,17 +7,14 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import {
   AlertCircle, RefreshCw,
-  BookOpen, X, ZoomIn, ZoomOut, Maximize2, Network, ImageIcon, ChevronRight, ChevronDown
+  BookOpen, X, ZoomIn, ZoomOut, Maximize2, ChevronRight, ChevronDown,
+  Camera, GitFork
 } from 'lucide-react'
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
 const CACHE_PREFIX = 'mindmap_cache_'
 const NODE_SUMMARY_PREFIX = 'mindmap_node_summary_'
 
-function loadCached(sourceId: string): MindMapNode | null {
-  try { const r = localStorage.getItem(CACHE_PREFIX + sourceId); return r ? JSON.parse(r) : null }
-  catch { return null }
-}
 function saveCache(sourceId: string, node: MindMapNode) {
   try { localStorage.setItem(CACHE_PREFIX + sourceId, JSON.stringify(node)) } catch {}
 }
@@ -191,21 +188,30 @@ function NodeSummaryPanel({ sourceId, nodeName, context, onClose }: {
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
         {loading && <div className="flex flex-col items-center justify-center py-10 gap-3"><LoadingSpinner /></div>}
+        {!loading && error && (
+          <div className="flex flex-col items-center justify-center py-8 gap-2">
+            <AlertCircle className="h-6 w-6 text-destructive" />
+            <p className="text-xs text-destructive text-center">{error}</p>
+            <Button variant="outline" size="sm" className="text-xs h-7 mt-1" onClick={fetchSummary}>
+              <RefreshCw className="h-3 w-3 mr-1" /> Retry
+            </Button>
+          </div>
+        )}
         {!loading && summary && <SummaryContent text={summary} />}
       </div>
     </div>
   )
 }
 
-// ── D3 Mind Map Component (Refactored to match Reference Aesthetic) ─────────────
+// ── D3 Mind Map Component ────────────────────────────────────────────────────
 interface ExtendedHierarchyNode extends d3.HierarchyPointNode<MindMapNode> {
   id?: string;
   _children?: ExtendedHierarchyNode[] | undefined;
 }
 
-function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }: { 
-  data: MindMapNode; 
-  onLabelClick: (label: string, context: string) => void; 
+function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }: {
+  data: MindMapNode;
+  onLabelClick: (label: string, context: string) => void;
   selectedNode: string | null;
   scale: number;
   onScaleChange?: (scale: number) => void;
@@ -220,20 +226,32 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
     if (!data) return
     const root = d3.hierarchy(data) as any
     let nodeId = 0
-    root.each((d: any) => {
-      d.id = `node_${++nodeId}`
-      if (d.depth >= 1 && d.children) {
-        d._children = d.children
-        d.children = null
+
+    // Use a recursive traversal instead of each() so we can assign IDs to ALL
+    // nodes (including depth-2+) before collapsing their parents, avoiding the
+    // bug where each() skips children that were collapsed during its traversal.
+    function initNode(node: any) {
+      node.id = `node_${++nodeId}`
+      if (node.children) {
+        if (node.depth >= 1) {
+          // Collapse this node: move children -> _children, then recurse into them
+          node._children = node.children
+          node.children = null
+          node._children.forEach((child: any) => initNode(child))
+        } else {
+          // Root level: keep children visible, recurse normally
+          node.children.forEach((child: any) => initNode(child))
+        }
       }
-    })
+    }
+    initNode(root)
+
     setRootNode(root)
   }, [data])
 
   const { nodes, links } = useMemo(() => {
     if (!rootNode) return { nodes: [], links: [] }
-    // Reference image uses a wide horizontal spacing
-    const treeLayout = d3.tree<MindMapNode>().nodeSize([60, 280]) 
+    const treeLayout = d3.tree<MindMapNode>().nodeSize([45, 260])
     treeLayout(rootNode)
     return {
       nodes: rootNode.descendants() as ExtendedHierarchyNode[],
@@ -253,7 +271,9 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
       })
     zoomBehaviorRef.current = zoom
     svg.call(zoom)
-    svg.call(zoom.transform, d3.zoomIdentity.translate(150, 400).scale(scale))
+    const rect = svgRef.current.getBoundingClientRect()
+    const centerY = rect.height > 0 ? rect.height / 2 : 300
+    svg.call(zoom.transform, d3.zoomIdentity.translate(120, centerY).scale(scale))
   }, [])
 
   useEffect(() => {
@@ -265,6 +285,7 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
     }
   }, [scale])
 
+  // Toggle uses ONLY updateTick — no animKey so React does NOT remount all nodes
   const handleToggle = (e: React.MouseEvent, node: ExtendedHierarchyNode) => {
     e.stopPropagation()
     if (node.children) {
@@ -277,69 +298,132 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
     setUpdateTick(tick => tick + 1)
   }
 
-  // Horizontal Curve Link Generator (Reference Style)
   const linkGenerator = d3.linkHorizontal<any, any>()
     .x(d => d.y)
     .y(d => d.x)
 
+  const baseStyles = `
+    @keyframes mmDrawPath {
+      0%   { stroke-dashoffset: 900; opacity: 0; }
+      20%  { opacity: 1; }
+      100% { stroke-dashoffset: 0; opacity: 1; }
+    }
+    @keyframes mmDotFade {
+      0%,100% { opacity: 0; }
+      15%,85% { opacity: 0.9; }
+    }
+    .mm-path {
+      stroke-dasharray: 900;
+      animation: mmDrawPath 0.65s cubic-bezier(0.4,0,0.2,1) forwards;
+    }
+    .mm-dot {
+      animation: mmDotFade 2.8s ease-in-out infinite;
+    }
+  `
+
   return (
     <div className="w-full h-full relative overflow-hidden bg-white font-sans">
-      {/* Background Grid Pattern (Reference matches a clean white bg) */}
-      <div className="absolute inset-0 opacity-[0.1] pointer-events-none" 
-           style={{ backgroundImage: 'radial-gradient(#64748b 1px, transparent 0)', backgroundSize: '30px 30px' }} />
-      
       <svg ref={svgRef} className="w-full h-full cursor-grab active:cursor-grabbing">
+        <defs>
+          <style dangerouslySetInnerHTML={{ __html: baseStyles }} />
+          <filter id="mm-shadow" x="-20%" y="-40%" width="140%" height="180%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#00000022" />
+          </filter>
+        </defs>
+
         <g ref={zoomGroupRef}>
-          {links.map((link) => {
-             const targetNode = link.target as ExtendedHierarchyNode
-             return (
-               <path 
-                 key={`link_${targetNode.id}`}
-                 d={linkGenerator(link) || undefined}
-                 fill="none"
-                 stroke="#cbd5e1" // Soft slate for flow lines
-                 strokeWidth={1.5}
-                 className="transition-all duration-500 ease-in-out"
-               />
-             )
+          {/* Connector paths — outer <g> keeps stable key; inner <path> re-keys on updateTick to retrigger draw animation */}
+          {links.map((link, i) => {
+            const targetNode = link.target as ExtendedHierarchyNode
+            const sourceNode = link.source as ExtendedHierarchyNode
+            // Source nodes (parents) exit from their right edge (~160px from left);
+            // target nodes (children / leaves) enter at their left edge (x=0 offset).
+            const EST_BOX_W = 160
+            const pathD = linkGenerator({
+              source: { x: sourceNode.x, y: sourceNode.y + EST_BOX_W },
+              target: { x: targetNode.x, y: targetNode.y }
+            }) || ''
+            return (
+              <g key={`lgrp_${targetNode.id ?? `i${i}`}`}>
+                <path
+                  key={`path_${targetNode.id}`}
+                  d={pathD || undefined}
+                  fill="none"
+                  stroke="#94a3b8"
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  className="mm-path"
+                  style={{ animationDelay: `${i * 0.04}s` }}
+                />
+                {/* Flowing dot along connector */}
+                {pathD && (
+                  <circle
+                    key={`dot_${targetNode.id}`}
+                    r="3.5"
+                    fill="#166534"
+                    className="mm-dot"
+                    style={{ animationDelay: `${0.55 + i * 0.18}s` }}
+                  >
+                    <animateMotion
+                      dur="2.8s"
+                      repeatCount="indefinite"
+                      begin={`${0.55 + i * 0.18}s`}
+                      path={pathD}
+                    />
+                  </circle>
+                )}
+              </g>
+            )
           })}
 
-          {nodes.map((node) => {
+          {/* Nodes — stable keys so React preserves DOM, D3 transitions positions smoothly */}
+          {nodes.map((node, i) => {
             const hasChildren = !!node.children || !!node._children
             const isExpanded = !!node.children
             const isLeaf = !hasChildren && node.depth > 0
             const isSelected = selectedNode === node.data.label
             const displayLabel = (node.data.label || '').trim()
-
-            // Colors extracted from Reference Image:
-            // Parent/Mid: Dark Slate (#1e293b)
-            // Leaf: Sage Green (#2d4a3e)
-            const nodeBg = isLeaf ? 'bg-[#2d4a3e]' : 'bg-[#1e293b]'
+            const nodeBg = isLeaf ? 'bg-[#166534]' : 'bg-[#1e3a5f]'
+            const accentColor = isLeaf ? '#22c55e' : '#60a5fa'
 
             return (
-              <g key={node.id} transform={`translate(${node.y},${node.x})`} className="transition-all duration-500">
-                {/* Node Dot Hub */}
-                <circle r={5} fill={isLeaf ? '#4ade80' : '#6366f1'} className="opacity-0" />
-                
-                <foreignObject x={0} y={-18} width={250} height={60} className="overflow-visible">
-                  <div className="flex items-center group">
-                    <div 
+              <g
+                key={node.id ?? `ni_${i}`}
+                transform={`translate(${node.y},${node.x})`}
+              >
+                <foreignObject x={0} y={-16} width={280} height={32} className="overflow-visible">
+                  <div className="flex items-center h-full">
+                    <div
                       onClick={() => onLabelClick(displayLabel, node.parent?.data?.label || '')}
-                      className={`relative flex items-center px-4 py-1.5 w-max max-w-[220px] rounded-md transition-all duration-300 border border-transparent cursor-pointer shadow-sm
-                        ${nodeBg} ${isSelected ? 'ring-2 ring-indigo-400 ring-offset-2' : 'hover:scale-105'}
+                      style={{ filter: 'url(#mm-shadow)' }}
+                      className={`relative flex items-center gap-2 px-4 py-1.5 w-max max-w-[240px] rounded-[7px] cursor-pointer
+                        transition-all duration-200 ease-out
+                        hover:brightness-125 hover:scale-[1.04] hover:-translate-y-px
+                        ${nodeBg}
+                        ${isSelected ? 'ring-2 ring-offset-2 ring-offset-white ring-blue-400 brightness-125' : ''}
                       `}
                     >
-                      <span className="text-white text-[12px] font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                      <span
+                        className="shrink-0 w-1.5 h-1.5 rounded-full"
+                        style={{ background: accentColor, opacity: 0.85 }}
+                      />
+                      <span className="text-[#E2E8F0] text-[12.5px] font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
                         {displayLabel}
                       </span>
-                      
-                      {/* Toggle Button on the node connector */}
+
                       {hasChildren && (
-                        <button 
+                        <button
                           onClick={(e) => handleToggle(e, node)}
-                          className="absolute -right-2.5 w-5 h-5 rounded-full flex items-center justify-center bg-slate-700 text-white border border-slate-500 hover:bg-slate-600 transition-colors z-10"
+                          className="absolute -right-3 top-1/2 -translate-y-1/2 w-[20px] h-[20px] rounded-full
+                            flex items-center justify-center
+                            bg-white text-[#1e3a5f] border border-slate-300 shadow-md
+                            hover:bg-slate-100 hover:scale-110 active:scale-95
+                            transition-all duration-150 z-10"
+                          title={isExpanded ? 'Collapse' : 'Expand'}
                         >
-                          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {isExpanded
+                            ? <ChevronDown size={10} strokeWidth={3} />
+                            : <ChevronRight size={10} strokeWidth={3} />}
                         </button>
                       )}
                     </div>
@@ -354,32 +438,139 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
   )
 }
 
-// ── Main Layout Logic Preserved ────────────────────────────────────────────────
-function ZoomControls({ scale, onZoomIn, onZoomOut, onReset }) {
+// ── Photos Tab ────────────────────────────────────────────────────────────────
+function PhotosTab({ sourceId }: { sourceId: string }) {
+  const [images, setImages] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [selectedImg, setSelectedImg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (loaded) return
+    setLoading(true)
+    mindmapApi.getImages(sourceId)
+      .then(res => { setImages(res.images ?? []); setLoaded(true) })
+      .catch(() => { setImages([]); setLoaded(true) })
+      .finally(() => setLoading(false))
+  }, [sourceId, loaded])
+
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
+      <LoadingSpinner />
+      <p className="text-sm">Extracting images from source…</p>
+    </div>
+  )
+
+  if (!images.length) return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400 px-8 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <Camera className="h-7 w-7 text-slate-300" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-600">No photos found</p>
+        <p className="text-xs text-slate-400 mt-1">Photos embedded in the source document will appear here.</p>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="absolute bottom-6 right-6 flex items-center gap-1 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-lg p-1 shadow-lg z-10">
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 overflow-y-auto h-full">
+        {images.map((b64, i) => (
+          <button
+            key={i}
+            onClick={() => setSelectedImg(b64)}
+            className="rounded-xl overflow-hidden border border-slate-200 hover:border-violet-400 transition-all shadow-sm hover:shadow-md"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`data:image/png;base64,${b64}`}
+              alt={`Image ${i + 1}`}
+              className="w-full h-40 object-contain bg-slate-50"
+            />
+          </button>
+        ))}
+      </div>
+      {selectedImg && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setSelectedImg(null)}
+        >
+          <div className="relative max-w-3xl max-h-[90vh] p-2" onClick={e => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`data:image/png;base64,${selectedImg}`}
+              alt="Full size"
+              className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain"
+            />
+            <button
+              onClick={() => setSelectedImg(null)}
+              className="absolute top-3 right-3 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/80 text-lg"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+export function isMindMapInsight(insightType: string): boolean {
+  return /mind.?map/i.test(insightType)
+}
+
+// ── Main Layout Logic Preserved ────────────────────────────────────────────────
+function ZoomControls({ scale, onZoomIn, onZoomOut, onReset, onFullscreen }: {
+  scale: number
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onReset: () => void
+  onFullscreen?: () => void
+}) {
+  return (
+    <div className="absolute bottom-6 right-6 flex items-center gap-1 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg p-1 shadow-lg z-10">
       <button onClick={onZoomOut} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600"><ZoomOut className="h-4 w-4" /></button>
       <span className="text-[11px] font-bold text-slate-500 w-10 text-center">{Math.round(scale * 100)}%</span>
       <button onClick={onZoomIn} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600"><ZoomIn className="h-4 w-4" /></button>
       <div className="w-px h-4 bg-slate-200 mx-1" />
-      <button onClick={onReset} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600"><Maximize2 className="h-4 w-4" /></button>
+      <button onClick={onReset} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600" title="Reset zoom"><Maximize2 className="h-4 w-4" /></button>
+      {onFullscreen && (
+        <>
+          <div className="w-px h-4 bg-slate-200 mx-1" />
+          <button onClick={onFullscreen} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600" title="Fullscreen">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
 export function MindMapInsightViewer({ content, sourceId, title }: { content: string; sourceId: string; title?: string | null }) {
   const [mindMap, setMindMap] = useState<MindMapNode | null>(null)
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [rawDebug, setRawDebug] = useState('')
   const [selected, setSelected] = useState<{ nodeName: string, context: string } | null>(null)
   const [scale, setScale] = useState(0.8)
   const [activeTab, setActiveTab] = useState<'graph' | 'photos'>('graph')
+  const [fullscreen, setFullscreen] = useState(false)
 
   useEffect(() => {
+    setSelected(null)
+    setParseError(null)
+    const rawStr = String(content)
+    setRawDebug(rawStr)
     try {
       const parsed = extractMindMapJson(content)
       setMindMap(parsed)
       saveCache(sourceId, parsed)
     } catch (e) {
-      console.error(e)
+      setParseError(e instanceof Error ? e.message : String(e))
+      setMindMap(null)
     }
   }, [content, sourceId])
 
@@ -387,27 +578,111 @@ export function MindMapInsightViewer({ content, sourceId, title }: { content: st
     setSelected(prev => prev?.nodeName === nodeName ? null : { nodeName, context })
   }, [])
 
+  if (parseError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+        <p className="text-sm font-medium text-destructive">Could not render mind map</p>
+        <p className="text-xs text-muted-foreground max-w-sm font-mono bg-muted px-2 py-1 rounded">{parseError}</p>
+        <details className="mt-2 w-full text-left">
+          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">▶ Show raw data</summary>
+          <pre className="mt-2 text-[10px] bg-muted rounded p-3 overflow-auto max-h-60 whitespace-pre-wrap break-all border border-border/40">{rawDebug}</pre>
+        </details>
+      </div>
+    )
+  }
+
   if (!mindMap) return <div className="flex items-center justify-center py-20"><LoadingSpinner /></div>
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl overflow-hidden">
-      <div className="flex gap-2 border-b border-slate-100 px-4 py-2 shrink-0">
-        <button onClick={() => setActiveTab('graph')} className={`px-4 py-1.5 text-xl font-semibold rounded-[8px] transition-all ${activeTab === 'graph' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>Map View</button>
-        <button onClick={() => setActiveTab('photos')} className={`px-4 py-1.5 text-xl font-semibold rounded-[8px] transition-all ${activeTab === 'photos' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>Photos</button>
+
+      {/* ── Tab bar — underline style with icons ── */}
+      <div className="flex items-center border-b border-slate-100 px-4 shrink-0">
+        <button
+          onClick={() => setActiveTab('graph')}
+          className={`relative flex items-center gap-1.5 px-4 py-3 text-sm font-semibold transition-colors ${
+            activeTab === 'graph'
+              ? 'text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <GitFork className="h-3.5 w-3.5" />
+          Map View
+        </button>
+        <button
+          onClick={() => { setActiveTab('photos'); setSelected(null) }}
+          className={`relative flex items-center gap-1.5 px-4 py-3 text-sm font-semibold transition-colors ${
+            activeTab === 'photos'
+              ? 'text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Camera className="h-3.5 w-3.5" />
+          Evidence
+        </button>
       </div>
 
-      <div className="flex-1 flex overflow-hidden relative">
-        <div className={`relative flex-1 transition-all duration-500 ${selected ? 'mr-[320px]' : ''}`}>
-           <MindMapGraph data={mindMap} onLabelClick={handleClick} selectedNode={selected?.nodeName ?? null} scale={scale} onScaleChange={setScale} />
-           <ZoomControls scale={scale} onZoomIn={() => setScale(s => s + 0.1)} onZoomOut={() => setScale(s => s - 0.1)} onReset={() => setScale(0.8)} />
-        </div>
-        
-        {selected && (
-          <div className="absolute right-0 top-0 bottom-0 w-[320px] bg-white border-l border-slate-200 shadow-2xl z-20 animate-in slide-in-from-right duration-300">
-            <NodeSummaryPanel sourceId={sourceId} nodeName={selected.nodeName} context={selected.context} onClose={() => setSelected(null)} />
+      {/* ── Tab content ── */}
+      {activeTab === 'graph' ? (
+        <div className="flex-1 flex overflow-hidden relative">
+          <div className={`relative flex-1 transition-all duration-500 ${selected ? 'mr-[320px]' : ''}`}>
+            <MindMapGraph
+              data={mindMap}
+              onLabelClick={handleClick}
+              selectedNode={selected?.nodeName ?? null}
+              scale={scale}
+              onScaleChange={setScale}
+            />
+            <ZoomControls
+              scale={scale}
+              onZoomIn={() => setScale(s => Math.min(s + 0.1, 3))}
+              onZoomOut={() => setScale(s => Math.max(s - 0.1, 0.1))}
+              onReset={() => setScale(0.8)}
+              onFullscreen={() => setFullscreen(true)}
+            />
           </div>
-        )}
-      </div>
+
+          {selected && (
+            <div className="absolute right-0 top-0 bottom-0 w-[320px] bg-white border-l border-slate-200 shadow-2xl z-20 animate-in slide-in-from-right duration-300">
+              <NodeSummaryPanel
+                sourceId={sourceId}
+                nodeName={selected.nodeName}
+                context={selected.context}
+                onClose={() => setSelected(null)}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden">
+          <PhotosTab sourceId={sourceId} />
+        </div>
+      )}
+
+      {/* ── Fullscreen overlay ── */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
+            <span className="text-lg font-bold text-slate-900">{mindMap.label || title || 'Knowledge Map'}</span>
+            <button
+              onClick={() => setFullscreen(false)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-sm transition-colors"
+            >
+              <X className="h-4 w-4" /> Exit Fullscreen
+            </button>
+          </div>
+          <div className="flex-1 relative overflow-hidden">
+            <MindMapGraph
+              data={mindMap}
+              onLabelClick={handleClick}
+              selectedNode={selected?.nodeName ?? null}
+              scale={0.8}
+              onScaleChange={() => {}}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

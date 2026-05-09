@@ -8,7 +8,8 @@ allowedDevOrigins: [
 "localhost",
 "0.0.0.0",
 "192.168.11.145",
-"192.168.11.162"
+"192.168.11.162",
+"192.168.11.176"
 ],
 
 // Hide the Next.js dev tools button (bottom-left N logo)

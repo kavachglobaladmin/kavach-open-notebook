@@ -50,6 +50,23 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+# Project root — used to resolve relative file paths stored in the database.
+# api/routers/sources.py is two levels below the repo root.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def resolve_file_path(file_path: str) -> str:
+    """
+    Resolve a potentially relative file path to an absolute path.
+    Paths stored in the DB like 'data/uploads/file.pdf' are relative to the
+    project root. This ensures they work regardless of the current working directory.
+    """
+    if not file_path:
+        return file_path
+    if os.path.isabs(file_path):
+        return os.path.normpath(file_path)
+    return os.path.normpath(os.path.join(_PROJECT_ROOT, file_path))
+
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
     """Generate unique filename like Streamlit app (append counter if file exists)."""
@@ -1970,7 +1987,11 @@ async def get_source_profile_image(source_id: str):
 
         file_path = source.asset.file_path if source.asset else None
         if not file_path or not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="No file available")
+            # Try resolving as relative path before giving up
+            if file_path:
+                file_path = resolve_file_path(file_path)
+            if not file_path or not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail="No file available")
 
         if not file_path.lower().endswith(('.docx', '.doc')):
             raise HTTPException(status_code=404, detail="Not a docx file")

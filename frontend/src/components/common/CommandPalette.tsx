@@ -226,7 +226,11 @@ export function CommandPalette() {
               <CommandItem
                 key={notebook.id}
                 value={`notebook ${notebook.name} ${notebook.description || ''}`}
-                onSelect={() => handleNavigate(`/notebooks/${notebook.id}`)}
+                onSelect={() => {
+                  // Strip the SurrealDB table prefix so the URL never contains a colon
+                  const shortId = notebook.id.includes(':') ? notebook.id.split(':')[1] : notebook.id
+                  handleNavigate(`/notebooks/${shortId}`)
+                }}
               >
                 <Book className="h-4 w-4" />
                 <span>{notebook.name}</span>

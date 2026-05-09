@@ -170,7 +170,6 @@ const VirtualTable = forwardRef<HTMLDivElement, { headers: string[]; rows: strin
   }
 
   // Expose navigate function via imperative handle pattern
-  // We use a data attribute on the container to allow parent to call navigate
   const containerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = containerRef.current
@@ -192,51 +191,78 @@ const VirtualTable = forwardRef<HTMLDivElement, { headers: string[]; rows: strin
     return esc(cell).replace(re, '<mark style="background:#fef08a;border-radius:2px;padding:0 1px">$1</mark>')
   }
 
+  // Calculate dynamic minimum table width to ensure columns aren't completely squished
+  // and force horizontal scroll if necessary.
+  const minTableWidth = Math.max(800, headers.length * 150 + 48)
+
+  // Shared column definitions to perfectly align the header table and the body table
+  const colGroup = (
+    <colgroup>
+      <col style={{ width: '48px' }} />
+      {headers.map((_, i) => (
+        <col key={i} />
+      ))}
+    </colgroup>
+  )
+
   return (
     <div ref={(el) => {
       (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
       if (typeof forwardedRef === 'function') forwardedRef(el)
       else if (forwardedRef) (forwardedRef as React.MutableRefObject<HTMLDivElement | null>).current = el
-    }} className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr>
-            <th className="bg-slate-100 dark:bg-slate-800 px-3 py-2 text-left font-semibold border-b border-slate-200 dark:border-slate-700 text-slate-500 w-12 sticky top-0">#</th>
-            {headers.map((h, i) => (
-              <th key={i} className="bg-slate-100 dark:bg-slate-800 px-3 py-2 text-left font-semibold border-b border-slate-200 dark:border-slate-700 whitespace-nowrap sticky top-0">{h}</th>
-            ))}
-          </tr>
-        </thead>
-      </table>
-      <div ref={scrollRef} style={{ height: Math.min(totalH, 540), overflowY: 'auto' }} onScroll={e => setScrollTop((e.target as HTMLDivElement).scrollTop)}>
-        <div style={{ height: totalH, position: 'relative' }}>
-          <table className="w-full text-xs border-collapse" style={{ position: 'absolute', top: offsetY, width: '100%' }}>
-            <tbody>
-              {visibleRows.map((row, i) => {
-                const absIdx = startIdx + i
-                const isCurrent = absIdx === currentRow && query.trim() !== ''
-                return (
-                  <tr key={absIdx}
-                    className={isCurrent
-                      ? 'bg-orange-50 dark:bg-orange-900/20 outline outline-2 outline-orange-400'
-                      : absIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800/30'
-                    }>
-                    <td className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-slate-400 w-12 text-right font-mono">{absIdx + 1}</td>
-                    {row.map((cell, j) => (
-                      <td key={j} className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300 max-w-[200px] truncate" title={cell}
-                        dangerouslySetInnerHTML={{ __html: hlCell(cell) }} />
-                    ))}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+    }} className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm relative">
+      <div style={{ minWidth: minTableWidth }}>
+        
+        {/* Header Table */}
+        <table className="w-full text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
+          {colGroup}
+          <thead>
+            <tr>
+              <th className="bg-slate-100 dark:bg-slate-800 px-3 py-2 text-left font-semibold border-b border-slate-200 dark:border-slate-700 text-slate-500 truncate sticky top-0 z-10">#</th>
+              {headers.map((h, i) => (
+                <th key={i} className="bg-slate-100 dark:bg-slate-800 px-3 py-2 text-left font-semibold border-b border-slate-200 dark:border-slate-700 truncate sticky top-0 z-10" title={h}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+        </table>
+
+        {/* Body Container */}
+        <div ref={scrollRef} style={{ height: Math.min(totalH, 540), overflowY: 'auto' }} onScroll={e => setScrollTop((e.target as HTMLDivElement).scrollTop)}>
+          <div style={{ height: totalH, position: 'relative' }}>
+            
+            {/* Body Table */}
+            <table className="w-full text-xs border-collapse" style={{ tableLayout: 'fixed', position: 'absolute', top: offsetY }}>
+              {colGroup}
+              <tbody>
+                {visibleRows.map((row, i) => {
+                  const absIdx = startIdx + i
+                  const isCurrent = absIdx === currentRow && query.trim() !== ''
+                  return (
+                    <tr key={absIdx}
+                      className={isCurrent
+                        ? 'bg-orange-50 dark:bg-orange-900/20 outline outline-2 outline-orange-400 z-10 relative'
+                        : absIdx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800/30'
+                      }>
+                      <td className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-slate-400 text-right font-mono truncate">{absIdx + 1}</td>
+                      {row.map((cell, j) => (
+                        <td key={j} className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300 truncate" title={cell}
+                          dangerouslySetInnerHTML={{ __html: hlCell(cell) }} />
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
+
       </div>
-      <div className="text-xs text-slate-400 px-3 py-1.5 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 flex items-center justify-between">
-        <span>{query.trim() ? `${filteredRows.length} of ${rows.length} rows match` : `${rows.length} rows · ${headers.length} columns`}</span>
+
+      {/* Sticky footer wrapper to ensure it stays in view while scrolling horizontally */}
+      <div className="sticky left-0 right-0 w-full text-xs text-slate-400 px-3 py-2 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-between pointer-events-none">
+        <span className="pointer-events-auto">{query.trim() ? `${filteredRows.length} of ${rows.length} rows match` : `${rows.length} rows · ${headers.length} columns`}</span>
         {query.trim() && filteredRows.length > 0 && (
-          <span className="text-slate-500">Row {currentRow + 1} of {filteredRows.length}</span>
+          <span className="text-slate-500 font-medium pointer-events-auto">Row {currentRow + 1} of {filteredRows.length}</span>
         )}
       </div>
     </div>
@@ -443,7 +469,8 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
   const isTable = doc.type === 'csv' || doc.type === 'tsv'
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+    // Fixed the sidebar overlap by increasing the z-index to 99999 to guarantee top-layer rendering
+    <div className="fixed inset-0 z-[99999] flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 bg-slate-900 dark:bg-slate-950 border-b border-slate-800 shrink-0">
         <div className="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center">
@@ -496,9 +523,9 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-slate-50 dark:bg-[#0a0c10]">
+      <div ref={scrollContainerRef} className="overflow-auto bg-slate-50 dark:bg-[#0a0c10] flex-1">
         {isTable ? (
-          <div className="p-4">
+          <div className="p-4 w-full h-full">
             <VirtualTable ref={tableRef} headers={doc.headers} rows={doc.rows} query={query} />
           </div>
         ) : (

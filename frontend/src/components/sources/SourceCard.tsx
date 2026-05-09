@@ -162,8 +162,11 @@ export function SourceCard({
       (/\.(txt|log)$/i.test(filePathUi) && mobileHint.test(titleAndPath)) ||
       (/\.pdf$/i.test(filePathUi) && mobileHint.test(titleAndPath)))
 
-  // Detect if this is a bank statement file — only show for files with bank-related names
+  // Detect if this is a bank statement file — only show for PDF files with bank-related names
+  // Must be a PDF file (not just any file with "bank" in the name)
   const isBankFile = !!(source.asset?.file_path) && (
+    /\.pdf$/i.test(source.asset.file_path)
+  ) && (
     /bank|statement|acct|account/i.test(source.title ?? '') ||
     /bank|statement|acct|account/i.test(source.asset?.file_path ?? '')
   )

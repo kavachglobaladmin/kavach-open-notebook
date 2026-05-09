@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Plus, FileText, Link2, ChevronDown, Loader2 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { EmptyState } from '@/components/common/EmptyState'
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
 import { AddExistingSourceDialog } from '@/components/sources/AddExistingSourceDialog'
 import { SourceCard } from '@/components/sources/SourceCard'
@@ -24,7 +23,6 @@ import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { CommonGraphModal } from '@/components/sources/CommonGraphModal'
-import { cn } from '@/lib/utils'
 
 interface SourcesColumnProps {
   sources?: SourceListResponse[]
@@ -128,7 +126,30 @@ export function SourcesColumn({
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-[20px] font-bold text-slate-900">{t.navigation.sources}</CardTitle>
-                <div className="flex items-center gap-2">
+                
+                {/* Updated Action Buttons Layout */}
+                <div className="flex items-center gap-3">
+                  
+                  {/* Common Graph Icon Button - Always visible, disabled if < 2 selected */}
+                  <Button
+                    size="sm"
+                    onClick={() => setCommonGraphOpen(true)}
+                    disabled={selectedSourceIds.length < 2}
+                    className={`flex items-center gap-1.5 text-white rounded-[12px] h-[40px] px-4 font-semibold shadow-sm transition-all ${
+                      selectedSourceIds.length < 2 
+                        ? 'bg-slate-300 opacity-60' 
+                        : 'hover:opacity-90 active:scale-95'
+                    }`}
+                    style={selectedSourceIds.length >= 2 ? { background: 'linear-gradient(135deg, #6149f6 0%, #8b5cf6 100%)' } : undefined}
+                    title="Create Common Graph"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                    <span>Graph ({selectedSourceIds.length})</span>
+                  </Button>
+
                   <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                     <DropdownMenuTrigger asChild>
                       <Button size="sm" className="bg-[#6149f6] hover:bg-[#523cdb] text-white rounded-[12px] h-[40px] px-5 font-semibold shadow-[0_4px_12px_rgba(97,73,246,0.35)] transition-all">
@@ -146,14 +167,18 @@ export function SourcesColumn({
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+
                   {collapseButton}
                 </div>
               </div>
-              <p className="text-[13px] text-slate-500 font-medium leading-relaxed">
-                {selectedSourceIds.length > 0
-                  ? `${selectedSourceIds.length} sources selected`
-                  : 'Select at least two sources to create a common graph.'}
-              </p>
+
+              <div className="flex flex-col gap-2.5">
+                <p className="text-[13px] text-slate-500 font-medium leading-relaxed">
+                  {selectedSourceIds.length > 0
+                    ? `${selectedSourceIds.length} sources selected`
+                    : 'Select at least two sources to create a common graph.'}
+                </p>
+              </div>
             </div>
           </CardHeader>
 

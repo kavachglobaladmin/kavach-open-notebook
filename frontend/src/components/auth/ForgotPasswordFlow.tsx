@@ -73,6 +73,19 @@ async function apiClearOTP(email: string): Promise<void> {
   }).catch(() => {/* non-critical */})
 }
 
+async function apiResetPassword(email: string, newPassword: string): Promise<void> {
+  const base = await getApiUrl()
+  const res = await fetch(`${base}/api/users/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, new_password: newPassword }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to update password in database.')
+  }
+}
+
 // ── Session storage key for passing email between steps ──────────────────────
 const EMAIL_KEY = 'forgot_pw_email'
 
@@ -230,13 +243,20 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
     setLoading(true)
     try {
-      const ok = updateUserPassword(email.trim().toLowerCase(), newPassword)
-      if (!ok) { setError('Failed to update password.'); return }
-      await apiClearOTP(email.trim().toLowerCase())
+      const userEmail = email.trim().toLowerCase()
+
+      // 1. Update password in the database (SurrealDB kavach_user table)
+      await apiResetPassword(userEmail, newPassword)
+
+      // 2. Also update localStorage cache for same-session login compatibility
+      updateUserPassword(userEmail, newPassword)
+
+      // 3. Clear the OTP session
+      await apiClearOTP(userEmail)
       sessionStorage.removeItem(EMAIL_KEY)
       setSuccess(true)
-    } catch {
-      setError('Failed to update password.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update password.')
     } finally { setLoading(false) }
   }
 

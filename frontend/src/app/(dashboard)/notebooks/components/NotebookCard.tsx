@@ -75,7 +75,10 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
   }
 
   const handleCardClick = () => {
-    router.push(`/notebooks/${encodeURIComponent(notebook.id)}`)
+    // Strip the SurrealDB table prefix (e.g. "notebook:xxx" → "xxx") so the URL
+    // never contains a colon, which Next.js dynamic routes reject even when encoded.
+    const shortId = notebook.id.includes(':') ? notebook.id.split(':')[1] : notebook.id
+    router.push(`/notebooks/${shortId}`)
   }
 
   // Generate stable mock visuals based on ID to precisely match the reference image's design feel

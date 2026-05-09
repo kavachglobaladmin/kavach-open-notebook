@@ -284,3 +284,53 @@ async def upsert_user(data: UserUpsertRequest):
         logger.info(f"[users] Auto-created user record: {email}")
 
     return UserResponse(email=email, name=name)
+
+
+# ── Reset password (used by forgot-password OTP flow) ─────────────────────────
+
+class ResetPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=254)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return _validate_email_format(v)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
+
+@router.post("/users/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """
+    Update the password for an existing user in the database.
+    Called after OTP verification in the forgot-password flow.
+    Updates both password_hash (for login) and password_encrypted (for admin visibility).
+    Returns 404 if the user does not exist.
+    """
+    email = data.email  # already normalised by validator
+    user = await _find_user(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+
+    pw_hash = _hash_password(data.new_password)
+    pw_encrypted = encrypt_value(data.new_password)
+
+    await repo_query(
+        """
+        UPDATE kavach_user
+        SET password_hash      = $pw_hash,
+            password_encrypted = $pw_encrypted
+        WHERE email = $email
+        """,
+        {
+            "email": email,
+            "pw_hash": pw_hash,
+            "pw_encrypted": pw_encrypted,
+        },
+    )
+    logger.info(f"[users] Password reset for: {email}")
+    return {"message": "Password updated successfully"}

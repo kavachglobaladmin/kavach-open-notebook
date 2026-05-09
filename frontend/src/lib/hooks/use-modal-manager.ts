@@ -42,8 +42,10 @@ export function useModalManager() {
     if (type === 'source') {
       // Store where we came from so the source page can navigate back correctly
       setReturnTo(pathname, getReturnLabel(pathname))
-      const encodedId = encodeURIComponent(id)
-      router.push(`/sources/${encodedId}`)
+      // Strip the SurrealDB table prefix (e.g. "source:xxx" → "xxx") to avoid
+      // colons in the URL path which Next.js rejects even when encoded.
+      const shortId = id.includes(':') ? id.split(':')[1] : id
+      router.push(`/sources/${shortId}`)
       return
     }
 

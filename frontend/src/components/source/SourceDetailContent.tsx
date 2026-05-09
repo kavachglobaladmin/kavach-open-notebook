@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Bold, Italic, Strikethrough, Link, Quote, Code,
   Image as ImageIcon, Table, List, ListOrdered,
@@ -930,7 +931,7 @@ export function SourceDetailContent({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-2 font-semibold border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950 transition-all"
+                      className="gap-2 font-semibold border-blue-200 text-blue-900 dark:border-blue-800 transition-all"
                       onClick={() => setIsMarkdownView(true)}
                     >
                       <Sparkles className="h-4 w-4" />
@@ -993,15 +994,6 @@ export function SourceDetailContent({
                 )}
               </CardContent>
             </Card>
-
-            {isMarkdownView && source.full_text && (
-              <FormattedViewDialog
-                text={showOriginalContent || !source.translated_content ? source.full_text : source.translated_content}
-                sourceId={source.id}
-                open={isMarkdownView}
-                onClose={() => setIsMarkdownView(false)}
-              />
-            )}
           </TabsContent>
 
           <TabsContent value="insights" className="mt-6">
@@ -1289,6 +1281,19 @@ export function SourceDetailContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Render the FormattedViewDialog inside a Portal attached directly to document.body.
+          This fully escapes the DOM hierarchy, preventing layout containers or stacking 
+          contexts from cutting it off behind the sidebar or navbar. */}
+      {isMarkdownView && source.full_text && typeof window !== 'undefined' && createPortal(
+        <FormattedViewDialog
+          text={showOriginalContent || !source.translated_content ? source.full_text : source.translated_content}
+          sourceId={source.id}
+          open={isMarkdownView}
+          onClose={() => setIsMarkdownView(false)}
+        />,
+        document.body
+      )}
     </div>
   )
 }

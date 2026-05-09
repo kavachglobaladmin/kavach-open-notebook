@@ -1,21 +1,50 @@
 """
 Mobile / CDR / SMS dump analysis endpoint.
 Parses telecom-style CSV or text exports via open_notebook.mobile_data.pipeline.
+Results are cached in the analysis_cache table — subsequent calls return the cached
+result unless force_refresh=true is passed.
 """
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from open_notebook.domain.notebook import Source
+from api.routers.bank_analysis import _load_cached_analysis, _save_cached_analysis
 
 router = APIRouter()
 
+_ANALYSIS_TYPE = "mobile_cdr"
+
+
+@router.get("/sources/{source_id}/mobile-analysis")
+async def get_mobile_analysis_cached(source_id: str):
+    """
+    Return the cached mobile/CDR analysis result for a source.
+    Returns 404 if no analysis has been run yet.
+    """
+    cached = await _load_cached_analysis(source_id, _ANALYSIS_TYPE)
+    if cached is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No cached analysis found. Run the analysis first via POST."
+        )
+    return cached
+
 
 @router.post("/sources/{source_id}/mobile-analysis")
-async def analyze_mobile_data(source_id: str):
+async def analyze_mobile_data(source_id: str, force_refresh: bool = False):
     """
     Run heuristic mobile-data analysis on a source (calls, SMS-ish rows in CSV/text).
+    Results are cached in the database — subsequent calls return the cached result
+    unless force_refresh=true is passed.
     """
     try:
+        # ── Return cached result if available and not forcing refresh ────────
+        if not force_refresh:
+            cached = await _load_cached_analysis(source_id, _ANALYSIS_TYPE)
+            if cached is not None:
+                logger.info(f"[MobileAnalysis] Returning cached result for {source_id}")
+                return cached
+
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
@@ -68,6 +97,10 @@ async def analyze_mobile_data(source_id: str):
 
         # Helpful denormalised preview for debugging / future UI
         result["_searchable_stub"] = build_searchable_text(result)
+
+        # ── Persist result to database cache ─────────────────────────────────
+        await _save_cached_analysis(source_id, _ANALYSIS_TYPE, result)
+
         return result
 
     except HTTPException:
