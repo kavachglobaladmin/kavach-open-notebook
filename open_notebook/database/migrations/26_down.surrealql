@@ -1,0 +1,2 @@
+-- Migration 26 rollback
+REMOVE TABLE analysis_cache;

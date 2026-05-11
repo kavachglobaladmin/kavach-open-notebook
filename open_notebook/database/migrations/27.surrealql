@@ -1,0 +1,2 @@
+-- Migration 27: Cleanup old source_id from analysis_cache
+REMOVE FIELD IF EXISTS source_id ON TABLE analysis_cache;

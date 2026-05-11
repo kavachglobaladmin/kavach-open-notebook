@@ -1,6 +1,6 @@
-﻿'use client'
+'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Loader2, BarChart2, AlertTriangle, TrendingUp, TrendingDown,
   Wallet, Activity, Calendar, Zap, Building2, MapPin, Clock,
@@ -682,9 +682,9 @@ function BankAnalysisContent({ data }: { data: Record<string, unknown> }) {
            <Calendar className="text-[#3b82f6]" size={20} />
            <div className="flex flex-col">
              <span className="text-[9px] font-bold text-gray-500 uppercase">Statement Period</span>
-             <span className="text-[11px] font-bold text-gray-900 mt-0.5">{cleanedCards.find(c => c.label.toLowerCase().includes('from'))?.value || 'N/A'}</span>
+             <span className="text-[11px] font-bold text-gray-900 mt-0.5">{cleanedCards.find(c => c.label.toLowerCase().includes('period') || c.label.toLowerCase().includes('from'))?.value || 'N/A'}</span>
              <div className="flex items-center gap-1 text-[8px] text-gray-400 mt-1">
-                <Clock size={8} /> Last transaction date appearing in this statement is {cleanedCards.find(c => c.label.toLowerCase().includes('to'))?.value?.split(' ')[2] || 'N/A'}
+                <Clock size={8} /> Last transaction date appearing in this statement is {cleanedCards.find(c => c.label.toLowerCase().includes('period') || c.label.toLowerCase().includes('to'))?.value?.split(' ').slice(-1)[0] || 'N/A'}
              </div>
            </div>
         </div>
@@ -710,31 +710,67 @@ export function BankAnalysisDialog({ sourceId, open, onClose }: BankAnalysisDial
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState('')
   const loadingMessage      = useLoadingMessage(loading)
+  // Guard against React StrictMode double-invocation and concurrent renders
+  const runningRef = useRef(false)
 
   const runAnalysis = (force = false) => {
     if (!sourceId) return
+    // Prevent duplicate in-flight requests (StrictMode fires useEffect twice)
+    if (runningRef.current) return
+    runningRef.current = true
+
     setLoading(true)
     setError('')
     setData(null)
-    const url = force
-      ? `/sources/${encodeURIComponent(sourceId)}/bank-analysis?force_refresh=true`
-      : `/sources/${encodeURIComponent(sourceId)}/bank-analysis`
-    apiClient
-      .post(url, {})
-      .then(r => setData(r.data))
-      .catch(e => setError(e?.response?.data?.detail ?? e.message ?? 'Analysis failed'))
-      .finally(() => setLoading(false))
+
+    if (!force) {
+      // Try GET (cache) first — avoids re-running the pipeline if we already have a result
+      apiClient
+        .get(`/sources/${encodeURIComponent(sourceId)}/bank-analysis`)
+        .then(r => {
+          setData(r.data)
+          setLoading(false)
+        })
+        .catch(err => {
+          if (err?.response?.status === 404) {
+            // No cache — run the full pipeline
+            apiClient
+              .post(`/sources/${encodeURIComponent(sourceId)}/bank-analysis`, {})
+              .then(r => setData(r.data))
+              .catch(e => setError(e?.response?.data?.detail ?? e.message ?? 'Analysis failed'))
+              .finally(() => { setLoading(false); runningRef.current = false })
+            return // keep runningRef locked until POST completes
+          } else {
+            setError(err?.response?.data?.detail ?? err.message ?? 'Analysis failed')
+            setLoading(false)
+          }
+        })
+        .finally(() => {
+          // Only release the lock here if we didn't branch into the POST path
+          // (the POST path has its own finally above)
+          if (runningRef.current) runningRef.current = false
+        })
+    } else {
+      // Force refresh — always run the full pipeline
+      apiClient
+        .post(`/sources/${encodeURIComponent(sourceId)}/bank-analysis?force_refresh=true`, {})
+        .then(r => setData(r.data))
+        .catch(e => setError(e?.response?.data?.detail ?? e.message ?? 'Analysis failed'))
+        .finally(() => { setLoading(false); runningRef.current = false })
+    }
   }
 
   useEffect(() => {
     if (!open || !sourceId) return
     runAnalysis(false)
+    return () => { runningRef.current = false } // cleanup on unmount (StrictMode)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sourceId])
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="flex flex-col sm:max-w-[98vw] w-[min(98vw,1600px)] max-h-[96vh] p-0 gap-0 overflow-hidden bg-white border-none shadow-[0_0_50px_-12px_rgba(0,0,0,0.25)] rounded-2xl">
+        <DialogTitle className="sr-only">Bank Statement Analysis</DialogTitle>
 
         {/* ── Scrollable body (Header is now part of the content body per the image) ── */}
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 sm:p-4 bg-white">
@@ -775,6 +811,18 @@ export function BankAnalysisDialog({ sourceId, open, onClose }: BankAnalysisDial
             <span className="sr-only">Close</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
+
+        {/* ── Regenerate button — visible when data is loaded ── */}
+        {data && !loading && (
+          <button
+            onClick={() => runAnalysis(true)}
+            title="Regenerate analysis (ignore cache)"
+            className="absolute top-4 right-14 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-semibold text-gray-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 shadow-sm transition-all z-50"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Regenerate
+          </button>
+        )}
       </DialogContent>
     </Dialog>
   )

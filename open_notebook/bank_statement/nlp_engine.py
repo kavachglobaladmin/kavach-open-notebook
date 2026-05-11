@@ -48,39 +48,69 @@ def detect_bank_name(text: str) -> str:
     """
     Detect bank name from statement header.
     Priority:
-    1. Explicit "Bank: <name>" field in header
-    2. spaCy NER ORG entities containing bank keywords
-    3. Regex fallback
+    1. Explicit "Bank: <name>" field (structured output)
+    2. Known bank name patterns in first 30 lines
+    3. spaCy NER ORG entities (max 5 words)
+    4. Regex fallback
     """
-    # Priority 1: look for explicit "Bank:" label in first 25 lines
-    for line in text.splitlines()[:25]:
+    # Priority 1: explicit "Bank:" label
+    for line in text.splitlines()[:30]:
         stripped = line.strip()
-        # Match "Bank: SBI" or "Bank Name: HDFC Bank" patterns
         m = re.match(r'^(?:bank(?:\s+name)?)\s*[:\-]\s*(.+)$', stripped, re.IGNORECASE)
         if m:
             val = m.group(1).strip()
             if val and len(val) > 1:
+                val_upper = val.upper()
+                if any(w in val_upper for w in ["BANK", "SBI", "HDFC", "ICICI", "AXIS",
+                                                  "KOTAK", "CANARA", "FEDERAL", "UNION",
+                                                  "PUNJAB", "BARODA", "CENTRAL", "INDIAN",
+                                                  "UCO", "YES", "INDUSIND", "RBL", "IDFC",
+                                                  "FINANCE", "FINANCIAL", "CREDIT"]):
+                    return val.title()
+                words = val.split()
+                if len(words) <= 3 and all(w[0].isupper() for w in words if w) and val.replace(' ', '').isalpha():
+                    continue
                 return val.title()
 
+    # Priority 2: known bank name patterns anywhere in first 60 lines
+    _KNOWN_BANK_PATTERNS = [
+        r'\bSTATE\s+BANK\s+OF\s+INDIA\b',
+        r'\bSBI\b',
+        r'\bHDFC\s+BANK\b',
+        r'\bICICI\s+BANK\b',
+        r'\bAXIS\s+BANK\b',
+        r'\bKOTAK\s+(?:MAHINDRA\s+)?BANK\b',
+        r'\bCANARA\s+BANK\b',
+        r'\bFEDERAL\s+BANK\b',
+        r'\bPUNJAB\s+NATIONAL\s+BANK\b',
+        r'\bBANK\s+OF\s+BARODA\b',
+        r'\bUNION\s+BANK\b',
+        r'\bBANK\s+OF\s+INDIA\b',
+        r'\bCENTRAL\s+BANK\b',
+        r'\bINDIAN\s+BANK\b',
+        r'\bYES\s+BANK\b',
+        r'\bINDUSIND\s+BANK\b',
+        r'\bRBL\s+BANK\b',
+        r'\bIDFC\s+(?:FIRST\s+)?BANK\b',
+    ]
+    # Search in first 60 lines (bank name may be in branch address section)
+    header_text = "\n".join(text.splitlines()[:60])
+    for pattern in _KNOWN_BANK_PATTERNS:
+        m = re.search(pattern, header_text, re.IGNORECASE)
+        if m:
+            return m.group(0).strip().title()
+
+    # Priority 3: spaCy NER (max 5 words to avoid greedy matches)
     nlp = get_nlp()
-    if nlp is None:
-        return _detect_bank_name_fallback(text)
-
-    # Priority 2: spaCy NER - look for ORG entities
-    header = "\n".join(text.splitlines()[:25])
-    doc = nlp(header)
-
-    for ent in doc.ents:
-        if ent.label_ == "ORG":
-            name = ent.text.strip()
-            # Prefer entities that contain bank-related words
-            if len(name) > 2 and any(w in name.upper() for w in ["BANK", "FINANCE", "FINANCIAL", "CREDIT"]):
-                return name.title()
-
-    # Any ORG entity of reasonable length
-    for ent in doc.ents:
-        if ent.label_ == "ORG" and len(ent.text.strip()) > 3:
-            return ent.text.strip().title()
+    if nlp is not None:
+        header = "\n".join(text.splitlines()[:25])
+        doc = nlp(header)
+        for ent in doc.ents:
+            if ent.label_ == "ORG":
+                name = ent.text.strip()
+                words = name.split()
+                if len(words) <= 5 and any(w in name.upper() for w in ["BANK", "FINANCE", "FINANCIAL"]):
+                    return name.title()
 
     return _detect_bank_name_fallback(text)
 
@@ -138,6 +168,26 @@ def detect_account_holder(text: str) -> str:
 
     if candidates:
         return candidates[0].title()
+
+    # Fallback: look for ALL-CAPS name patterns (2-4 consecutive capitalized words)
+    # Must not be bank/institution/location words
+    _SKIP = {"BANK", "INDIA", "LIMITED", "LTD", "STATEMENT", "ACCOUNT", "BRANCH",
+             "REGULAR", "SAVINGS", "CURRENT", "OPEN", "GIDC", "ODHAV", "NAGAR",
+             "COLONY", "ROAD", "STREET", "STATE", "NATIONAL", "FEDERAL", "NEAR",
+             "GRUH", "BHIKSHUK", "AHMEDABAD", "GUJRAT", "GUJARAT", "MUMBAI",
+             "DELHI", "PATNA", "SIWAN", "GOPALGANJ", "INDIVIDUALS", "CHQ", "SB"}
+
+    # Search for 2-4 consecutive ALL-CAPS words that look like a person name
+    _NAME_RE = re.compile(r'\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,3})\b')
+    header_text = " ".join(text.splitlines()[:30])
+    for m in _NAME_RE.finditer(header_text):
+        candidate = m.group(1).strip()
+        words = candidate.split()
+        if (2 <= len(words) <= 4
+                and 5 < len(candidate) < 50
+                and not any(w in _SKIP for w in words)
+                and all(len(w) >= 2 for w in words)):
+            return candidate.title()
 
     return ""
 
