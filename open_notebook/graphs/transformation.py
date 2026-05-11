@@ -38,6 +38,10 @@ _DEFAULT_MINDMAP_PROMPT = """\
 You are an expert information architect. Build a comprehensive, deeply structured \
 JSON mind map from the document below.
 
+LANGUAGE RULE: ALL labels in the output must be in ENGLISH. If the document contains \
+Hindi, Gujarati, or any other language, translate all content to English before \
+building the mind map.
+
 HIERARCHY:
 - Level 0 (Root): Subject name/title
 - Level 1: Major logical groupings (Personal Profile, Family, Criminal Profile, Legal History, Associates, etc.)
@@ -52,8 +56,13 @@ RULES:
 - Each fact appears exactly ONCE (no duplication)
 - No empty arrays, no null values
 
-OUTPUT: Return ONLY raw valid JSON — no markdown, no explanation, no code fences.
-Format:
+OUTPUT RULES (CRITICAL):
+- Start your response with { and end with }
+- Do NOT write any text before or after the JSON
+- Do NOT use markdown code fences (no ```)
+- Do NOT write "Here is" or any introduction
+- Use ONLY this exact structure — no "nodes", no "id", no "text" fields:
+
 {
   "label": "Subject Name",
   "children": [
@@ -156,16 +165,51 @@ async def _build_mindmap_from_ai(src_text: str, model_id: str, user_prompt: str)
 def _parse_mindmap_json(raw: str) -> dict:
     """
     Robustly parse model JSON output into a mind map dict.
-    Handles: markdown fences, leading prose, trailing commas, truncated JSON.
+    Uses json-repair to handle unescaped quotes, trailing commas,
+    and truncated JSON in a single pass.
+    Also converts non-standard formats (nodes/id/text) to label/children.
     """
     from loguru import logger as _logger
+
+    def _normalize_to_label_children(data: dict) -> dict | None:
+        """Convert various AI output formats to {label, children} format."""
+        if isinstance(data, dict):
+            # Standard format already
+            if "label" in data:
+                return data
+            # nodes format: {"nodes": [{"id": ..., "text": ..., "children": [...]}]}
+            if "nodes" in data and isinstance(data["nodes"], list):
+                nodes = data["nodes"]
+                # Find root node
+                root = next((n for n in nodes if n.get("id") == "root"), None)
+                if not root and nodes:
+                    root = nodes[0]
+                if root:
+                    def convert_node(n):
+                        label = n.get("text") or n.get("label") or n.get("id") or "Node"
+                        children = [convert_node(c) for c in n.get("children", [])]
+                        result = {"label": label}
+                        if children:
+                            result["children"] = children
+                        return result
+                    return convert_node(root)
+            # text/id format without nodes wrapper
+            if "text" in data or "id" in data:
+                label = data.get("text") or data.get("id") or "Root"
+                children = [_normalize_to_label_children(c) for c in data.get("children", [])]
+                children = [c for c in children if c]
+                result = {"label": label}
+                if children:
+                    result["children"] = children
+                return result
+        return None
 
     fence_match = _re.search(r"```(?:json)?\s*([\s\S]*?)```", raw, _re.IGNORECASE)
     cleaned = fence_match.group(1).strip() if fence_match else raw.strip()
     cleaned = _re.sub(r"^Here is the JSON mind map:\s*", "", cleaned, flags=_re.IGNORECASE).strip()
     cleaned = _re.sub(r"```(?:json)?\s*", "", cleaned, flags=_re.IGNORECASE).replace("```", "").strip()
 
-    # Skip any leading prose before the first {
+    # Strip leading prose before first {
     start = cleaned.find("{")
     if start == -1:
         _logger.error(f"[MindMap] No JSON object found. Output:\n{raw[:800]}")
@@ -173,48 +217,44 @@ def _parse_mindmap_json(raw: str) -> dict:
 
     cleaned = cleaned[start:]
 
-    # Fix trailing commas (common LLM mistake)
-    cleaned = _re.sub(r",\s*([}\]])", r"\1", cleaned)
+    def _try_parse_and_normalize(s: str) -> dict | None:
+        try:
+            data = _json.loads(s)
+            if isinstance(data, dict):
+                normalized = _normalize_to_label_children(data)
+                if normalized and "label" in normalized:
+                    return _sanitize_tree(normalized)
+        except _json.JSONDecodeError:
+            pass
+        return None
 
     # Attempt 1: direct parse
-    try:
-        data = _json.loads(cleaned)
-        if isinstance(data, dict) and "label" in data:
-            _logger.info("[MindMap] JSON parsed successfully")
-            return _sanitize_tree(data)
-    except _json.JSONDecodeError as e:
-        _logger.warning(f"[MindMap] Direct parse failed: {e}")
+    result = _try_parse_and_normalize(cleaned)
+    if result:
+        _logger.info("[MindMap] Parsed successfully (direct)")
+        return result
 
-    # Attempt 1b: trim an obviously incomplete tail, then rebalance
+    # Attempt 2: repair truncated JSON
     try:
-        repaired = _repair_truncated_json(cleaned)
-        data = _json.loads(repaired)
-        if isinstance(data, dict) and "label" in data:
+        repaired_str = _repair_truncated_json(cleaned)
+        result = _try_parse_and_normalize(repaired_str)
+        if result:
             _logger.info("[MindMap] Repaired parse succeeded")
-            return _sanitize_tree(data)
+            return result
     except Exception as e:
         _logger.warning(f"[MindMap] Repaired parse failed: {e}")
 
-    # Attempt 2: balance unclosed braces (truncated output)
+    # Attempt 3: json_repair library
     try:
-        balanced = _balance_braces(cleaned)
-        data = _json.loads(balanced)
-        if isinstance(data, dict) and "label" in data:
-            _logger.info("[MindMap] Balanced parse succeeded")
-            return _sanitize_tree(data)
+        import json_repair
+        repaired = json_repair.repair_json(cleaned, return_objects=True)
+        if isinstance(repaired, dict):
+            normalized = _normalize_to_label_children(repaired)
+            if normalized and "label" in normalized:
+                _logger.info("[MindMap] json_repair succeeded")
+                return _sanitize_tree(normalized)
     except Exception as e:
-        _logger.warning(f"[MindMap] Balanced parse failed: {e}")
-
-    # Attempt 3: trim to last valid }
-    try:
-        last = cleaned.rfind("}")
-        if last > 0:
-            data = _json.loads(cleaned[: last + 1])
-            if isinstance(data, dict) and "label" in data:
-                _logger.info("[MindMap] Trimmed parse succeeded")
-                return _sanitize_tree(data)
-    except Exception as e:
-        _logger.warning(f"[MindMap] Trimmed parse failed: {e}")
+        _logger.warning(f"[MindMap] json-repair failed: {e}")
 
     _logger.error(f"[MindMap] All parse attempts failed. Raw:\n{raw[:800]}")
     return _build_fallback_mind_map_from_text(cleaned or raw, title="Mind Map")
@@ -241,6 +281,91 @@ def _balance_braces(s: str) -> str:
             elif ch in "}]" and stack and stack[-1] == ch:
                 stack.pop()
     return s + "".join(reversed(stack))
+
+
+def _repair_truncated_json(s: str) -> str:
+    """
+    Remove a dangling partial tail and then close any open containers.
+    Useful when the model output ends in the middle of a child object.
+    """
+    repaired = s.strip()
+    repaired = _re.sub(r',?\s*"[^"]*"\s*:\s*"?[^"\]}]*$', "", repaired)
+    repaired = _re.sub(r',?\s*\{\s*"[^"]*"\s*:\s*"?[^"\]}]*$', "", repaired)
+
+    while repaired and repaired[-1] not in ['}', ']', '"'] and not repaired[-1].isdigit():
+        repaired = repaired[:-1].rstrip()
+
+    repaired = _re.sub(r",\s*([}\]])", r"\1", repaired)
+    return _balance_braces(repaired)
+
+
+def _build_fallback_mind_map_from_text(text: str, title: str = "Mind Map") -> dict:
+    """
+    Build a usable fallback tree from prose or broken JSON instead of saving
+    a Parse Error placeholder.
+    """
+    subject = _extract_subject(text) or title
+    lines = []
+    for line in text.splitlines():
+        cleaned = line.strip(" `\t-")
+        if not cleaned:
+            continue
+        if cleaned.lower().startswith(("here is the json", "json mind map")):
+            continue
+        if len(cleaned) < 4:
+            continue
+        lines.append(cleaned)
+
+    children = []
+    current_section = None
+    current_items = []
+
+    def flush_section():
+        nonlocal current_section, current_items
+        if current_section and current_items:
+            children.append({
+                "label": current_section[:120],
+                "children": [{"label": item[:120]} for item in current_items[:12]],
+            })
+        current_section = None
+        current_items = []
+
+    for line in lines[:120]:
+        if line.startswith(("{", "}", "[", "]")):
+            continue
+        label_match = _re.search(r'"label"\s*:\s*"([^"]+)"', line)
+        if label_match:
+            label = label_match.group(1).strip()
+            if current_section is None:
+                current_section = label
+            elif not current_items:
+                current_items.append(label)
+            else:
+                flush_section()
+                current_section = label
+            continue
+        if len(line) > 20:
+            current_items.append(line)
+
+    flush_section()
+
+    if not children:
+        sentences = [
+            s.strip() for s in _re.split(r'(?<=[.!?])\s+', text)
+            if len(s.strip()) > 20
+        ]
+        chunk_size = max(3, len(sentences) // 5) if sentences else 3
+        for i in range(0, len(sentences), chunk_size):
+            chunk = sentences[i:i + chunk_size]
+            children.append({
+                "label": f"Section {i // chunk_size + 1}",
+                "children": [{"label": s[:120]} for s in chunk],
+            })
+
+    return {
+        "label": subject[:120] or title,
+        "children": children if children else [{"label": "No structured content found"}],
+    }
 
 
 def _repair_truncated_json(s: str) -> str:
@@ -507,6 +632,17 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         transformation_name: Name of transformation (for detection)
         is_final_transformation: If False, this is an intermediate step (don't save Dense Summary)
     """
+async def _run_with_prompt(model_id: str, content: str, transformation_prompt: str, transformation_name: str = "", is_final_transformation: bool = True) -> str:
+    """
+    Single-pass or chunked transformation using the user's prompt.
+    
+    Args:
+        model_id: Model to use for transformation
+        content: Content to transform
+        transformation_prompt: Prompt for transformation
+        transformation_name: Name of transformation (for detection)
+        is_final_transformation: If False, this is an intermediate step (don't save Dense Summary)
+    """
     import time as _time
     start_time = _time.time()
     
@@ -525,6 +661,13 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
         or ("infographic" in transformation_name.lower() and "json" in transformation_prompt.lower())
         or ("investigation" in transformation_name.lower() and "profile" in transformation_name.lower())
     )
+    # Structured JSON output (infographic, investigation profile, etc.)
+    is_structured_json = (
+        "document_type" in transformation_prompt
+        or "ir_document" in transformation_prompt
+        or ("infographic" in transformation_name.lower() and "json" in transformation_prompt.lower())
+        or ("investigation" in transformation_name.lower() and "profile" in transformation_name.lower())
+    )
     single_max_tokens = 8000 if is_dense else 4096
 
     if len(content) <= CHUNK_SIZE:
@@ -533,6 +676,8 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
             system + content, model_id, "transformation", max_tokens=single_max_tokens
         )
         result = await _invoke_model(chain, system, content)
+        if is_structured_json:
+            result = _clean_structured_json_output(result)
         elapsed = _time.time() - start_time
         from loguru import logger as _logger
         _logger.info(f"[Transformation] Single-pass completed in {elapsed:.2f}s")
@@ -561,14 +706,17 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
                 "Write in flowing prose. Do NOT use bullet points. Do NOT add meta-commentary.\n\nTEXT:\n"
             )
         elif is_structured_json:
-            # For structured JSON outputs: extract all relevant data as bullet points
-            # The merge step will assemble the final JSON
             system = (
                 f"{transformation_prompt}\n\n"
-                "Extract ALL relevant data from the text below as detailed bullet points. "
-                "Include every name, date, FIR number, case detail, associate, event, and fact. "
-                "Do NOT output JSON yet — just extract all facts as bullet points. "
-                "Do NOT skip any information. Do NOT add commentary.\n\nTEXT:\n"
+                "Extract ALL relevant data from the text below as detailed bullet points.\n"
+                "For EACH item extract ALL sub-fields:\n"
+                "- Associates: name AND their exact relation/role (gang leader, co-accused, family member, etc.)\n"
+                "- Timeline events: exact date AND complete event description (what happened, where, who)\n"
+                "- Highlights: key finding AND category (Crime/Legal/Personal) AND specific factual detail\n"
+                "- Case details: FIR number, IPC section, date, police station name, current status\n"
+                "- stat: most important single number (total FIRs, years active, prison time, etc.)\n"
+                "CRITICAL: Do NOT leave any sub-field empty. If relation unknown write 'associate'.\n"
+                "Do NOT output JSON yet — just extract all facts as bullet points.\n\nTEXT:\n"
             )
         else:
             system = (
@@ -637,14 +785,21 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
     elif is_structured_json:
         merge_system = (
             f"{transformation_prompt}\n\n"
-            "You are given multiple JSON fragments or fact lists extracted from different sections of a document. "
-            "Merge them into ONE complete, valid JSON object following the exact structure specified in the prompt above. "
-            "Combine ALL data from all fragments:\n"
-            "- Merge arrays (timeline_events, case_details, associates, highlights, etc.) by concatenating them\n"
-            "- Fill in ALL fields with complete data from across all fragments\n"
-            "- Do NOT leave fields empty if data exists in any fragment\n"
-            "- Ensure the output is valid, complete JSON with no missing brackets or commas\n"
-            "Output ONLY the merged JSON, no explanation or meta-commentary.\n\nFRAGMENTS:\n"
+            "You are given multiple fact lists extracted from different sections of a document.\n"
+            "Merge them into ONE complete, valid JSON object following the exact structure above.\n\n"
+            "STRICT MERGE RULES:\n"
+            "- Concatenate ALL arrays: timeline_events, case_details, associates, highlights\n"
+            "- Remove exact duplicate entries only\n"
+            "- highlights: EVERY entry MUST have title + subtitle + description - NO empty strings allowed\n"
+            "  subtitle = category like 'Crime' or 'Legal' or 'Personal'\n"
+            "  description = one specific factual detail about that highlight\n"
+            "- associates: EVERY entry MUST have name + relation - if unknown write 'associate'\n"
+            "- timeline_events: EVERY entry MUST have date + full event description - NO empty events\n"
+            "- case_details: use fields fir_no, section, date, police_station, status\n"
+            "- stat.value = total number of FIR cases OR years active (pick most relevant number)\n"
+            "- NEVER use empty string, '...', null, or placeholder text anywhere\n"
+            "- If a field truly has no data, omit that field entirely\n"
+            "Output ONLY valid JSON, no explanation, no markdown.\n\nFACTS:\n"
         )
     elif is_dense:
         merge_system = (
@@ -668,7 +823,87 @@ async def _run_with_prompt(model_id: str, content: str, transformation_prompt: s
     chain = await provision_langchain_model(
         merge_system + all_facts, model_id, "transformation", max_tokens=8000
     )
-    return await _invoke_model(chain, merge_system, all_facts)
+    raw = await _invoke_model(chain, merge_system, all_facts)
+
+    # For structured JSON output: strip markdown fences and repair JSON
+    if is_structured_json:
+        raw = _clean_structured_json_output(raw)
+
+    return raw
+
+
+def _remove_nulls(obj):
+    """
+    Recursively remove null/empty values from a dict/list.
+    - dict: remove keys where value is None or empty string
+    - list: remove items that are None, empty string, or dicts with all-null values
+    - list items that are dicts: clean each dict recursively
+    """
+    if isinstance(obj, dict):
+        cleaned = {}
+        for k, v in obj.items():
+            v2 = _remove_nulls(v)
+            if v2 is None or v2 == "" or v2 == [] or v2 == {}:
+                continue
+            cleaned[k] = v2
+        return cleaned if cleaned else None
+    elif isinstance(obj, list):
+        result = []
+        for item in obj:
+            item2 = _remove_nulls(item)
+            if item2 is None or item2 == "" or item2 == {} or item2 == []:
+                continue
+            result.append(item2)
+        return result
+    else:
+        return obj
+
+
+def _clean_structured_json_output(raw: str) -> str:
+    """
+    Strip markdown fences, repair JSON, and remove null/empty fields
+    for structured outputs (infographic, etc.).
+    Returns clean JSON string, or original string if repair fails.
+    """
+    import json as _j
+    import re as _re2
+    from loguru import logger as _logger
+
+    # Strip markdown fences
+    fence = _re2.search(r"```(?:json)?\s*([\s\S]*?)```", raw, _re2.IGNORECASE)
+    cleaned = fence.group(1).strip() if fence else raw.strip()
+
+    # Find first {
+    start = cleaned.find("{")
+    if start == -1:
+        return raw
+    cleaned = cleaned[start:]
+
+    # Parse JSON (direct or via json_repair)
+    data = None
+    try:
+        data = _j.loads(cleaned)
+    except Exception:
+        try:
+            from json_repair import repair_json
+            repaired = repair_json(cleaned)
+            if repaired and repaired.strip() not in ("{}", "[]", "null", '""'):
+                data = _j.loads(repaired)
+                _logger.info("[Transformation] Structured JSON repaired via json_repair")
+        except Exception as e:
+            _logger.warning(f"[Transformation] json_repair failed: {e}")
+
+    if data is None:
+        return cleaned
+
+    # Remove null/empty fields recursively
+    data = _remove_nulls(data)
+    if not data:
+        return cleaned
+
+    result = _j.dumps(data, ensure_ascii=False, indent=2)
+    _logger.info(f"[Transformation] Structured JSON cleaned: {len(result)} chars")
+    return result
 
 
 # =============================================================================
@@ -729,13 +964,6 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             final_output = _json.dumps(mind_map_dict, ensure_ascii=False, indent=2)
             _logger.info(f"[MindMap] Done — {len(mind_map_dict.get('children', []))} top-level categories")
 
-            if source:
-                await source.add_insight(
-                    transformation.title,
-                    final_output,
-                    generation_id=generation_id,
-                )
-
             return {"output": final_output}
 
         # ── All other transformations ─────────────────────────────────────
@@ -763,13 +991,6 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             final_output = await _run_with_prompt(
                 model_id, content_str, transformation_prompt,
                 transformation_name=t_name
-            )
-
-        if source:
-            await source.add_insight(
-                transformation.title,
-                final_output,
-                generation_id=generation_id,
             )
 
         return {"output": final_output}

@@ -40,6 +40,13 @@ function clean(text: unknown): string {
   return s.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '').replace(/#+\s/g, '').trim()
 }
 
+function hasValue(text: unknown): boolean {
+  const value = clean(text)
+  if (!value) return false
+  const lowered = value.toLowerCase()
+  return !['null', 'none', 'n/a', 'na', '...', '-', '--', 'unknown'].includes(lowered)
+}
+
 function repairJson(raw: string): string {
   // Fix comma-formatted numbers: 15,099.00 → 15099.00 (only when after : or in array)
   let s = raw
@@ -120,8 +127,20 @@ export function extractAndMergeJson(raw: string): InfographicResponse | null {
   if (merged.timeline_events) {
     const seen = new Set<string>()
     merged.timeline_events = merged.timeline_events
+      .filter(e => hasValue(e.date) && hasValue(e.event))
       .filter(e => { const k = `${e.date}|${e.event?.slice(0, 30)}`; if (seen.has(k)) return false; seen.add(k); return true })
       .sort((a, b) => a.date.localeCompare(b.date))
+  }
+  if (merged.highlights) {
+    merged.highlights = merged.highlights.filter(h => hasValue(h.title) || hasValue(h.description))
+  }
+  if (merged.case_details) {
+    merged.case_details = merged.case_details.filter(c =>
+      hasValue(c.fir_no) || hasValue(c.section) || hasValue(c.date) || hasValue(c.police_station) || hasValue(c.status)
+    )
+  }
+  if (merged.associates) {
+    merged.associates = merged.associates.filter(a => hasValue(a.name) || hasValue(a.relation))
   }
   return merged
 }
@@ -154,6 +173,9 @@ function flattenSubject(subject: unknown): Record<string, string> {
       } else {
         result[k] = String(v)
       }
+    }
+    for (const [k, v] of Object.entries(result)) {
+      if (!hasValue(k) || !hasValue(v)) delete result[k]
     }
     return result
   }
@@ -205,7 +227,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   )
 }
 
-function KVRow({ label, value, accent, idx }: { label: string; value: string; accent: string; idx: number }) {
+function KVRow({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
     <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `0.5px solid ${DARK_BORDER}` }}>
       <span style={{ fontFamily: 'Georgia, serif', fontSize: 8, fontWeight: 700, color: accent, width: 140, flexShrink: 0, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>{label}</span>
@@ -364,7 +386,7 @@ function BankStatementView({ data }: { data: InfographicResponse }) {
                 <SectionHeader label="Account Details" color={accent} />
                 <div style={{ padding: '8px 14px' }}>
                   {Object.entries(subjectMap).map(([k, v], i) => (
-                    <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+                    <KVRow key={i} label={k} value={v} accent={accent} />
                   ))}
                 </div>
               </Card>
@@ -374,7 +396,7 @@ function BankStatementView({ data }: { data: InfographicResponse }) {
                 <SectionHeader label="Financial Summary" color={accent} />
                 <div style={{ padding: '8px 14px' }}>
                   {Object.entries(data.financial_summary!).map(([k, v], i) => (
-                    <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+                    <KVRow key={i} label={k} value={v} accent={accent} />
                   ))}
                 </div>
               </Card>
@@ -488,7 +510,7 @@ function MobileCDRView({ data }: { data: InfographicResponse }) {
             <SectionHeader label="Subject Details" color={accent} />
             <div style={{ padding: '8px 14px' }}>
               {Object.entries(subjectMap).map(([k, v], i) => (
-                <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+                <KVRow key={i} label={k} value={v} accent={accent} />
               ))}
             </div>
           </Card>
@@ -784,7 +806,7 @@ function GenericView({ data }: { data: InfographicResponse }) {
             <SectionHeader label="Details" color={accent} />
             <div style={{ padding: '8px 14px' }}>
               {Object.entries(subjectMap).map(([k, v], i) => (
-                <KVRow key={i} label={k} value={v} accent={accent} idx={i} />
+                <KVRow key={i} label={k} value={v} accent={accent} />
               ))}
             </div>
           </Card>
@@ -887,8 +909,28 @@ export function InfographicInsightViewer({ content }: { content?: string }) {
 
   const staticData = useMemo<InfographicResponse | null>(() => {
     if (!content) return null
+    
+    try {
+      // First, try to parse as JSON directly (for API responses)
+      const parsed = JSON.parse(content) as InfographicResponse
+      if (parsed && (parsed.header || parsed.document_type || parsed.source_id)) {
+        console.log('[InfographicInsightViewer] Parsed as direct JSON:', parsed)
+        return parsed
+      }
+    } catch (e) {
+      // Not direct JSON, try extraction
+      console.log('[InfographicInsightViewer] Direct JSON parse failed, trying extraction')
+    }
+    
+    // Try extracting JSON from markdown/text
     const merged = extractAndMergeJson(content)
-    if (merged && (merged.header || merged.document_type)) return merged
+    if (merged && (merged.header || merged.document_type)) {
+      console.log('[InfographicInsightViewer] Extracted JSON:', merged)
+      return merged
+    }
+    
+    // Fall back to markdown parsing
+    console.log('[InfographicInsightViewer] Falling back to markdown parsing')
     return parseMarkdownToInfographic(content)
   }, [content])
 

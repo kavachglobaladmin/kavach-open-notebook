@@ -1,0 +1,9 @@
+-- Migration 22: Add source_insight_generation table for dedup tracking
+-- Tracks active generation requests to prevent duplicate insight creation
+
+DEFINE TABLE source_insight_generation SCHEMAFULL;
+DEFINE FIELD source ON TABLE source_insight_generation TYPE record<source>;
+DEFINE FIELD insight_type ON TABLE source_insight_generation TYPE string;
+DEFINE FIELD generation_id ON TABLE source_insight_generation TYPE string;
+DEFINE FIELD created ON TABLE source_insight_generation TYPE datetime DEFAULT time::now();
+DEFINE INDEX idx_sig_source_type ON TABLE source_insight_generation COLUMNS source, insight_type;

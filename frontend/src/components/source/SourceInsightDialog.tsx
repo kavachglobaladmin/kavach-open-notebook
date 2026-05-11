@@ -10,7 +10,8 @@ import remarkGfm from 'remark-gfm'
 import { useInsight } from '@/lib/hooks/use-insights'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { MindMapInsightViewer, isMindMapInsight } from '@/components/source/MindMapInsightViewer'
+// Preserving the component import, but we will use a safe local check for the insight type
+import { MindMapInsightViewer } from '@/components/source/MindMapInsightViewer'
 import { BankAnalysisInsightViewer, isBankAnalysisInsight } from '@/components/source/BankAnalysisInsightViewer'
 import { InfographicInsightViewer, isInfographicInsight } from '@/components/source/InfographicInsightViewer'
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
@@ -54,17 +55,18 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   // Get source_id from fetched data (preferred) or passed-in insight
   const sourceId = fetchedInsight?.source_id ?? insight?.source_id
 
-  // Detect mind-map insight
-  const isMindMap = !!(displayInsight?.insight_type && isMindMapInsight(displayInsight.insight_type))
-  // Detect bank analysis insight
+  /**
+   * FIX: Resolved the "no exported member" error by using a local type-check 
+   * logic that matches the behavior of isMindMapInsight.
+   */
+  const checkIsMindMap = (type?: string) => !!(type && /mind.?map/i.test(type))
+  const isMindMap = checkIsMindMap(displayInsight?.insight_type)
+  
+  // Detect other specialized insights
   const isBankAnalysis = !!(displayInsight?.insight_type && isBankAnalysisInsight(displayInsight.insight_type))
-  // Detect infographic insight
   const isInfographic = !!(displayInsight?.insight_type && isInfographicInsight(displayInsight.insight_type))
-  // Detect timeline analysis insight
   const isTimeline = !!(displayInsight?.insight_type && isTimelineAnalysisInsight(displayInsight.insight_type))
-  // Detect investigative profile insight
   const isInvestigativeProfile = !!(displayInsight?.insight_type && isInvestigativeProfileInsight(displayInsight.insight_type))
-  // Detect dense summary insight
   const isDenseSummary = !!(displayInsight?.insight_type && isDenseSummaryInsight(displayInsight.insight_type))
 
   const handleViewSource = () => {
@@ -92,7 +94,11 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
     try {
       // Delete old mindmap insights then regenerate via the mindmap API
       await fetch(`/api/sources/${encodeURIComponent(sourceId)}/insights/mindmap`, { method: 'DELETE' })
-      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}/mindmap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}/mindmap`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({}) 
+      })
       if (!res.ok) throw new Error(`Regeneration failed: ${res.status}`)
       const data = await res.json()
       setRegeneratedContent(JSON.stringify(data.mind_map))
@@ -104,7 +110,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
     }
   }
 
-  // Reset delete confirmation when dialog closes
+  // Reset states when dialog closes
   useEffect(() => {
     if (!open) {
       setShowDeleteConfirm(false)
@@ -114,8 +120,15 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Wider dialog for mind-map insights so the graph has room */}
-      <DialogContent className={`flex flex-col max-h-[98vh] ${isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : isInfographic ? 'sm:max-w-[95vw] w-[95vw] h-[95vh]' : isTimeline ? 'sm:max-w-5xl w-[90vw]' : isInvestigativeProfile ? 'sm:max-w-4xl w-[90vw]' : 'sm:max-w-3xl'}`}>
+      {/* Dynamic width based on content type */}
+      <DialogContent className={`flex flex-col max-h-[98vh] ${
+        isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : 
+        isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : 
+        isInfographic ? 'sm:max-w-[95vw] w-[95vw] h-[95vh]' : 
+        isTimeline ? 'sm:max-w-5xl w-[90vw]' : 
+        isInvestigativeProfile ? 'sm:max-w-4xl w-[90vw]' : 
+        'sm:max-w-3xl'
+      }`}>
 
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center justify-between gap-2">
@@ -184,29 +197,22 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               </div>
             ) : displayInsight ? (
               isMindMap && sourceId ? (
-                /* ── Mind-map insight: interactive graph viewer ── */
                 <MindMapInsightViewer
                   content={displayContent}
                   sourceId={sourceId}
                   title={displayInsight?.insight_type}
                 />
               ) : isBankAnalysis ? (
-                /* ── Bank Analysis Profile: structured dashboard ── */
                 <BankAnalysisInsightViewer content={displayContent} />
               ) : isInfographic ? (
-                /* ── Infographic: structured card layout ── */
                 <InfographicInsightViewer content={displayContent} />
               ) : isTimeline ? (
-                /* ── Timeline Analysis: communication log dashboard ── */
                 <TimelineAnalysisInsightViewer content={displayContent} />
               ) : isInvestigativeProfile ? (
-                /* ── Investigative Profile: structured intelligence dashboard ── */
                 <InvestigativeProfileInsightViewer content={displayContent} />
               ) : isDenseSummary ? (
-                /* ── Dense Summary: clean readable paragraph layout ── */
                 <DenseSummaryViewer content={displayContent} createdAt={displayInsight.created} />
               ) : (
-                /* ── Regular insight: markdown renderer ── */
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}

@@ -90,10 +90,14 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
         if not transformation:
             raise HTTPException(status_code=404, detail="Transformation not found")
 
-        # Validate model exists
-        model = await Model.get(execute_request.model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail="Model not found")
+        # Use provided model_id, or fall back to transformation's model_id, or use default
+        effective_model_id = execute_request.model_id or transformation.model_id or None
+
+        # Validate model exists only if explicitly provided
+        if effective_model_id:
+            model = await Model.get(effective_model_id)
+            if not model:
+                raise HTTPException(status_code=404, detail="Model not found")
 
         # Execute the transformation
         result = await transformation_graph.ainvoke(
@@ -101,13 +105,13 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
                 input_text=execute_request.input_text,
                 transformation=transformation,
             ),
-            config=dict(configurable={"model_id": execute_request.model_id}),
+            config=dict(configurable={"model_id": effective_model_id}),
         )
 
         return TransformationExecuteResponse(
             output=result["output"],
             transformation_id=execute_request.transformation_id,
-            model_id=execute_request.model_id,
+            model_id=effective_model_id or "",
         )
 
     except HTTPException:

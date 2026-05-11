@@ -1,31 +1,34 @@
 import pandas as pd
 
+from open_notebook.bank_statement.settings import get_defaults
+
+_D = get_defaults()
+
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
     df = df.copy()
+    date_col    = _D["col_date"]
+    debit_col   = _D["col_debit"]
+    credit_col  = _D["col_credit"]
+    balance_col = _D["col_balance"]
+    month_col   = _D["col_month"]
+    amount_col  = _D["col_amount"]
 
-    # Ensure numeric columns are proper floats
-    for col in ("debit", "credit", "balance"):
+    for col in _D["numeric_columns"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
-    # Ensure date column is datetime
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        df = df.dropna(subset=["date"])
+    if date_col in df.columns:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df = df.dropna(subset=[date_col])
 
-    # Safety-net deduplication: same date + same balance = same transaction
-    # (parser already deduplicates, this catches any edge cases)
-    df = df.drop_duplicates(subset=["date", "balance"], keep="first")
+    df = df.drop_duplicates(subset=[date_col, balance_col], keep="first")
+    df = df.sort_values(date_col).reset_index(drop=True)
 
-    # Sort by date
-    df = df.sort_values("date").reset_index(drop=True)
-
-    # Derived columns
-    df["month"] = df["date"].dt.to_period("M").astype(str)
-    df["amount"] = df["credit"] - df["debit"]
+    df[month_col]  = df[date_col].dt.to_period("M").astype(str)
+    df[amount_col] = df[credit_col] - df[debit_col]
 
     return df

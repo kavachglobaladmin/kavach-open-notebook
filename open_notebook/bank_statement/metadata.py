@@ -1,32 +1,17 @@
-TABLE_WORDS = {
-    "value",
-    "post",
-    "date",
-    "description",
-    "debit",
-    "credit",
-    "balance",
-    "transaction",
-    "transactions",
-    "details",
-    "amount",
-    "payment",
-    "method",
-    "opening",
-    "spent",
-    "saved",
-}
-SEPARATORS = (":", " - ", " — ", " _ ", " = ")
+from open_notebook.bank_statement.settings import get_defaults
+
+_D = get_defaults()
 
 
 def _header_lines(text):
+    table_words = set(_D["table_words"])
     lines = []
     for line in text.splitlines():
         cleaned = " ".join(line.split())
         if not cleaned:
             continue
         words = {word.lower().strip(":-") for word in cleaned.split()}
-        if len(words.intersection(TABLE_WORDS)) >= 3:
+        if len(words.intersection(table_words)) >= 3:
             break
         lines.append(cleaned)
     return lines
@@ -36,7 +21,6 @@ def _split_label_prefix(label):
     words = label.split()
     if len(words) <= 2:
         return "", label
-
     prefix = []
     for word in words:
         cleaned = word.strip(".,")
@@ -44,10 +28,8 @@ def _split_label_prefix(label):
             prefix.append(word)
         else:
             break
-
     if prefix and len(prefix) < len(words):
-        return " ".join(prefix), " ".join(words[len(prefix) :])
-
+        return " ".join(prefix), " ".join(words[len(prefix):])
     return "", label
 
 
@@ -55,24 +37,23 @@ def _label_from_left_text(text):
     words = text.strip().split()
     if len(words) <= 3:
         return "", " ".join(words)
-
     prefix, label = _split_label_prefix(" ".join(words))
     if prefix:
         return prefix, label
-
     return " ".join(words[:-2]), " ".join(words[-2:])
 
 
 def _extract_key_values(line):
+    separators = _D["separators"]
     fields = []
     free_text = []
     cursor = 0
 
     while True:
         found = [
-            (line.find(separator, cursor), separator)
-            for separator in SEPARATORS
-            if line.find(separator, cursor) != -1
+            (line.find(sep, cursor), sep)
+            for sep in separators
+            if line.find(sep, cursor) != -1
         ]
         if not found:
             tail = line[cursor:].strip()
@@ -80,31 +61,31 @@ def _extract_key_values(line):
                 free_text.append(tail)
             break
 
-        separator_index, separator = min(found, key=lambda item: item[0])
-        left_text = line[cursor:separator_index].strip()
+        sep_idx, sep = min(found, key=lambda x: x[0])
+        left_text = line[cursor:sep_idx].strip()
         prefix, label = _label_from_left_text(left_text)
         if prefix:
             free_text.append(prefix)
 
-        value_start = separator_index + len(separator)
+        value_start = sep_idx + len(sep)
         next_found = [
-            (line.find(next_separator, value_start), next_separator)
-            for next_separator in SEPARATORS
-            if line.find(next_separator, value_start) != -1
+            (line.find(ns, value_start), ns)
+            for ns in separators
+            if line.find(ns, value_start) != -1
         ]
         if not next_found:
             value = line[value_start:].strip(" ,")
             cursor = len(line)
         else:
-            next_separator_index, _ = min(next_found, key=lambda item: item[0])
-            next_left = line[value_start:next_separator_index]
+            next_idx, _ = min(next_found, key=lambda x: x[0])
+            next_left = line[value_start:next_idx]
             parts = next_left.strip().split()
             if len(parts) > 2:
                 value = " ".join(parts[:-2]).strip(" ,")
-                cursor = next_separator_index - len(" ".join(parts[-2:]))
+                cursor = next_idx - len(" ".join(parts[-2:]))
             else:
                 value = next_left.strip(" ,")
-                cursor = next_separator_index
+                cursor = next_idx
 
         if label and value:
             fields.append({"label": label.strip(), "value": value.strip()})
@@ -115,15 +96,14 @@ def _extract_key_values(line):
 def _extract_inline_field(line):
     tokens = line.split()
     fields = []
-    for index in range(len(tokens) - 2):
-        label_end = tokens[index + 1].lower().strip(" .")
-        value = tokens[index + 2].strip(" ,.")
+    for i in range(len(tokens) - 2):
+        label_end = tokens[i + 1].lower().strip(" .")
+        value = tokens[i + 2].strip(" ,.")
         if label_end not in {"no", "number"}:
             continue
         if not value.isdigit() or len(value) < 6:
             continue
-
-        label = f"{tokens[index].strip(' .')} {tokens[index + 1].strip(' .')}"
+        label = f"{tokens[i].strip(' .')} {tokens[i + 1].strip(' .')}"
         fields.append({"label": label, "value": value})
     return fields
 
@@ -133,7 +113,6 @@ def _merge_fields(fields):
     seen_labels = {}
     seen_values = set()
 
-    # Normalize label for deduplication
     def _norm(label: str) -> str:
         return label.lower().replace("/", "").replace(" ", "").replace(".", "").replace("_", "")
 
@@ -141,11 +120,8 @@ def _merge_fields(fields):
         label = field["label"]
         value = field["value"]
         norm_key = _norm(label)
-
-        # Skip if same value already seen (e.g. account number appearing twice)
         if value and value in seen_values:
             continue
-
         if norm_key in seen_labels:
             if value not in seen_labels[norm_key]["value"].split(" | "):
                 seen_labels[norm_key]["value"] = f"{seen_labels[norm_key]['value']} | {value}"
@@ -153,10 +129,8 @@ def _merge_fields(fields):
             item = {"label": label, "value": value}
             seen_labels[norm_key] = item
             merged.append(item)
-
         if value:
             seen_values.add(value)
-
     return merged
 
 
@@ -180,12 +154,11 @@ def parse_statement_details(text):
             fields.extend(_extract_inline_field(cleaned))
 
     title_index = next(
-        (index for index, line in enumerate(free_lines) if "statement" in line.lower()),
-        -1,
+        (i for i, line in enumerate(free_lines) if "statement" in line.lower()), -1
     )
     title = free_lines[title_index] if title_index >= 0 else ""
-    issuer_lines = free_lines[:title_index] if title_index >= 0 else free_lines[:2]
-    customer_lines = free_lines[title_index + 1 :] if title_index >= 0 else free_lines[2:]
+    issuer_lines   = free_lines[:title_index] if title_index >= 0 else free_lines[:2]
+    customer_lines = free_lines[title_index + 1:] if title_index >= 0 else free_lines[2:]
 
     return {
         "title": title,

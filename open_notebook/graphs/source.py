@@ -585,11 +585,18 @@ async def content_process(state: SourceState) -> dict:
     content_text = processed_state.content or ""
     is_pdf = file_path and str(file_path).lower().endswith(".pdf")
 
-    # ── Bank Statement Pipeline: har PDF file mate pehla run karo ──
-    # For scanned/image PDFs: use _ocr_fallback to extract raw text first (fast, page-by-page).
-    # Store that as full_text. The bank_statement pipeline (transaction parsing) runs later
-    # when the user opens "Financial Analysis Report" — it uses source.full_text directly.
-    if is_pdf and file_path:
+    # ── Bank Statement Pipeline: only run for PDFs that look like bank statements ──
+    # Check filename for bank-statement keywords to avoid running the slow pipeline on every PDF.
+    # The pipeline can take up to 3 minutes; non-bank PDFs should skip it entirely.
+    _BANK_KEYWORDS = {
+        "statement", "bank", "account", "passbook", "transaction",
+        "hdfc", "sbi", "icici", "axis", "kotak", "canara", "federal",
+        "pnb", "bob", "ubi", "idbi", "yes bank", "indusind",
+    }
+    _fname_lower = str(file_path).lower() if file_path else ""
+    _is_bank_pdf = is_pdf and file_path and any(kw in _fname_lower for kw in _BANK_KEYWORDS)
+
+    if _is_bank_pdf:
         logger.info(f"PDF detected: '{file_path}'. Extracting text for storage...")
         try:
             from open_notebook.bank_statement.pipeline import run_pipeline
@@ -754,11 +761,26 @@ async def save_source(state: SourceState) -> dict:
 
     # Update the source with processed content
     source.asset = Asset(url=content_state.url, file_path=content_state.file_path)
-    source.full_text = content_state.content
+    source.full_text = content_state.content  # Always save original content
 
     # Preserve existing title if none provided in processed content
     if content_state.title:
         source.title = content_state.title
+
+    # Detect language and translate non-English content
+    if source.full_text and source.full_text.strip():
+        try:
+            from open_notebook.utils.translation import translate_to_english
+            model_id = None  # Use default model
+            translated, lang = await translate_to_english(source.full_text, model_id=model_id)
+            source.content_language = lang
+            if lang != "en":
+                source.translated_content = translated
+                logger.info(f"[Source] Translated content from '{lang}' to English for source {source.id}")
+            else:
+                source.translated_content = None
+        except Exception as e:
+            logger.warning(f"[Source] Translation failed for source {source.id}: {e}")
 
     await source.save()
 
@@ -798,17 +820,24 @@ def trigger_transformations(state: SourceState, config: RunnableConfig) -> List[
 
 async def transform_content(state: TransformationState) -> Optional[dict]:
     source = state["source"]
-    content = source.full_text
+    # Use translated content for transformations if available (better quality)
+    # Fall back to original full_text
+    content = source.translated_content if source.translated_content else source.full_text
     if not content:
         return None
     transformation: Transformation = state["transformation"]
 
     logger.debug(f"Applying transformation {transformation.name}")
     result = await transform_graph.ainvoke(
-        dict(input_text=content, transformation=transformation)  # type: ignore[arg-type]
+        dict(
+            source=source,
+            input_text=content,
+            transformation=transformation,
+            save_insight=False,  # Don't save inside run_transformation — we save once here
+        )  # type: ignore[arg-type]
     )
-    # Note: transform_graph.ainvoke() already calls source.add_insight() internally
-    # in the run_transformation() node, so we don't duplicate it here
+    # Save insight once here after LLM completes
+    await source.add_insight(transformation.title, result["output"])
     return {
         "transformation": [
             {

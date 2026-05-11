@@ -33,3 +33,4 @@ langchain-community
 asyncio
 scipy==1.13.1
 numpy==1.26.4
+json-repair>=0.30.0

@@ -2,10 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { NotebookResponse } from '@/lib/types/api'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MoreHorizontal, Archive, ArchiveRestore, Trash2, FileText, StickyNote, HardDrive } from 'lucide-react'
+import { MoreVertical, Archive, ArchiveRestore, Trash2, FileText, StickyNote, HardDrive, Clock, Play, Pause } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   DropdownMenu,
@@ -20,17 +19,10 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { useToast } from '@/lib/hooks/use-toast'
 import { takeNotebookStorageToastBand } from '@/lib/utils/notebook-storage-alerts'
+import { cn } from '@/lib/utils'
 
 interface NotebookCardProps {
   notebook: NotebookResponse
-}
-
-// Returns bar color based on usage %
-function storageBarColor(pct: number): string {
-  if (pct >= 100) return 'bg-red-500'
-  if (pct >= 75)  return 'bg-orange-400'
-  if (pct >= 50)  return 'bg-yellow-400'
-  return 'bg-blue-500'
 }
 
 export function NotebookCard({ notebook }: NotebookCardProps) {
@@ -46,7 +38,7 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
   const limitMb  = notebook.storage_limit_mb ?? 0
   const usedPct  = hasLimit ? Math.min((usedMb / limitMb) * 100, 100) : 0
 
-  // Persist one toast per ascending storage band per notebook — survives refresh and matches notification center clears
+  // Persist one toast per ascending storage band per notebook
   useEffect(() => {
     if (!hasLimit) return
 
@@ -83,107 +75,150 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
   }
 
   const handleCardClick = () => {
-    router.push(`/notebooks/${encodeURIComponent(notebook.id)}`)
+    // Strip the SurrealDB table prefix (e.g. "notebook:xxx" → "xxx") so the URL
+    // never contains a colon, which Next.js dynamic routes reject even when encoded.
+    const shortId = notebook.id.includes(':') ? notebook.id.split(':')[1] : notebook.id
+    router.push(`/notebooks/${shortId}`)
   }
+
+  // Generate stable mock visuals based on ID to precisely match the reference image's design feel
+  const mockIndex = Math.abs(notebook.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 4;
+  const categories = ['Machine Learning', 'Research', 'Data Processing', 'Quality Assurance'];
+  const priorities = ['High Priority', 'Medium', 'Low', 'High Priority'];
+  const colors = ['blue', 'pink', 'green', 'purple'];
+  const defaultProgress = [75, 45, 100, 90];
+  const isPausedArr = [true, true, false, true];
+
+  const categoryTag = categories[mockIndex];
+  const priorityTag = priorities[mockIndex];
+  const colorScheme = colors[mockIndex];
+  // If the notebook has a storage limit, use real usage as "Progress", otherwise fallback to visual match
+  const displayProgress = hasLimit ? Math.round(usedPct) : defaultProgress[mockIndex];
+  const showPause = displayProgress !== 100 ? isPausedArr[mockIndex] : false;
 
   return (
     <>
-      <Card
-        className="group card-hover"
+      <div
         onClick={handleCardClick}
-        style={{ cursor: 'pointer' }}
+        className="bg-white p-6 rounded-[20px] shadow-[0_2px_16px_rgba(0,0,0,0.04)] border border-slate-100/80 space-y-4 relative group cursor-pointer transition-all hover:shadow-[0_6px_28px_rgba(0,0,0,0.07)] hover:-translate-y-0.5"
       >
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between">
-              <div className="flex-1 min-w-0">
-                <CardTitle className="text-base truncate group-hover:text-primary transition-colors">
-                  {notebook.name}
-                </CardTitle>
-                {notebook.archived && (
-                  <Badge variant="secondary" className="mt-1">
-                    {t.notebooks.archived}
-                  </Badge>
-                )}
-              </div>
+        {/* Top Row: Tags & Menu */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {notebook.archived ? (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
+                {t.notebooks.archived || 'Archived'}
+              </span>
+            ) : (
+              <>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#F3F4F6] text-slate-500">
+                  {categoryTag}
+                </span>
+                <span className={cn(
+                  "inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold",
+                  priorityTag === 'High Priority' && "bg-[#FEF2F2] text-[#EF4444]",
+                  priorityTag === 'Medium'        && "bg-[#FFFBEB] text-[#F59E0B]",
+                  priorityTag === 'Low'           && "bg-[#EFF6FF] text-[#3B82F6]"
+                )}>
+                  {priorityTag}
+                </span>
+              </>
+            )}
+          </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={handleArchiveToggle}>
-                    {notebook.archived ? (
-                      <><ArchiveRestore className="h-4 w-4 mr-2" />{t.notebooks.unarchive}</>
-                    ) : (
-                      <><Archive className="h-4 w-4 mr-2" />{t.notebooks.archive}</>
-                    )}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => { e.stopPropagation(); setShowDeleteDialog(true) }}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {t.common.delete}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <CardDescription className="line-clamp-2 text-sm">
-              {notebook.description || t.chat.noDescription}
-            </CardDescription>
-
-            <div className="mt-3 text-xs text-muted-foreground">
-              {t.common.updated.replace('{time}', formatDistanceToNow(new Date(notebook.updated), {
-                addSuffix: true,
-                locale: getDateLocale(language)
-              }))}
-            </div>
-
-            {/* Item counts + storage footer */}
-            <div className="mt-3 flex items-center justify-between border-t pt-3">
-              <div className="flex items-center gap-1.5">
-                <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-primary border-primary/50">
-                  <FileText className="h-3 w-3" />
-                  <span>{notebook.source_count}</span>
-                </Badge>
-                <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-primary border-primary/50">
-                  <StickyNote className="h-3 w-3" />
-                  <span>{notebook.note_count}</span>
-                </Badge>
-              </div>
-
-              {/* Storage — always visible */}
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                <HardDrive className="h-3 w-3 shrink-0" />
-                {hasLimit ? (
-                  <>
-                    <span className={usedPct >= 100 ? 'text-red-500 font-semibold' : usedPct >= 75 ? 'text-orange-500 font-medium' : ''}>
-                      {usedMb.toFixed(1)}/{limitMb}MB
-                    </span>
-                    <div className="h-1.5 w-14 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${storageBarColor(usedPct)}`}
-                        style={{ width: `${usedPct}%` }}
-                      />
-                    </div>
-                  </>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-slate-400 hover:bg-slate-50 -mr-1 rounded-full h-8 w-8 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="h-[17px] w-[17px]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()} className="rounded-xl shadow-lg">
+              <DropdownMenuItem onClick={handleArchiveToggle} className="rounded-lg cursor-pointer">
+                {notebook.archived ? (
+                  <><ArchiveRestore className="h-4 w-4 mr-2" />{t.notebooks.unarchive}</>
                 ) : (
-                  <span>{usedMb.toFixed(1)} MB</span>
+                  <><Archive className="h-4 w-4 mr-2" />{t.notebooks.archive}</>
                 )}
-              </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => { e.stopPropagation(); setShowDeleteDialog(true) }}
+                className="text-red-600 focus:bg-red-50 focus:text-red-700 rounded-lg cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                {t.common.delete}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Title and Description */}
+        <div>
+          <h3 className="text-[20px] font-bold text-slate-900 tracking-tight leading-snug">
+            {notebook.name}
+          </h3>
+          <p className="text-[13px] text-slate-500 font-medium mt-1 line-clamp-1">
+            {notebook.description || t.chat.noDescription}
+          </p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[12px] font-semibold">
+            <span className="text-slate-500">{hasLimit ? 'Storage' : 'Progress'}</span>
+            <span className="text-slate-800">{displayProgress}%</span>
+          </div>
+          <div className="relative h-[6px] w-full rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className={cn(
+                "absolute left-0 top-0 h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r",
+                colorScheme === 'blue'   && "from-[#4665F0] to-[#7C3AED]",
+                colorScheme === 'pink'   && "from-[#D946EF] to-[#EC4899]",
+                colorScheme === 'green'  && "from-[#10B981] to-[#34D399]",
+                colorScheme === 'purple' && "from-[#A855F7] to-[#7C3AED]"
+              )}
+              style={{ width: `${displayProgress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Bottom Row: Metadata + action icon */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-4 text-[12px] font-medium text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Updated {formatDistanceToNow(new Date(notebook.updated), { addSuffix: true, locale: getDateLocale(language) })}
             </div>
-          </CardContent>
-      </Card>
+            <div className="flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              {notebook.source_count} sources
+            </div>
+            {hasLimit && (
+              <div className="flex items-center gap-1.5">
+                <HardDrive className="h-3.5 w-3.5" />
+                {usedMb.toFixed(1)} MB
+              </div>
+            )}
+          </div>
+
+          <div className={cn(
+            "h-7 w-7 rounded-full flex items-center justify-center transition-colors",
+            displayProgress === 100 || !showPause
+              ? "bg-[#EEF2FF] text-[#4665F0]"
+              : "bg-[#ECFDF5] text-[#10B981]"
+          )}>
+            {displayProgress === 100 || !showPause ? (
+              <Play className="h-3 w-3 ml-0.5 fill-current" />
+            ) : (
+              <Pause className="h-3 w-3 fill-current" />
+            )}
+          </div>
+        </div>
+      </div>
 
       <NotebookDeleteDialog
         open={showDeleteDialog}

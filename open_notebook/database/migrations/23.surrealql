@@ -1,0 +1,8 @@
+-- Migration 23: Add source_insight_tombstone table for deletion tracking
+-- Tracks deleted insight types to prevent stale background jobs from recreating them
+
+DEFINE TABLE source_insight_tombstone SCHEMAFULL;
+DEFINE FIELD source ON TABLE source_insight_tombstone TYPE record<source>;
+DEFINE FIELD insight_type ON TABLE source_insight_tombstone TYPE string;
+DEFINE FIELD deleted_at ON TABLE source_insight_tombstone TYPE datetime DEFAULT time::now();
+DEFINE INDEX idx_sit_source_type ON TABLE source_insight_tombstone COLUMNS source, insight_type UNIQUE;

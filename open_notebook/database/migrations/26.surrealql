@@ -1,0 +1,11 @@
+-- Migration 26: Analysis result cache table
+-- Stores bank statement and mobile/CDR analysis results keyed by source_id + analysis_type
+-- Allows instant re-display without re-running the pipeline
+
+DEFINE TABLE analysis_cache SCHEMAFULL;
+DEFINE FIELD source_id     ON TABLE analysis_cache TYPE string;
+DEFINE FIELD analysis_type ON TABLE analysis_cache TYPE string;
+DEFINE FIELD result        ON TABLE analysis_cache TYPE any;
+DEFINE FIELD created       ON TABLE analysis_cache TYPE datetime DEFAULT time::now();
+DEFINE FIELD updated       ON TABLE analysis_cache TYPE datetime DEFAULT time::now();
+DEFINE INDEX idx_ac_source_type ON TABLE analysis_cache COLUMNS source_id, analysis_type UNIQUE;

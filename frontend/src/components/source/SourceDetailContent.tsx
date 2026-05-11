@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Bold, Italic, Strikethrough, Link, Quote, Code,
   Image as ImageIcon, Table, List, ListOrdered,
@@ -448,6 +449,7 @@ export function SourceDetailContent({
   const [insightToDelete, setInsightToDelete] = useState<string | null>(null)
   const [deletingInsight, setDeletingInsight] = useState(false)
   const [isMarkdownView, setIsMarkdownView] = useState(false)
+  const [showOriginalContent, setShowOriginalContent] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const fetchSource = useCallback(async () => {
@@ -572,6 +574,15 @@ export function SourceDetailContent({
     }
   }, [fetchInsights, fetchSource, fetchTransformations, sourceId])
 
+  // Poll insights every 3 seconds while a generation is in progress
+  useEffect(() => {
+    if (!creatingInsight) return
+    const interval = setInterval(() => {
+      void fetchInsights()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [creatingInsight, fetchInsights])
+
   const createInsight = async () => {
     // Prevent rapid double-clicks / repeated submits before React state updates
     if (createInsightLockRef.current) return
@@ -590,17 +601,27 @@ export function SourceDetailContent({
       setSelectedTransformation('')
 
       if (response.command_id) {
+        // Wait for run_transformation to complete (LLM processing)
+        // creatingInsight stays true → polling useEffect keeps fetching every 3s
         insightsApi.waitForCommand(response.command_id, {
           maxAttempts: 120,
           intervalMs: 2000
-        }).then(success => {
-          if (success) {
-            void fetchInsights()
-            queryClient.invalidateQueries({ queryKey: ['sources'] })
-          }
+        }).then(async (success) => {
+          console.log('[Insight] run_transformation completed, success=', success, 'waiting 4s for create_insight...')
+          // run_transformation done → create_insight + embed_insight fire async.
+          // Wait a moment for them to complete, then fetch once.
+          await new Promise(resolve => setTimeout(resolve, 4000))
+          console.log('[Insight] fetching insights now...')
+          void fetchInsights()
+          queryClient.invalidateQueries({ queryKey: ['sources'] })
         }).catch(err => {
-          console.error('Error waiting for insight command:', err)
+          console.error('[Insight] Error waiting for insight command:', err)
+        }).finally(() => {
+          setCreatingInsight(false)
+          createInsightLockRef.current = false
         })
+        // Don't set creatingInsight=false here — let the .finally() above do it
+        return
       } else {
         setTimeout(() => {
           void fetchInsights()
@@ -905,17 +926,30 @@ export function SourceDetailContent({
                     </CardDescription>
                   )}
                 </div>
-                {!isYouTubeUrl && source.full_text && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 font-semibold border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950 transition-all"
-                    onClick={() => setIsMarkdownView(true)}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Formatted View
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {!isYouTubeUrl && source.full_text && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 font-semibold border-blue-200 text-blue-900 dark:border-blue-800 transition-all"
+                      onClick={() => setIsMarkdownView(true)}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Formatted View
+                    </Button>
+                  )}
+                  {!isYouTubeUrl && source.translated_content && (
+                    <Button
+                      variant={showOriginalContent ? 'default' : 'outline'}
+                      size="sm"
+                      className="gap-2 font-semibold"
+                      onClick={() => setShowOriginalContent(v => !v)}
+                      title={showOriginalContent ? 'Show English translation' : 'Show original language content'}
+                    >
+                      {showOriginalContent ? '🌐 English' : `📄 Original (${(source.content_language ?? '').toUpperCase()})`}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {isYouTubeUrl && youTubeVideoId && (
@@ -945,22 +979,21 @@ export function SourceDetailContent({
                   </div>
                 )}
                 {!isYouTubeUrl && source.full_text && (
-                  <SafeContent text={source.full_text || ''} noContentLabel={t.sources.noContent} />
+                  <SafeContent
+                    text={
+                      // Show original if toggled OR if no translation available
+                      showOriginalContent || !source.translated_content
+                        ? source.full_text
+                        : source.translated_content
+                    }
+                    noContentLabel={t.sources.noContent}
+                  />
                 )}
                 {!isYouTubeUrl && !source.full_text && (
                   <SafeContent text={''} noContentLabel={t.sources.noContent} />
                 )}
               </CardContent>
             </Card>
-
-            {isMarkdownView && source.full_text && (
-              <FormattedViewDialog
-                text={source.full_text}
-                sourceId={source.id}
-                open={isMarkdownView}
-                onClose={() => setIsMarkdownView(false)}
-              />
-            )}
           </TabsContent>
 
           <TabsContent value="insights" className="mt-6">
@@ -1248,6 +1281,19 @@ export function SourceDetailContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Render the FormattedViewDialog inside a Portal attached directly to document.body.
+          This fully escapes the DOM hierarchy, preventing layout containers or stacking 
+          contexts from cutting it off behind the sidebar or navbar. */}
+      {isMarkdownView && source.full_text && typeof window !== 'undefined' && createPortal(
+        <FormattedViewDialog
+          text={showOriginalContent || !source.translated_content ? source.full_text : source.translated_content}
+          sourceId={source.id}
+          open={isMarkdownView}
+          onClose={() => setIsMarkdownView(false)}
+        />,
+        document.body
+      )}
     </div>
   )
 }

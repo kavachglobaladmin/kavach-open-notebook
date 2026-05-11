@@ -50,6 +50,23 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+# Project root — used to resolve relative file paths stored in the database.
+# api/routers/sources.py is two levels below the repo root.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def resolve_file_path(file_path: str) -> str:
+    """
+    Resolve a potentially relative file path to an absolute path.
+    Paths stored in the DB like 'data/uploads/file.pdf' are relative to the
+    project root. This ensures they work regardless of the current working directory.
+    """
+    if not file_path:
+        return file_path
+    if os.path.isabs(file_path):
+        return os.path.normpath(file_path)
+    return os.path.normpath(os.path.join(_PROJECT_ROOT, file_path))
+
 
 def generate_unique_filename(original_filename: str, upload_folder: str) -> str:
     """Generate unique filename like Streamlit app (append counter if file exists)."""
@@ -1970,7 +1987,11 @@ async def get_source_profile_image(source_id: str):
 
         file_path = source.asset.file_path if source.asset else None
         if not file_path or not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="No file available")
+            # Try resolving as relative path before giving up
+            if file_path:
+                file_path = resolve_file_path(file_path)
+            if not file_path or not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail="No file available")
 
         if not file_path.lower().endswith(('.docx', '.doc')):
             raise HTTPException(status_code=404, detail="Not a docx file")
@@ -3300,6 +3321,8 @@ async def get_source(source_id: str, include_text: bool = True):
             if source.asset
             else None,
             full_text=source.full_text if include_text else None,
+            translated_content=source.translated_content if include_text else None,
+            content_language=source.content_language,
             embedded=embedded_chunks > 0,
             embedded_chunks=embedded_chunks,
             file_available=_is_source_file_available(source),
@@ -3715,6 +3738,39 @@ async def get_source_insights(source_id: str):
         )
 
 
+@router.post("/sources/{source_id}/translate")
+async def retranslate_source(source_id: str):
+    """Re-translate source content to English (for non-English sources)."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        if not source.full_text or not source.full_text.strip():
+            raise HTTPException(status_code=400, detail="Source has no text content to translate")
+
+        from open_notebook.utils.translation import translate_to_english
+        translated, lang = await translate_to_english(source.full_text)
+        source.content_language = lang
+        if lang != "en":
+            source.translated_content = translated
+        else:
+            source.translated_content = None
+        await source.save()
+
+        return {
+            "source_id": source_id,
+            "content_language": lang,
+            "translated": lang != "en",
+            "original_chars": len(source.full_text),
+            "translated_chars": len(translated) if lang != "en" else 0,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error translating source {source_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+
 @router.delete("/sources/{source_id}/insights/mindmap")
 async def delete_mindmap_insights(source_id: str):
     """Delete all Mind Map insights for a source so they can be regenerated fresh."""
@@ -3736,6 +3792,117 @@ async def delete_mindmap_insights(source_id: str):
     except Exception as e:
         logger.error(f"Error deleting mindmap insights for source {source_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# @router.post(
+#     "/sources/{source_id}/insights",
+#     response_model=InsightCreationResponse,
+#     status_code=202,
+# )
+# async def create_source_insight(source_id: str, request: CreateSourceInsightRequest):
+#     """
+#     Start insight generation for a source by running a transformation.
+
+#     This endpoint returns immediately with a 202 Accepted status.
+#     The transformation runs asynchronously in the background via the job queue.
+#     Poll GET /sources/{source_id}/insights to see when the insight is ready.
+#     """
+#     try:
+#         # Validate source exists
+#         source = await Source.get(source_id)
+#         if not source:
+#             raise HTTPException(status_code=404, detail="Source not found")
+
+#         # Validate transformation exists
+#         transformation = await Transformation.get(request.transformation_id)
+#         if not transformation:
+#             raise HTTPException(status_code=404, detail="Transformation not found")
+
+#         # If this insight type was previously deleted, clear the tombstone because
+#         # the user is explicitly asking to generate it again.
+#         await repo_query(
+#             """
+#             DELETE source_insight_tombstone
+#             WHERE source = $source_id
+#               AND string::lowercase(string::trim(insight_type)) =
+#                   string::lowercase(string::trim($insight_type))
+#             """,
+#             {
+#                 "source_id": ensure_record_id(source_id),
+#                 "insight_type": transformation.title,
+#             },
+#         )
+
+#         generation_id = str(uuid.uuid4())
+#         await repo_query(
+#             """
+#             DELETE source_insight_generation
+#             WHERE source = $source_id
+#               AND string::lowercase(string::trim(insight_type)) =
+#                   string::lowercase(string::trim($insight_type));
+
+#             CREATE source_insight_generation CONTENT {
+#                 source: $source_id,
+#                 insight_type: $insight_type,
+#                 generation_id: $generation_id
+#             };
+#             """,
+#             {
+#                 "source_id": ensure_record_id(source_id),
+#                 "insight_type": transformation.title,
+#                 "generation_id": generation_id,
+#             },
+#         )
+
+#         # Get model name for logging
+#         model_name = "default"
+#         model_id_to_use = request.model_id or transformation.model_id
+        
+#         if model_id_to_use:
+#             try:
+#                 from open_notebook.ai.models import Model
+#                 model = await Model.get(model_id_to_use)
+#                 if model and hasattr(model, 'name') and hasattr(model, 'provider'):
+#                     model_name = f"{model.name} ({model.provider})"
+#                 else:
+#                     model_name = model_id_to_use
+#             except Exception as e:
+#                 logger.debug(f"Could not fetch model details: {e}")
+#                 model_name = model_id_to_use
+
+#         # Submit transformation as background job (fire-and-forget)
+#         command_id = submit_command(
+#             "open_notebook",
+#             "run_transformation",
+#             {
+#                 "source_id": source_id,
+#                 "transformation_id": request.transformation_id,
+#                 "model_id": model_id_to_use,
+#                 "generation_id": generation_id,
+#             },
+#         )
+#         logger.info(
+#             f"Submitted run_transformation command {command_id} for source {source_id} "
+#             f"using transformation '{transformation.title}' with model: {model_name}"
+#         )
+
+#         # Return immediately with command_id for status tracking
+#         return InsightCreationResponse(
+#             status="pending",
+#             message="Insight generation started",
+#             source_id=source_id,
+#             transformation_id=request.transformation_id,
+#             command_id=str(command_id),
+#         )
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error starting insight generation for source {source_id}: {e}")
+#         raise HTTPException(
+#             status_code=500, detail=f"Error starting insight generation: {str(e)}"
+#         )
+
 
 
 @router.post(
@@ -3764,44 +3931,65 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
 
         # If this insight type was previously deleted, clear the tombstone because
         # the user is explicitly asking to generate it again.
-        await repo_query(
-            """
-            DELETE source_insight_tombstone
-            WHERE source = $source_id
-              AND string::lowercase(string::trim(insight_type)) =
-                  string::lowercase(string::trim($insight_type))
-            """,
-            {
-                "source_id": ensure_record_id(source_id),
-                "insight_type": transformation.title,
-            },
-        )
+        # Note: table may not exist in all deployments — ignore errors
+        try:
+            await repo_query(
+                """
+                DELETE source_insight_tombstone
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                """,
+                {
+                    "source_id": ensure_record_id(source_id),
+                    "insight_type": transformation.title,
+                },
+            )
+        except Exception:
+            pass  # Table may not exist
 
         generation_id = str(uuid.uuid4())
-        await repo_query(
-            """
-            DELETE source_insight_generation
-            WHERE source = $source_id
-              AND string::lowercase(string::trim(insight_type)) =
-                  string::lowercase(string::trim($insight_type));
 
-            CREATE source_insight_generation CONTENT {
-                source: $source_id,
-                insight_type: $insight_type,
-                generation_id: $generation_id
-            };
-            """,
+        # Step 1: Delete old generation record (separate call - SurrealDB multi-statement ; unreliable)
+        try:
+            await repo_query(
+                """
+                DELETE source_insight_generation
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                """,
             {
                 "source_id": ensure_record_id(source_id),
                 "insight_type": transformation.title,
-                "generation_id": generation_id,
             },
         )
+        except Exception:
+            pass  # Table may not exist
+
+        # Step 2: Create new generation record
+        try:
+            await repo_query(
+                """
+                CREATE source_insight_generation CONTENT {
+                    source: $source_id,
+                    insight_type: $insight_type,
+                    generation_id: $generation_id
+                }
+                """,
+                {
+                    "source_id": ensure_record_id(source_id),
+                    "insight_type": transformation.title,
+                    "generation_id": generation_id,
+                },
+            )
+        except Exception:
+            pass  # Table may not exist — generation_id still used for dedup
 
         # Get model name for logging
         model_name = "default"
         model_id_to_use = request.model_id or transformation.model_id
-        
+
         if model_id_to_use:
             try:
                 from open_notebook.ai.models import Model

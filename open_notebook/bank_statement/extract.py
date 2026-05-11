@@ -38,7 +38,10 @@ def _configure_tesseract():
     return True
 
 
-def _ocr_page_lines(page, scale=3):
+def _ocr_page_lines(page, scale=None):
+    if scale is None:
+        from open_notebook.bank_statement.config import EXTRACTION as _EX
+        scale = _EX.get("tesseract_render_scale", 3)
     import pytesseract
     from pytesseract import Output
     _configure_tesseract()
@@ -90,12 +93,18 @@ def _ocr_text_tesseract(file_path):
     return "\n".join(all_lines).strip()
 
 
-def _embedded_text_with_timeout(file_path, timeout_seconds=15):
+from open_notebook.bank_statement.settings import get_defaults as _get_defaults
+from open_notebook.bank_statement.config import EXTRACTION as _EXTRACTION
+
+
+def _embedded_text_with_timeout(file_path, timeout_seconds=None):
     """
     Extract embedded text using pdfplumber with a timeout guard.
     Image-only PDFs can cause pdfplumber to hang indefinitely.
     Returns empty string on timeout or error.
     """
+    if timeout_seconds is None:
+        timeout_seconds = _EXTRACTION["pdfplumber_timeout_seconds"]
     result = [""]
     error = [None]
 
@@ -186,7 +195,7 @@ def _easyocr_text(file_path):
             # OCR if page text is sparse
             if len("\n".join(page_parts)) < 200:
                 try:
-                    pix = page.get_pixmap(dpi=300)
+                    pix = page.get_pixmap(dpi=_EXTRACTION["easyocr_dpi"])
                     img_bytes = pix.tobytes("png")
 
                     # Run readtext in a thread with timeout — some pages can hang
@@ -197,13 +206,13 @@ def _easyocr_text(file_path):
                         try:
                             img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
                             arr = np.array(img)
-                            ocr_result[0] = reader.readtext(arr, detail=0, batch_size=4)
+                            ocr_result[0] = reader.readtext(arr, detail=0, batch_size=_EXTRACTION.get("easyocr_batch_size", 4))
                         except Exception as e:
                             ocr_error[0] = e
 
                     ocr_thread = threading.Thread(target=_run_ocr, daemon=True)
                     ocr_thread.start()
-                    ocr_thread.join(timeout=60)  # 60s per page max
+                    ocr_thread.join(timeout=_EXTRACTION["easyocr_timeout_per_page_seconds"])
 
                     if ocr_thread.is_alive():
                         # Page OCR hung — skip this page
@@ -222,18 +231,22 @@ def _easyocr_text(file_path):
 
 
 def extract_text(file_path):
+    min_text   = _EXTRACTION["min_text_length"]
+    min_ocr    = _EXTRACTION["min_ocr_text_length"]
+    plumber_to = _EXTRACTION["pdfplumber_timeout_seconds"]
+
     # 1. Try PyMuPDF first — fast, no hang risk
     try:
         mupdf = _pymupdf_text(file_path)
-        if mupdf and len(mupdf.strip()) > 100:
+        if mupdf and len(mupdf.strip()) > min_text:
             return mupdf
     except Exception:
         pass
 
     # 2. Try pdfplumber with timeout — handles some PDFs PyMuPDF misses
     try:
-        embedded = _embedded_text_with_timeout(file_path, timeout_seconds=15)
-        if embedded and len(embedded.strip()) > 100:
+        embedded = _embedded_text_with_timeout(file_path, timeout_seconds=plumber_to)
+        if embedded and len(embedded.strip()) > min_text:
             return embedded
     except Exception:
         pass
@@ -241,7 +254,7 @@ def extract_text(file_path):
     # 3. EasyOCR — for image-based / scanned PDFs (no tesseract required)
     try:
         ocr_text = _easyocr_text(file_path)
-        if ocr_text and len(ocr_text.strip()) > 50:
+        if ocr_text and len(ocr_text.strip()) > min_ocr:
             return ocr_text
     except Exception:
         pass

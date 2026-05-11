@@ -1,4 +1,5 @@
 export interface Transformation {
+  runsCount: null
   id: string
   name: string
   title: string

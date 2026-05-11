@@ -61,13 +61,13 @@ function KpiCard({ label, value, sub, icon: Icon, gradient }: {
   icon: React.ElementType; gradient: string
 }) {
   return (
-    <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${gradient} shadow-sm`}>
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">{label}</p>
-        <Icon className="h-4 w-4 opacity-60" />
+    <div className={`rounded-lg p-3 text-white bg-gradient-to-br ${gradient} shadow-sm`}>
+      <div className="flex items-start justify-between mb-1">
+        <p className="text-[9px] font-bold uppercase tracking-widest opacity-80 leading-tight">{label}</p>
+        <Icon className="h-3.5 w-3.5 opacity-60 shrink-0" />
       </div>
-      <p className="text-xl font-black leading-tight">{value}</p>
-      {sub && <p className="text-[10px] opacity-70 mt-1">{sub}</p>}
+      <p className="text-base font-black leading-tight">{value}</p>
+      {sub && <p className="text-[9px] opacity-70 mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -77,52 +77,13 @@ function HBar({ label, value, max, color, amount }: {
 }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
   return (
-    <div className="mb-3 last:mb-0">
-      <div className="flex justify-between text-xs mb-1.5">
-        <span className="font-medium truncate max-w-[55%]">{label}</span>
-        <span className="text-muted-foreground shrink-0 tabular-nums">{amount} <span className="opacity-60">({pct}%)</span></span>
+    <div className="mb-2.5 last:mb-0">
+      <div className="flex justify-between text-xs mb-1">
+        <span className="font-medium truncate max-w-[55%] text-[11px]">{label}</span>
+        <span className="text-muted-foreground shrink-0 tabular-nums text-[11px]">{amount} <span className="opacity-60">({pct}%)</span></span>
       </div>
-      <div className="h-2 rounded-full bg-muted overflow-hidden">
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
         <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
-  const total = segments.reduce((s, x) => s + x.value, 0)
-  const r = 42, circ = 2 * Math.PI * r
-  let offset = 0
-  return (
-    <div className="flex items-center gap-5">
-      <svg width="100" height="100" viewBox="0 0 100 100" className="shrink-0 drop-shadow-sm">
-        {segments.map((seg, i) => {
-          const pct = seg.value / total
-          const dash = pct * circ
-          const rot = offset * 360 - 90
-          offset += pct
-          return (
-            <circle key={i} cx="50" cy="50" r={r} fill="none" strokeWidth="16"
-              stroke={seg.color} strokeLinecap="round"
-              strokeDasharray={`${dash} ${circ - dash}`}
-              transform={`rotate(${rot} 50 50)`}
-            />
-          )
-        })}
-        <text x="50" y="46" textAnchor="middle" fontSize="11" fontWeight="800" fill="currentColor">{total}</text>
-        <text x="50" y="58" textAnchor="middle" fontSize="7" fill="currentColor" opacity="0.5">total</text>
-      </svg>
-      <div className="flex flex-col gap-2.5 flex-1">
-        {segments.map((seg, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
-            <span className="text-xs flex-1">{seg.label}</span>
-            <span className="text-xs font-bold tabular-nums">{seg.value}</span>
-            <span className="text-[10px] text-muted-foreground tabular-nums">
-              {Math.round((seg.value / total) * 100)}%
-            </span>
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -134,12 +95,12 @@ function SectionCard({ icon: Icon, title, iconClass = 'text-muted-foreground', b
 }) {
   return (
     <div className="rounded-xl border bg-card overflow-hidden shadow-sm">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-muted/30">
-        <Icon className={`h-4 w-4 shrink-0 ${iconClass}`} />
-        <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b bg-muted/30">
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${iconClass}`} />
+        <h3 className="text-xs font-semibold">{title}</h3>
         {badge && <div className="ml-auto">{badge}</div>}
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-3">{children}</div>
     </div>
   )
 }
@@ -160,13 +121,9 @@ function tryParseJsonBankStatement(content: string): {
   try {
     let cleaned = content
       .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-    // Fix numbers with commas
     cleaned = cleaned.replace(/:\s*(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?)/g, (_, n) => ': ' + n.replace(/,/g, ''))
-    // Fix trailing commas
     cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
-    // Fix missing commas between objects
     cleaned = cleaned.replace(/\}\s*\n\s*\{/g, '},\n{')
-
     const parsed = JSON.parse(cleaned)
     if (parsed && parsed.account_summary && Array.isArray(parsed.transactions)) {
       return parsed
@@ -188,31 +145,31 @@ function JsonBankStatementViewer({ data }: {
     n > 0 ? `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'
 
   return (
-    <div className="space-y-4 pb-4">
+    <div className="space-y-3 pb-2">
       {/* Account Summary */}
-      <div className="rounded-xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Wallet className="h-4 w-4 text-blue-300" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Bank Statement</span>
+      <div className="rounded-xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Wallet className="h-3.5 w-3.5 text-blue-300" />
+          <span className="text-[9px] font-bold uppercase tracking-widest text-blue-300">Bank Statement</span>
         </div>
-        <h2 className="text-xl font-black">{String(s.bank_name || s.bank || 'Bank Statement')}</h2>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          {s.account_holder  && <div><span className="text-blue-300/60 text-xs">Holder</span><p className="font-medium">{String(s.account_holder)}</p></div>}
-          {s.account_number  && <div><span className="text-blue-300/60 text-xs">Account No.</span><p className="font-medium">{String(s.account_number)}</p></div>}
-          {s.statement_period && <div><span className="text-blue-300/60 text-xs">Period</span><p className="font-medium">{String(s.statement_period)}</p></div>}
-          {s.opening_balance != null && <div><span className="text-blue-300/60 text-xs">Opening Balance</span><p className="font-medium">{fmtAmt(Number(s.opening_balance))}</p></div>}
-          {s.closing_balance != null && <div><span className="text-blue-300/60 text-xs">Closing Balance</span><p className="font-medium">{fmtAmt(Number(s.closing_balance))}</p></div>}
+        <h2 className="text-base font-black">{String(s.bank_name || s.bank || 'Bank Statement')}</h2>
+        <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+          {s.account_holder  && <div><span className="text-blue-300/60 text-[10px]">Holder</span><p className="font-medium text-xs">{String(s.account_holder)}</p></div>}
+          {s.account_number  && <div><span className="text-blue-300/60 text-[10px]">Account No.</span><p className="font-medium text-xs">{String(s.account_number)}</p></div>}
+          {s.statement_period && <div><span className="text-blue-300/60 text-[10px]">Period</span><p className="font-medium text-xs">{String(s.statement_period)}</p></div>}
+          {s.opening_balance != null && <div><span className="text-blue-300/60 text-[10px]">Opening</span><p className="font-medium text-xs">{fmtAmt(Number(s.opening_balance))}</p></div>}
+          {s.closing_balance != null && <div><span className="text-blue-300/60 text-[10px]">Closing</span><p className="font-medium text-xs">{fmtAmt(Number(s.closing_balance))}</p></div>}
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-emerald-600/20 border border-emerald-500/30 p-3 text-center">
-            <p className="text-xs text-emerald-300">Total Credits</p>
-            <p className="text-lg font-black text-emerald-300">
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-emerald-600/20 border border-emerald-500/30 p-2 text-center">
+            <p className="text-[10px] text-emerald-300">Total Credits</p>
+            <p className="text-sm font-black text-emerald-300">
               {fmtAmt(s.total_credits != null ? Number(s.total_credits) : totalCredit)}
             </p>
           </div>
-          <div className="rounded-lg bg-rose-600/20 border border-rose-500/30 p-3 text-center">
-            <p className="text-xs text-rose-300">Total Debits</p>
-            <p className="text-lg font-black text-rose-300">
+          <div className="rounded-lg bg-rose-600/20 border border-rose-500/30 p-2 text-center">
+            <p className="text-[10px] text-rose-300">Total Debits</p>
+            <p className="text-sm font-black text-rose-300">
               {fmtAmt(s.total_debits != null ? Number(s.total_debits) : totalDebit)}
             </p>
           </div>
@@ -221,19 +178,19 @@ function JsonBankStatementViewer({ data }: {
 
       {/* Transactions Table */}
       <div className="rounded-xl border overflow-hidden">
-        <div className="px-4 py-2 bg-muted/50 border-b flex items-center justify-between">
-          <span className="text-sm font-semibold">Transactions</span>
-          <Badge variant="secondary">{txns.length}</Badge>
+        <div className="px-3 py-2 bg-muted/50 border-b flex items-center justify-between">
+          <span className="text-xs font-semibold">Transactions</span>
+          <Badge variant="secondary" className="text-[10px]">{txns.length}</Badge>
         </div>
-        <div className="overflow-x-auto max-h-96">
+        <div className="overflow-x-auto max-h-72">
           <table className="w-full text-xs">
             <thead className="bg-muted/30 sticky top-0">
               <tr>
-                <th className="px-3 py-2 text-left font-semibold">Date</th>
-                <th className="px-3 py-2 text-left font-semibold">Description</th>
-                <th className="px-3 py-2 text-right font-semibold text-rose-600">Debit</th>
-                <th className="px-3 py-2 text-right font-semibold text-emerald-600">Credit</th>
-                <th className="px-3 py-2 text-right font-semibold">Balance</th>
+                <th className="px-2.5 py-1.5 text-left font-semibold text-[11px]">Date</th>
+                <th className="px-2.5 py-1.5 text-left font-semibold text-[11px]">Description</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold text-rose-600 text-[11px]">Debit</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold text-emerald-600 text-[11px]">Credit</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold text-[11px]">Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -241,11 +198,11 @@ function JsonBankStatementViewer({ data }: {
                 .filter(tx => tx.date && String(tx.date) !== '...')
                 .map((tx, i) => (
                   <tr key={i} className={i % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                    <td className="px-3 py-1.5 whitespace-nowrap">{String(tx.date || '—')}</td>
-                    <td className="px-3 py-1.5 max-w-[200px] truncate">{String(tx.description || tx.narration || '—')}</td>
-                    <td className="px-3 py-1.5 text-right text-rose-600">{Number(tx.debit)  > 0 ? fmtAmt(Number(tx.debit))  : '—'}</td>
-                    <td className="px-3 py-1.5 text-right text-emerald-600">{Number(tx.credit) > 0 ? fmtAmt(Number(tx.credit)) : '—'}</td>
-                    <td className="px-3 py-1.5 text-right">{tx.balance != null ? fmtAmt(Number(tx.balance)) : '—'}</td>
+                    <td className="px-2.5 py-1 whitespace-nowrap text-[11px]">{String(tx.date || '—')}</td>
+                    <td className="px-2.5 py-1 max-w-[140px] truncate text-[11px]">{String(tx.description || tx.narration || '—')}</td>
+                    <td className="px-2.5 py-1 text-right text-rose-600 text-[11px]">{Number(tx.debit)  > 0 ? fmtAmt(Number(tx.debit))  : '—'}</td>
+                    <td className="px-2.5 py-1 text-right text-emerald-600 text-[11px]">{Number(tx.credit) > 0 ? fmtAmt(Number(tx.credit)) : '—'}</td>
+                    <td className="px-2.5 py-1 text-right text-[11px]">{tx.balance != null ? fmtAmt(Number(tx.balance)) : '—'}</td>
                   </tr>
                 ))}
             </tbody>
@@ -323,27 +280,23 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
   const netFlow     = data.totalCredit - data.totalDebit
 
   return (
-    <div className="space-y-5 pb-4">
+    <div className="space-y-3 pb-2">
 
-      {/* Hero banner */}
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-6 shadow-lg">
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-blue-400 blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-indigo-400 blur-3xl" />
-        </div>
-        <div className="relative flex items-start justify-between gap-4 flex-wrap">
+      {/* Hero banner — compact */}
+      <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-4 shadow-md">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Wallet className="h-4 w-4 text-blue-300" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Bank Analytical Profile</span>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Wallet className="h-3.5 w-3.5 text-blue-300" />
+              <span className="text-[9px] font-bold uppercase tracking-widest text-blue-300">Bank Analytical Profile</span>
             </div>
-            <h2 className="text-2xl font-black text-white">{data.holder || 'N/A'}</h2>
-            {data.accountType && <p className="text-sm text-blue-200/70 mt-1">{data.accountType}</p>}
-            {data.period      && <p className="text-xs text-blue-300/60 mt-0.5">{data.period}</p>}
+            <h2 className="text-lg font-black text-white leading-tight">{data.holder || 'N/A'}</h2>
+            {data.accountType && <p className="text-xs text-blue-200/70 mt-0.5">{data.accountType}</p>}
+            {data.period      && <p className="text-[10px] text-blue-300/60 mt-0.5">{data.period}</p>}
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-1.5">
             {data.status && (
-              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
                 data.status.toLowerCase() === 'regular'
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                   : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
@@ -351,10 +304,12 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
                 {data.status}
               </span>
             )}
-            {data.currency && <span className="text-xs text-blue-300/60 font-medium">{data.currency}</span>}
+            {data.currency && <span className="text-[10px] text-blue-300/60 font-medium">{data.currency}</span>}
           </div>
         </div>
-        <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+
+        {/* KPI row */}
+        <div className="grid grid-cols-2 gap-2 mt-3">
           <KpiCard label="Total Credit"  value={fmt(data.totalCredit)}      icon={ArrowUpCircle}   gradient="from-emerald-600 to-emerald-800" />
           <KpiCard label="Total Debit"   value={fmt(data.totalDebit)}       icon={ArrowDownCircle} gradient="from-rose-600 to-rose-800" />
           <KpiCard label="Net Flow"      value={fmt(Math.abs(netFlow))}     sub={netFlow >= 0 ? 'Surplus' : 'Deficit'} icon={Activity} gradient={netFlow >= 0 ? 'from-blue-600 to-blue-800' : 'from-orange-600 to-orange-800'} />
@@ -369,21 +324,21 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
           const cp = Math.round((data.totalCredit / total) * 100)
           const dp = 100 - cp
           return (
-            <div className="space-y-3">
-              <div className="flex h-7 rounded-xl overflow-hidden shadow-inner text-[11px] font-bold">
+            <div className="space-y-2">
+              <div className="flex h-6 rounded-lg overflow-hidden text-[10px] font-bold">
                 <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 flex items-center justify-center text-white transition-all" style={{ width: `${cp}%` }}>
-                  {cp > 12 ? `${cp}%` : ''}
+                  {cp > 15 ? `${cp}%` : ''}
                 </div>
                 <div className="bg-gradient-to-r from-rose-500 to-rose-600 flex-1 flex items-center justify-center text-white">
-                  {dp > 12 ? `${dp}%` : ''}
+                  {dp > 15 ? `${dp}%` : ''}
                 </div>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
-                  <ArrowUpCircle className="h-3.5 w-3.5" /> Credit: {fmt(data.totalCredit)}
+              <div className="flex justify-between text-[11px]">
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                  <ArrowUpCircle className="h-3 w-3" /> {fmt(data.totalCredit)}
                 </span>
-                <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-medium">
-                  <ArrowDownCircle className="h-3.5 w-3.5" /> Debit: {fmt(data.totalDebit)}
+                <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400 font-medium">
+                  <ArrowDownCircle className="h-3 w-3" /> {fmt(data.totalDebit)}
                 </span>
               </div>
             </div>
@@ -391,50 +346,44 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
         })()}
       </SectionCard>
 
-      {/* Category + Anomaly */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {data.categories.length > 0 && (
-          <SectionCard icon={BarChart2} title="Category Distribution">
-            {data.categories.map((c, i) => (
-              <HBar key={i} label={c.name} value={c.total} max={maxCategory}
-                color={catColors[i % catColors.length]} amount={fmt(c.total)} />
-            ))}
-          </SectionCard>
-        )}
-
-        <SectionCard icon={AlertTriangle} title="Anomaly Split" iconClass="text-amber-500">
-          <DonutChart segments={[
-            { label: 'Normal',  value: data.normalCount,  color: '#10b981' },
-            { label: 'Anomaly', value: data.anomalyCount, color: '#f43f5e' },
-          ]} />
-          {data.anomalies.length > 0 && (
-            <div className="mt-4 space-y-2 border-t pt-3">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">High-Value Debits</p>
-              {data.anomalies.map((tx, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs bg-rose-50 dark:bg-rose-950/20 rounded-lg px-2.5 py-1.5">
-                  <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
-                  <span className="flex-1 truncate text-muted-foreground">{tx.description}</span>
-                  <span className="font-bold text-rose-600 dark:text-rose-400 shrink-0 tabular-nums">{fmt(tx.amount)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Category distribution */}
+      {data.categories.length > 0 && (
+        <SectionCard icon={BarChart2} title="Category Distribution">
+          {data.categories.map((c, i) => (
+            <HBar key={i} label={c.name} value={c.total} max={maxCategory}
+              color={catColors[i % catColors.length]} amount={fmt(c.total)} />
+          ))}
         </SectionCard>
-      </div>
+      )}
+
+      {/* Anomalies */}
+      {data.anomalies.length > 0 && (
+        <SectionCard icon={AlertTriangle} title="High-Value Debits" iconClass="text-amber-500"
+          badge={<Badge variant="destructive" className="text-[10px]">{data.anomalyCount}</Badge>}>
+          <div className="space-y-1.5">
+            {data.anomalies.map((tx, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs bg-rose-50 dark:bg-rose-950/20 rounded-lg px-2.5 py-1.5">
+                <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
+                <span className="flex-1 truncate text-muted-foreground text-[11px]">{tx.description}</span>
+                <span className="font-bold text-rose-600 dark:text-rose-400 shrink-0 tabular-nums text-[11px]">{fmt(tx.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {/* Transaction ledger */}
       {data.transactions.length > 0 && (
         <SectionCard icon={TrendingDown} title="Transaction Ledger"
-          badge={<Badge variant="secondary" className="text-[10px] font-bold">{data.transactions.length} txns</Badge>}>
-          <div className="overflow-x-auto -mx-4 -mb-4">
+          badge={<Badge variant="secondary" className="text-[10px]">{data.transactions.length} txns</Badge>}>
+          <div className="overflow-x-auto -mx-3 -mb-3">
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-muted/40 border-b">
-                  <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Date</th>
-                  <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground">Description</th>
-                  <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Type</th>
-                  <th className="px-4 py-2.5 text-right font-semibold text-muted-foreground whitespace-nowrap">Amount</th>
-                  <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Category</th>
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground text-[11px] whitespace-nowrap">Date</th>
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground text-[11px]">Description</th>
+                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground text-[11px] whitespace-nowrap">Type</th>
+                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground text-[11px] whitespace-nowrap">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -442,24 +391,23 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
                   const isDebit = /debit/i.test(tx.type)
                   return (
                     <tr key={i} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground tabular-nums">{tx.date}</td>
-                      <td className="px-4 py-2.5 max-w-[180px] truncate" title={tx.description}>{tx.description}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      <td className="px-3 py-2 whitespace-nowrap text-muted-foreground tabular-nums text-[11px]">{tx.date}</td>
+                      <td className="px-3 py-2 max-w-[140px] truncate text-[11px]" title={tx.description}>{tx.description}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                           isDebit
                             ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
                             : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
                         }`}>
-                          {isDebit ? <ArrowDownCircle className="h-2.5 w-2.5" /> : <ArrowUpCircle className="h-2.5 w-2.5" />}
+                          {isDebit ? <ArrowDownCircle className="h-2 w-2" /> : <ArrowUpCircle className="h-2 w-2" />}
                           {tx.type}
                         </span>
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap tabular-nums ${
+                      <td className={`px-3 py-2 text-right font-bold whitespace-nowrap tabular-nums text-[11px] ${
                         isDebit ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
                       }`}>
                         {isDebit ? '−' : '+'}{fmt(tx.amount)}
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{tx.category}</td>
                     </tr>
                   )
                 })}
@@ -482,13 +430,13 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
       {/* Advanced insights */}
       {data.advancedLines.length > 0 && (
         <SectionCard icon={TrendingUp} title="Advanced Insights">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {data.advancedLines.map((line, i) => (
-              <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30">
-                <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">
+              <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30">
+                <span className="w-4 h-4 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5">
                   {i + 1}
                 </span>
-                <span className="text-xs leading-relaxed">{line}</span>
+                <span className="text-[11px] leading-relaxed">{line}</span>
               </div>
             ))}
           </div>
@@ -497,22 +445,22 @@ function LegacyBankAnalysisViewer({ content }: BankAnalysisInsightViewerProps) {
 
       {/* Risk reasoning */}
       {data.reasoning && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-5 shadow-sm">
-          <div className="flex items-center gap-2.5 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-              <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+              <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">Risk Assessment</h3>
+              <h3 className="text-xs font-bold text-amber-900 dark:text-amber-200">Risk Assessment</h3>
               {data.creditRisk && <p className="text-[10px] text-amber-700 dark:text-amber-400">Score: {data.creditRisk}</p>}
             </div>
             {data.riskTier && (
-              <Badge className="ml-auto bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-400/40 hover:bg-amber-500/30">
+              <Badge className="ml-auto bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-400/40 hover:bg-amber-500/30 text-[10px]">
                 {data.riskTier}
               </Badge>
             )}
           </div>
-          <p className="text-sm text-amber-900/80 dark:text-amber-200/80 leading-relaxed">{data.reasoning}</p>
+          <p className="text-xs text-amber-900/80 dark:text-amber-200/80 leading-relaxed">{data.reasoning}</p>
         </div>
       )}
 
