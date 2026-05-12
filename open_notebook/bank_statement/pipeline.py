@@ -271,35 +271,224 @@ def _enrich_details(details: dict, text: str, cfg: dict | None = None) -> dict:
     if cfg is None:
         cfg = {}
 
-    # Use spaCy NER for bank name detection (no hardcoded bank list needed)
-    bank_name = _nlp_detect_bank(text)
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    # Use spaCy NER for account holder detection (no hardcoded skip words needed)
+    # Use spaCy NER for bank name detection - search in more lines (bank name may be far down)
+    bank_name = _nlp_detect_bank("\n".join(lines[:60]))
+
+    # Use spaCy NER for account holder detection
     account_holder = _nlp_detect_holder(text)
 
-    # Period detection (regex-based, language-agnostic)
+    # Period detection - "Statement From" label followed by date range
     period_str = ''
-    lines_header = [l.strip() for l in text.splitlines()[:PARSING["header_scan_lines"]] if l.strip()]
-    for line in lines_header:
-        if ' to ' in line.lower() and any(c.isdigit() for c in line):
-            period_str = line.strip()
+    _PERIOD_RE = re.compile(
+        r'(\d{1,2}[-/]\d{1,2}[-/]\d{4})\s+(?:to|To|–)\s+(\d{1,2}[-/]\d{1,2}[-/]\d{4})'
+    )
+    full_header = "\n".join(lines[:60])
+    # Check label-value pairs (label on one line, value on next)
+    for i, line in enumerate(lines[:60]):
+        if re.search(r'statement\s+(?:from|period)|period', line, re.IGNORECASE):
+            # Value might be on same line or next line
+            search_text = line
+            if i + 1 < len(lines):
+                search_text += " " + lines[i + 1]
+            m = _PERIOD_RE.search(search_text)
+            if m:
+                period_str = f"{m.group(1)} To {m.group(2)}"
+                break
+    if not period_str:
+        m = _PERIOD_RE.search(full_header)
+        if m:
+            period_str = f"{m.group(1)} To {m.group(2)}"
+
+    # Account number detection - label on one line, value on next
+    acct_no = ''
+    for i, line in enumerate(lines[:20]):
+        if re.search(r'^account\s*no$', line, re.IGNORECASE):
+            # Value is on next non-label line
+            for j in range(i + 1, min(i + 5, len(lines))):
+                val = lines[j].strip()
+                if val.isdigit() and 8 <= len(val) <= 20:
+                    acct_no = val
+                    break
+                elif val and not re.search(r'^account|^product', val, re.IGNORECASE):
+                    break
+            if acct_no:
+                break
+    if not acct_no:
+        _ACCT_RE = re.compile(
+            r'(?:account\s*(?:no|number|no\.)|a/c\s*(?:no|number)?)\s*[:\-]?\s*(\d{8,20})',
+            re.IGNORECASE
+        )
+        m_acct = _ACCT_RE.search(full_header)
+        if m_acct:
+            acct_no = m_acct.group(1)
+
+    # SBI-style grouped labels: "Account No", "Product", "Account Open Date"
+    # appear on consecutive lines, followed by their values in the same order
+    sbi_fields = []
+    _SBI_GROUPS = [
+        ['account no', 'product', 'account open date'],
+        ['account no', 'account open date'],
+    ]
+    for group in _SBI_GROUPS:
+        for start_i, line in enumerate(lines[:30]):
+            if line.strip().lower().rstrip(':') == group[0]:
+                match = all(
+                    start_i + k < len(lines) and
+                    lines[start_i + k].strip().lower().rstrip(':') == group[k]
+                    for k in range(len(group))
+                )
+                if match:
+                    val_start = start_i + len(group)
+                    for k, lbl in enumerate(group):
+                        val_idx = val_start + k
+                        if val_idx < len(lines):
+                            val = lines[val_idx].strip()
+                            if val and not re.search(r'^account|^product', val, re.IGNORECASE):
+                                sbi_fields.append({'label': lbl.title(), 'value': val})
+                                if lbl == 'account no' and val.isdigit():
+                                    acct_no = val
+                    break
+        if sbi_fields:
             break
+
+    # Account holder address: lines after holder name
+    holder_address = ''
+    if account_holder:
+        holder_upper = account_holder.upper().replace('  ', ' ')
+        for i, line in enumerate(lines[:20]):
+            if line.strip().upper().replace('  ', ' ') == holder_upper:
+                addr_parts = []
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    part = lines[j].strip()
+                    if (not part or part.isdigit() or
+                            re.search(r'^\d{2}[-/]\d{2}[-/]\d{4}$', part) or
+                            part.lower() in ('drawing power', 'date of statement', 'ifsc code')):
+                        break
+                    addr_parts.append(part)
+                if addr_parts:
+                    holder_address = ', '.join(addr_parts)
+                break
+
+    # Bank address: lines after bank name
+    bank_address = ''
+    if bank_name:
+        bank_upper = bank_name.upper()
+        for i, line in enumerate(lines[:80]):
+            if line.strip().upper() == bank_upper:
+                addr_parts = []
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    part = lines[j].strip()
+                    if not part or part == ':' or part.lower() in ('open', 'nominee name'):
+                        break
+                    addr_parts.append(part)
+                if addr_parts:
+                    bank_address = ', '.join(addr_parts)
+                break
+
+    # Extract useful fields using label-on-line, value-on-next-line format
+    # Also handle SBI-style grouped labels: multiple labels followed by their values
+    useful_labels = {
+        'currency', 'ifsc code', 'ifsc', 'interest rate', 'branch code',
+        'micr code', 'account status', 'cleared balance', 'opening balance',
+        'product', 'account open date', 'account type', 'nominee name',
+        'drawing power', 'uncleared amount', 'monthly avg balance',
+        'branch email', 'branch phone', 'date of statement',
+    }
+
+    def _looks_like_label(s: str) -> bool:
+        """True if string looks like a field label (not a value)."""
+        return s.lower().rstrip(':') in useful_labels or s.lower() in (
+            'account no', 'account number', 'product', 'account open date'
+        )
+
+    def _is_valid_value(label: str, value: str) -> bool:
+        if not value or len(value) > 60:
+            return False
+        if _looks_like_label(value):
+            return False
+        if 'date' in label.lower():
+            # Date value must contain digits
+            if not re.search(r'\d', value):
+                return False
+            # Account number (all digits) is not a date
+            if value.isdigit() and len(value) > 6:
+                return False
+        if label.lower() == 'product' and value.isdigit():
+            return False
+        return True
+
+    # Detect grouped label blocks: consecutive label lines followed by value lines
+    label_value_fields = []
+    i = 0
+    while i < len(lines) - 1:
+        label = lines[i].strip().rstrip(':').strip()
+        if label.lower() in useful_labels:
+            # Check if next lines are also labels (grouped block)
+            group_labels = [label]
+            j = i + 1
+            while j < len(lines) and _looks_like_label(lines[j].strip().rstrip(':')):
+                group_labels.append(lines[j].strip().rstrip(':').strip())
+                j += 1
+            # Now collect values for each label
+            for k, lbl in enumerate(group_labels):
+                val_idx = j + k
+                if val_idx < len(lines):
+                    val = lines[val_idx].strip().lstrip(':').strip()
+                    if _is_valid_value(lbl, val):
+                        label_value_fields.append({'label': lbl, 'value': val})
+            i = j + len(group_labels)
+        else:
+            i += 1
+
+    # Filter out transaction-like fields from existing detail_cards
+    _TXN_VALUE_RE = re.compile(
+        r'BROUGHT\s+FORWARD|CASH\s+DEPOSIT|ATM\s+WDL|INTER\s+BRCH|DEBIT\s*ENTRY|'
+        r'^\d{2}[-/]\d{2}[-/]\d{4}\s+\d{2}[-/]\d{2}[-/]\d{4}',
+        re.IGNORECASE
+    )
+    details['fields'] = [
+        f for f in details['fields']
+        if not _TXN_VALUE_RE.search(str(f.get('value', '')))
+        and not _TXN_VALUE_RE.search(str(f.get('label', '')))
+        and len(str(f.get('value', ''))) < 200
+    ]
 
     existing_labels = {
         f['label'].lower().replace(' ', '').replace('/', '')
         for f in details['fields']
     }
 
+    # Add enriched fields at the top
     if account_holder and 'accountholder' not in existing_labels and 'name' not in existing_labels:
         details['fields'].insert(0, {'label': 'Account Holder', 'value': account_holder})
     if bank_name and 'bank' not in existing_labels and 'bankname' not in existing_labels:
         details['fields'].insert(0, {'label': 'Bank', 'value': bank_name})
+    if acct_no and 'accountno' not in existing_labels and 'accountnumber' not in existing_labels:
+        details['fields'].insert(1 if bank_name else 0, {'label': 'Account No', 'value': acct_no})
     if period_str and 'period' not in existing_labels and 'statementperiod' not in existing_labels:
         details['fields'].append({'label': 'Statement Period', 'value': period_str})
 
-    return details
-    if period_str and 'period' not in existing_labels and 'statementperiod' not in existing_labels:
-        details['fields'].append({'label': 'Statement Period', 'value': period_str})
+    # Add SBI grouped fields (Product, Account Open Date)
+    for lv in sbi_fields:
+        norm = lv['label'].lower().replace(' ', '').replace('/', '')
+        if norm not in existing_labels and norm not in ('accountno', 'accountnumber'):
+            details['fields'].append(lv)
+            existing_labels.add(norm)
+
+    # Add addresses
+    if holder_address and 'holderaddress' not in existing_labels and 'address' not in existing_labels:
+        details['fields'].append({'label': 'Holder Address', 'value': holder_address})
+    if bank_address and 'bankaddress' not in existing_labels and 'branchaddress' not in existing_labels:
+        details['fields'].append({'label': 'Branch Address', 'value': bank_address})
+
+    # Add useful label-value fields if not already present
+    for lv in label_value_fields:
+        norm = lv['label'].lower().replace(' ', '').replace('/', '')
+        if norm not in existing_labels:
+            details['fields'].append(lv)
+            existing_labels.add(norm)
 
     return details
 

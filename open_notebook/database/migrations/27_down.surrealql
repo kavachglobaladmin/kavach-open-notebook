@@ -1,0 +1,2 @@
+-- Rollback for Migration 27
+DEFINE FIELD IF NOT EXISTS source_id ON TABLE analysis_cache TYPE string;

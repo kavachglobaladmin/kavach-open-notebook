@@ -1,20 +1,37 @@
+import re as _re_meta
+import re
 from open_notebook.bank_statement.settings import get_defaults
 
 _D = get_defaults()
 
 
 def _header_lines(text):
+    import re as _re
     table_words = set(_D["table_words"])
+    # Patterns that indicate transaction data has started — stop scanning header
+    _TRANSACTION_START = [
+        _re.compile(r"BROUGHT\s+FORWARD", _re.IGNORECASE),
+        _re.compile(r"OPENING\s+BALANCE", _re.IGNORECASE),
+        _re.compile(r"^\d{2}[-/]\d{2}[-/]\d{4}", _re.IGNORECASE),  # date at line start
+        _re.compile(r"Post\s+Date\s+Description", _re.IGNORECASE),
+        _re.compile(r"Value\s+Date\s+Description", _re.IGNORECASE),
+        _re.compile(r"Txn\s+Date", _re.IGNORECASE),
+    ]
     lines = []
     for line in text.splitlines():
         cleaned = " ".join(line.split())
         if not cleaned:
             continue
+        # Stop if transaction table header detected
         words = {word.lower().strip(":-") for word in cleaned.split()}
         if len(words.intersection(table_words)) >= 3:
             break
+        # Stop if transaction data started
+        if any(p.search(cleaned) for p in _TRANSACTION_START):
+            break
         lines.append(cleaned)
-    return lines
+    # Limit to first 40 lines max to avoid including transactions
+    return lines[:40]
 
 
 def _split_label_prefix(label):
@@ -159,6 +176,29 @@ def parse_statement_details(text):
     title = free_lines[title_index] if title_index >= 0 else ""
     issuer_lines   = free_lines[:title_index] if title_index >= 0 else free_lines[:2]
     customer_lines = free_lines[title_index + 1:] if title_index >= 0 else free_lines[2:]
+
+    # Filter out bare label lines (lines that are just field names without values)
+    _BARE_LABELS = {
+        'account no', 'product', 'account open date', 'account number',
+        'account type', 'date', 'description', 'debit', 'credit', 'balance',
+        'drawing power', 'nominee name', 'account status',
+    }
+    def _is_meaningful_line(line: str) -> bool:
+        stripped = line.strip().lower().rstrip(':')
+        if stripped in _BARE_LABELS:
+            return False
+        if len(stripped) < 3:
+            return False
+        # Skip pure numbers (account numbers already in detail_cards)
+        if stripped.replace(' ', '').isdigit():
+            return False
+        # Skip product codes already in detail_cards
+        if re.search(r'^regular\s+sb|^savings|^current|^chq', stripped, re.IGNORECASE):
+            return False
+        return True
+
+    issuer_lines   = [l for l in issuer_lines   if _is_meaningful_line(l)]
+    customer_lines = [l for l in customer_lines if _is_meaningful_line(l)]
 
     return {
         "title": title,
