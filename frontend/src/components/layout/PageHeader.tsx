@@ -1,12 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Search, Sparkles, Menu, HardDrive, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import apiClient from '@/lib/api/client'
+import { notebooksApi } from '@/lib/api/notebooks'
+import { sourcesApi } from '@/lib/api/sources'
+import { searchApi } from '@/lib/api/search'
+import type { NotebookResponse, SourceListResponse, SourceDetailResponse } from '@/lib/types/api'
 import { NotificationCenter } from './NotificationCenter'
 import { cn } from '@/lib/utils'
 
@@ -64,6 +69,55 @@ interface PageHeaderProps {
   hideSearch?: boolean
 }
 
+type GlobalSearchResult = {
+  id: string
+  title: string
+  subtitle?: string
+  type: 'notebook' | 'source' | 'content'
+  href: string
+}
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().trim()
+}
+
+function scoreMatch(query: string, target: string): number {
+  const q = normalizeText(query)
+  const t = normalizeText(target)
+  if (!q || !t) return 0
+  if (t === q) return 100
+  if (t.startsWith(q)) return 80
+  if (t.includes(q)) return 60
+
+  const queryParts = q.split(/\s+/).filter(Boolean)
+  const matchedParts = queryParts.filter(part => t.includes(part)).length
+  if (matchedParts > 0) {
+    return 30 + Math.round((matchedParts / queryParts.length) * 20)
+  }
+  return 0
+}
+
+function cleanResultTitle(rawTitle: string, fallback: string): string {
+  const normalized = (rawTitle || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return fallback
+
+  // Remove repeated filename-like fragments coming from some content matches
+  const compact = normalized
+    .replace(/(.{4,}?\.(?:pdf|docx|doc|txt|xlsx|pptx))(?:\1)+/gi, '$1')
+    .replace(/(.{8,}?)(?:\1){2,}/g, '$1')
+    .trim()
+
+  if (!compact) return fallback
+  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact
+}
+
+function extractFileName(path?: string): string {
+  if (!path) return ''
+  const normalized = path.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  return parts[parts.length - 1] || path
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function PageHeader({
@@ -75,12 +129,20 @@ export function PageHeader({
   hideNew = false,
   hideSearch = false,
 }: PageHeaderProps) {
+  const router = useRouter()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
   const { toggleCollapse, isCollapsed } = useSidebarStore()
+  const searchWrapperRef = useRef<HTMLDivElement | null>(null)
+  const searchRequestIdRef = useRef(0)
 
   // User Profile State
   const [displayName, setDisplayName] = useState('')
   const [initials, setInitials] = useState('')
+
+  // Global Search State
+  const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([])
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false)
+  const [showGlobalResults, setShowGlobalResults] = useState(false)
 
   // New Notebook Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -117,6 +179,197 @@ export function PageHeader({
     })
   }, [currentUserEmail])
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!searchWrapperRef.current) return
+      if (!searchWrapperRef.current.contains(event.target as Node)) {
+        setShowGlobalResults(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const normalizedSearch = useMemo(() => searchValue.trim(), [searchValue])
+
+  useEffect(() => {
+    if (!normalizedSearch || hideSearch) {
+      searchRequestIdRef.current += 1
+      setGlobalResults([])
+      setIsSearchingGlobal(false)
+      return
+    }
+
+    searchRequestIdRef.current += 1
+    const requestId = searchRequestIdRef.current
+    setIsSearchingGlobal(true)
+
+    const timeout = setTimeout(async () => {
+      try {
+        const [notebooksRes, sourcesRes, semanticTextRes, semanticVectorRes] = await Promise.allSettled([
+          notebooksApi.list({ archived: false, order_by: 'updated' }),
+          sourcesApi.list({ limit: 200, sort_by: 'updated', sort_order: 'desc' }),
+          searchApi.search({
+            query: normalizedSearch,
+            type: 'text',
+            limit: 12,
+            search_sources: true,
+            search_notes: true,
+            minimum_score: 0.0,
+          }),
+          searchApi.search({
+            query: normalizedSearch,
+            type: 'vector',
+            limit: 12,
+            search_sources: true,
+            search_notes: true,
+            minimum_score: 0.0,
+          }),
+        ])
+
+        const notebooks = notebooksRes.status === 'fulfilled' ? (notebooksRes.value as NotebookResponse[]) : []
+        const sources = sourcesRes.status === 'fulfilled' ? (sourcesRes.value as SourceListResponse[]) : []
+        const semanticText = semanticTextRes.status === 'fulfilled' ? semanticTextRes.value.results : []
+        const semanticVector = semanticVectorRes.status === 'fulfilled' ? semanticVectorRes.value.results : []
+        const semanticResults = [...semanticText, ...semanticVector]
+
+        const notebookMatches: Array<GlobalSearchResult & { rank: number }> = notebooks
+          .map(notebook => ({
+            notebook,
+            rank: scoreMatch(normalizedSearch, notebook.name),
+          }))
+          .filter(item => item.rank > 0)
+          .sort((a, b) => b.rank - a.rank)
+          .slice(0, 6)
+          .map(notebook => ({
+            id: notebook.notebook.id,
+            title: notebook.notebook.name,
+            subtitle: 'Case',
+            type: 'notebook',
+            href: `/notebooks/${notebook.notebook.id.includes(':') ? notebook.notebook.id.split(':')[1] : notebook.notebook.id}`,
+            rank: notebook.rank,
+          }))
+
+        const sourceMatches: Array<GlobalSearchResult & { rank: number }> = sources
+          .map(source => ({
+            source,
+            rank: Math.max(
+              scoreMatch(normalizedSearch, source.title || ''),
+              scoreMatch(normalizedSearch, extractFileName(source.asset?.file_path)),
+              scoreMatch(normalizedSearch, source.asset?.file_path || '')
+            ),
+          }))
+          .filter(item => item.rank > 0)
+          .sort((a, b) => b.rank - a.rank)
+          .slice(0, 6)
+          .map(source => ({
+            id: source.source.id,
+            title: source.source.title || extractFileName(source.source.asset?.file_path) || 'Untitled file',
+            subtitle: extractFileName(source.source.asset?.file_path)
+              ? `File: ${extractFileName(source.source.asset?.file_path)}`
+              : 'File',
+            type: 'source',
+            href: `/sources/${source.source.id.includes(':') ? source.source.id.split(':')[1] : source.source.id}`,
+            rank: source.rank,
+          }))
+
+        const semanticMatches: Array<GlobalSearchResult & { rank: number }> = semanticResults
+          .slice(0, 14)
+          .map(result => {
+            const rawId = result.parent_id || result.id
+            const shortId = rawId.includes(':') ? rawId.split(':')[1] : rawId
+            const isSource = (result.type || result.source_type || '').toLowerCase().includes('source')
+            const titleScore = scoreMatch(normalizedSearch, result.title || '')
+            const snippetScore = Array.isArray(result.matches)
+              ? Math.max(...result.matches.map((match: string) => scoreMatch(normalizedSearch, match)), 0)
+              : 0
+            const relevanceScore = Math.round((result.final_score || result.relevance || result.similarity || result.score || 0) * 10)
+            const snippet = Array.isArray(result.matches) && result.matches.length > 0
+              ? cleanResultTitle(result.matches[0], '')
+              : ''
+            const displayTitle = cleanResultTitle(
+              result.title || '',
+              isSource ? `File match: ${normalizedSearch}` : `Content match: ${normalizedSearch}`
+            )
+            return {
+              id: result.id,
+              title: displayTitle,
+              subtitle: snippet || (isSource ? 'Content match in file' : 'Content match in knowledge base'),
+              type: 'content',
+              href: isSource ? `/sources/${shortId}` : '/search',
+              rank: Math.max(40, titleScore, snippetScore, relevanceScore),
+            }
+          })
+
+        const deduped = new Map<string, GlobalSearchResult & { rank: number }>()
+        ;[...notebookMatches, ...sourceMatches, ...semanticMatches].forEach(item => {
+          const key = `${item.type}:${item.href}:${item.title}`
+          if (!deduped.has(key)) deduped.set(key, item)
+        })
+
+        const sorted = Array.from(deduped.values())
+          .sort((a, b) => b.rank - a.rank)
+          .slice(0, 12)
+          .map(({ rank, ...result }) => result)
+
+        if (sorted.length === 0 && normalizedSearch.length >= 2 && sources.length > 0) {
+          const deepCandidates = sources.slice(0, 30)
+          const deepResultsRaw = await Promise.allSettled(
+            deepCandidates.map(source => sourcesApi.get(source.id))
+          )
+
+          const deepMatches: GlobalSearchResult[] = deepResultsRaw
+            .filter((entry): entry is PromiseFulfilledResult<SourceDetailResponse> => entry.status === 'fulfilled')
+            .map(entry => entry.value)
+            .filter(sourceDetail => scoreMatch(normalizedSearch, sourceDetail.full_text || '') > 0)
+            .slice(0, 8)
+            .map(sourceDetail => {
+              const sourceId = sourceDetail.id.includes(':') ? sourceDetail.id.split(':')[1] : sourceDetail.id
+              const snippetStart = (sourceDetail.full_text || '').toLowerCase().indexOf(normalizedSearch.toLowerCase())
+              const snippet = snippetStart >= 0
+                ? cleanResultTitle((sourceDetail.full_text || '').slice(Math.max(0, snippetStart - 30), snippetStart + 90), 'Person/content match')
+                : 'Person/content match'
+
+              return {
+                id: `deep-${sourceDetail.id}`,
+                title: sourceDetail.title || extractFileName(sourceDetail.asset?.file_path) || 'Matched file',
+                subtitle: snippet,
+                type: 'content',
+                href: `/sources/${sourceId}`,
+              }
+            })
+
+          if (deepMatches.length > 0) {
+            if (requestId !== searchRequestIdRef.current) return
+            setGlobalResults(deepMatches)
+            return
+          }
+        }
+
+        if (requestId !== searchRequestIdRef.current) return
+        setGlobalResults(sorted)
+      } catch {
+        if (requestId !== searchRequestIdRef.current) return
+        setGlobalResults([])
+      } finally {
+        if (requestId !== searchRequestIdRef.current) return
+        setIsSearchingGlobal(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timeout)
+  }, [normalizedSearch, hideSearch])
+
+  const handleGlobalResultClick = (result: GlobalSearchResult) => {
+    setShowGlobalResults(false)
+    if (result.href === '/search') {
+      router.push(`/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`)
+      return
+    }
+    router.push(result.href)
+  }
+
   const handleCreateNew = () => {
     if (onNew) {
       // Delegate to the parent page's handler
@@ -149,15 +402,53 @@ export function PageHeader({
         )}
 
         {!hideSearch && (
-          <div className="relative w-full max-w-[480px] hidden sm:block">
+          <div ref={searchWrapperRef} className="relative w-full max-w-[480px] hidden sm:block">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
             <Input
               value={searchValue}
-              onChange={e => onSearchChange(e.target.value)}
+              onChange={e => {
+                onSearchChange(e.target.value)
+                setShowGlobalResults(true)
+              }}
+              onFocus={() => {
+                if (normalizedSearch) setShowGlobalResults(true)
+              }}
               placeholder={searchPlaceholder}
               autoComplete="off"
               className="pl-12 h-[46px] bg-[#F8FAFC] border-[#E2E8F0] rounded-[13px] text-[15px] placeholder:text-slate-400 text-slate-700 focus-visible:ring-[#8B5CF6] focus-visible:ring-offset-0 focus-visible:border-[#8B5CF6] transition-all hover:border-slate-300"
             />
+
+            {showGlobalResults && normalizedSearch && (
+              <div className="absolute left-0 right-0 top-[52px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+                {isSearchingGlobal ? (
+                  <div className="px-4 py-3 text-sm text-slate-500">Searching across cases, files, and content...</div>
+                ) : globalResults.length === 0 ? (
+                  <div className="px-4 py-3 text-sm text-slate-500">No results found</div>
+                ) : (
+                  <div className="max-h-[360px] overflow-y-auto">
+                    {globalResults.map(result => (
+                      <button
+                        key={`${result.type}-${result.id}-${result.href}`}
+                        onClick={() => handleGlobalResultClick(result)}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                      >
+                        <div className="text-sm font-semibold text-slate-800 truncate">{result.title}</div>
+                        <div className="text-xs text-slate-500">{result.subtitle}</div>
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setShowGlobalResults(false)
+                        router.push(`/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`)
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm font-semibold text-[#7C3AED] hover:bg-violet-50 border-t border-slate-100"
+                    >
+                      View all results
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
