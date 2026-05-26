@@ -123,10 +123,10 @@ export default function DashboardPage() {
   })
 
   const stats = useMemo(() => {
-    const totalSources = sources?.length ?? 248
-    const activeCases = notebooks?.length ?? 18
-    const rawAiQueries = (sources?.reduce((acc, s) => acc + (s.insights_count ?? 0), 0) ?? 0) || 1247
-    const insightsGenerated = (sources?.reduce((acc, s) => acc + (s.insights_count ?? 0), 0) ?? 0) || 342
+    const totalSources = sources?.length ?? 0
+    const activeCases = notebooks?.length ?? 0
+    const rawAiQueries = sources?.reduce((acc, s) => acc + (s.insights_count ?? 0), 0) ?? 0
+    const insightsGenerated = sources?.reduce((acc, s) => acc + (s.insights_count ?? 0), 0) ?? 0
     return { totalSources, activeCases, aiQueries: rawAiQueries.toLocaleString('en-US'), insightsGenerated }
   }, [sources, notebooks])
 
@@ -144,19 +144,14 @@ export default function DashboardPage() {
         status: s.embedded ? 'done' : 'processing',
       })
     })
-    return items.length > 0 ? items : [
-      { id: '1', icon: <FileText className="h-4 w-4 text-[#4F46E5]" />, iconBg: 'bg-[#EEF2FF]', title: 'IR - SANDEEP @ KALA JATHEDI.Docx', subtitle: 'Embedded successfully', time: '2 hours ago', status: 'done' },
-      { id: '2', icon: <Sparkles className="h-4 w-4 text-[#DB2777]" />, iconBg: 'bg-[#FDF2F8]', title: 'Neural Network Model Analysis', subtitle: 'Transformation completed', time: '4 hours ago', status: 'done' },
-      { id: '3', icon: <Search className="h-4 w-4 text-[#7C3AED]" />, iconBg: 'bg-[#F5F3FF]', title: 'Market Research Query', subtitle: 'Generated insights', time: '5 hours ago', status: 'done' },
-      { id: '4', icon: <FolderOpen className="h-4 w-4 text-[#0891B2]" />, iconBg: 'bg-[#ECFEFF]', title: 'Data Validation Report', subtitle: 'Processing...', time: '1 hour ago', status: 'processing' }
-    ]
+    return items
   }, [sources])
 
   const statCards = [
-    { label: 'Total Sources', value: stats.totalSources, icon: <FileText className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)', trend: '+12.5%', trendUp: true },
-    { label: 'Active Cases', value: stats.activeCases, icon: <Briefcase className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #DB2777 0%, #F43F5E 100%)', trend: '+8.3%', trendUp: true },
-    { label: 'AI Queries', value: stats.aiQueries, icon: <Search className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #7C3AED 0%, #9333EA 100%)', trend: '+23.1%', trendUp: true },
-    { label: 'Insights Generated', value: stats.insightsGenerated, icon: <Zap className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #0891B2 0%, #10B981 100%)', trend: '-2.4%', trendUp: false },
+    { label: 'Total Sources', value: stats.totalSources, icon: <FileText className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)' },
+    { label: 'Active Cases', value: stats.activeCases, icon: <Briefcase className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #DB2777 0%, #F43F5E 100%)' },
+    { label: 'AI Queries', value: stats.aiQueries, icon: <Search className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #7C3AED 0%, #9333EA 100%)' },
+    { label: 'Insights Generated', value: stats.insightsGenerated, icon: <Zap className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #0891B2 0%, #10B981 100%)' },
   ]
 
   const quickActions = [
@@ -191,19 +186,19 @@ export default function DashboardPage() {
         <PageHeader searchValue={searchTerm} onSearchChange={setSearchTerm} newLabel="NOTEBOOK" />
 
         <div className="flex-1 overflow-y-auto relative z-10 custom-scrollbar">
-          <div className="w-full pl-10 pr-[60px] py-10 space-y-10">
+          <div className="w-full px-4 sm:px-6 lg:px-10 xl:pr-[60px] py-6 sm:py-8 lg:py-10 space-y-6 sm:space-y-8 lg:space-y-10">
 
             <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5, ease: "easeOut" }}>
-              <h1 className="text-[36px] font-bold text-[#4338CA] tracking-tight">
+              <h1 className="text-[28px] sm:text-[32px] lg:text-[36px] font-bold text-[#4338CA] tracking-tight">
                 {getGreeting()}, <span className="text-[#6366F1]">{displayName}!</span>
               </h1>
-              <p className="text-[15px] text-slate-500 font-medium mt-1">
-                Here's what's happening with your knowledge base today.
+              <p className="text-[14px] sm:text-[15px] text-slate-500 font-medium mt-1">
+                Here is what&apos;s happening with your knowledge base today.
               </p>
             </motion.div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
               {statCards.map((card, idx) => (
                 <motion.div
                   key={card.label}
@@ -223,10 +218,6 @@ export default function DashboardPage() {
                     >
                       {card.icon}
                     </motion.div>
-                    <span className={`text-[13px] font-bold flex items-center gap-1 ${card.trendUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      <TrendingUp className={`h-3.5 w-3.5 ${!card.trendUp && 'rotate-180'}`} />
-                      {card.trend}
-                    </span>
                   </div>
                   <div>
                     <h3 className="text-[32px] font-bold text-slate-900 tracking-tight">{card.value}</h3>
@@ -236,23 +227,29 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6 sm:gap-8">
               {/* Recent Activity Card */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5, delay: 0.3 }}
-                className="bg-white/80 backdrop-blur-2xl rounded-[32px] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white"
+                className="bg-white/80 backdrop-blur-2xl rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white"
               >
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center justify-between mb-6 sm:mb-8 gap-4">
                   <div>
-                    <h2 className="text-[20px] font-bold text-slate-900">Recent Activity</h2>
-                    <p className="text-[14px] text-slate-400 font-medium">Latest updates from your knowledge base</p>
+                    <h2 className="text-[18px] sm:text-[20px] font-bold text-slate-900">Recent Activity</h2>
+                    <p className="text-[13px] sm:text-[14px] text-slate-400 font-medium">Latest updates from your knowledge base</p>
                   </div>
                   <button className="text-slate-300 hover:text-slate-500 transition-colors text-2xl">···</button>
                 </div>
 
                 <div className="space-y-2">
+                  {recentActivity.length === 0 && (
+                    <div className="p-6 text-center text-slate-500 bg-white/60 rounded-[20px] border border-white">
+                      <p className="text-sm font-semibold">No recent activity yet</p>
+                      <p className="text-xs mt-1">Upload a source or create a notebook to get started.</p>
+                    </div>
+                  )}
                   {recentActivity.map((item, idx) => (
                     <motion.div
                       key={item.id}
@@ -261,16 +258,16 @@ export default function DashboardPage() {
                       animate="animate"
                       whileHover="hover"
                       variants={listItemVariants}
-                      className="flex items-center gap-5 p-4 rounded-[20px] cursor-pointer group transition-all"
+                      className="flex items-center gap-3 sm:gap-5 p-3 sm:p-4 rounded-[16px] sm:rounded-[20px] cursor-pointer group transition-all"
                     >
                       <motion.div variants={iconVariants} className={`w-11 h-11 rounded-[14px] flex items-center justify-center shadow-sm ${item.iconBg}`}>
                         {item.icon}
                       </motion.div>
                       <div className="flex-1">
-                        <p className="text-[15px] font-bold text-slate-800">{item.title}</p>
+                        <p className="text-[14px] sm:text-[15px] font-bold text-slate-800 break-words">{item.title}</p>
                         <p className="text-[13px] text-slate-400 font-medium">{item.subtitle}</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="hidden sm:flex items-center gap-3">
                         <span className="text-[12px] text-slate-400 font-medium flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5" /> {item.time}
                         </span>
@@ -287,9 +284,9 @@ export default function DashboardPage() {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.5, delay: 0.4 }}
-                  className="bg-white/80 backdrop-blur-2xl rounded-[32px] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white"
+                  className="bg-white/80 backdrop-blur-2xl rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white"
                 >
-                  <h2 className="text-[20px] font-bold text-slate-900 mb-1">Quick Actions</h2>
+                  <h2 className="text-[18px] sm:text-[20px] font-bold text-slate-900 mb-1">Quick Actions</h2>
                   <p className="text-[14px] text-slate-400 font-medium mb-6">Jump right into your workflow</p>
                   <div className="space-y-4">
                     {quickActions.map((action) => (
@@ -298,7 +295,7 @@ export default function DashboardPage() {
                         whileHover={{ scale: 1.02, filter: 'brightness(1.1)' }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => router.push(action.route)}
-                        className="w-full flex items-center justify-between px-6 py-4 rounded-[20px] text-white font-bold text-[14px] shadow-lg shadow-indigo-200/20 transition-all"
+                        className="w-full flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 rounded-[16px] sm:rounded-[20px] text-white font-bold text-[13px] sm:text-[14px] shadow-lg shadow-indigo-200/20 transition-all"
                         style={{ background: action.gradient }}
                       >
                         <span className="flex items-center gap-3">{action.icon}{action.label}</span>
@@ -313,7 +310,7 @@ export default function DashboardPage() {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.5, delay: 0.5 }}
-                  className="bg-white/80 backdrop-blur-2xl rounded-[32px] p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white flex-1"
+                  className="bg-white/80 backdrop-blur-2xl rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white flex-1"
                 >
                   <div className="flex items-center gap-3 mb-6">
                     <motion.div variants={iconVariants} whileHover="hover" className="p-2 bg-violet-100 rounded-lg">

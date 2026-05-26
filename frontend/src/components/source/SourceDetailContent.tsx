@@ -73,7 +73,10 @@ import {
   AlertCircle,
   MessageSquare,
   BarChart2,
+  Camera,
 } from 'lucide-react'
+import Image from 'next/image'
+import { mindmapApi } from '@/lib/api/mindmap'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { toast } from '@/lib/notifications/toast'
@@ -299,6 +302,88 @@ function SmartDocumentRenderer({
         return null
       })}
     </div>
+  )
+}
+
+// ── Evidence (Photos) Tab ─────────────────────────────────────────────────────
+function EvidenceTab({ sourceId }: { sourceId: string }) {
+  const [images, setImages] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [selectedImg, setSelectedImg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (loaded) return
+    setLoading(true)
+    mindmapApi.getImages(sourceId)
+      .then(res => { setImages(res.images ?? []); setLoaded(true) })
+      .catch(() => { setImages([]); setLoaded(true) })
+      .finally(() => setLoading(false))
+  }, [sourceId, loaded])
+
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
+      <LoadingSpinner />
+      <p className="text-sm">Extracting images from source…</p>
+    </div>
+  )
+
+  if (!images.length) return (
+    <div className="flex flex-col items-center justify-center py-20 gap-4 text-slate-400 px-8 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+        <Camera className="h-7 w-7 text-slate-300" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-600">No photos found</p>
+        <p className="text-xs text-slate-400 mt-1">Photos embedded in the source document will appear here.</p>
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4">
+        {images.map((b64, i) => (
+          <button
+            key={i}
+            onClick={() => setSelectedImg(b64)}
+            className="rounded-xl overflow-hidden border border-slate-200 hover:border-violet-400 transition-all shadow-sm hover:shadow-md"
+          >
+            <Image
+              src={`data:image/png;base64,${b64}`}
+              alt={`Image ${i + 1}`}
+              width={1200}
+              height={800}
+              unoptimized
+              className="w-full h-40 object-contain bg-slate-50"
+            />
+          </button>
+        ))}
+      </div>
+      {selectedImg && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setSelectedImg(null)}
+        >
+          <div className="relative max-w-3xl max-h-[90vh] p-2" onClick={e => e.stopPropagation()}>
+            <Image
+              src={`data:image/png;base64,${selectedImg}`}
+              alt="Full size"
+              width={1800}
+              height={1200}
+              unoptimized
+              className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain"
+            />
+            <button
+              onClick={() => setSelectedImg(null)}
+              className="absolute top-3 right-3 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/80 text-lg"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -582,6 +667,20 @@ export function SourceDetailContent({
     }, 3000)
     return () => clearInterval(interval)
   }, [creatingInsight, fetchInsights])
+
+  // Background refresh: poll insights every 10 seconds so newly generated
+  // insights appear without a manual page refresh (e.g. generated from
+  // MindMap, BankAnalysis, or other insight viewers).
+  useEffect(() => {
+    if (!sourceId) return
+    const interval = setInterval(() => {
+      // Only poll silently when not already in a fast-poll (creatingInsight)
+      if (!creatingInsight) {
+        void fetchInsights()
+      }
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [sourceId, creatingInsight, fetchInsights])
 
   const createInsight = async () => {
     // Prevent rapid double-clicks / repeated submits before React state updates
@@ -896,10 +995,14 @@ export function SourceDetailContent({
       {/* Tabs Content */}
       <div className="flex-1 overflow-y-auto px-2">
         <Tabs defaultValue="content" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 sticky top-0 z-10">
+          <TabsList className="grid w-full grid-cols-4 sticky top-0 z-10">
             <TabsTrigger value="content">{t.sources.content}</TabsTrigger>
             <TabsTrigger value="insights">
               {t.common.insights} {insights.length > 0 && `(${insights.length})`}
+            </TabsTrigger>
+            <TabsTrigger value="evidence" className="flex items-center gap-1">
+              <Camera className="h-3.5 w-3.5" />
+              Evidence
             </TabsTrigger>
             <TabsTrigger value="details">{t.sources.details}</TabsTrigger>
           </TabsList>
@@ -1100,6 +1203,10 @@ export function SourceDetailContent({
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="evidence" className="mt-6">
+            <EvidenceTab sourceId={sourceId} />
           </TabsContent>
 
           <TabsContent value="details" className="mt-6">

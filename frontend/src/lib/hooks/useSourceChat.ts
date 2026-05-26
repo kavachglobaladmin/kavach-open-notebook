@@ -52,14 +52,10 @@ export function useSourceChat(sourceId: string) {
     // Only clear when explicitly switching sessions (handled in switchSession)
   }, [currentSession])
 
-  // Auto-select most recent session when sessions are loaded
-  useEffect(() => {
-    if (sessions.length > 0 && !currentSessionId) {
-      // Find most recent session (sessions are sorted by created date desc from API)
-      const mostRecentSession = sessions[0]
-      setCurrentSessionId(mostRecentSession.id)
-    }
-  }, [sessions, currentSessionId])
+  // NOTE: Do NOT auto-select the most recent session on load.
+  // When a source is opened, the chat panel always starts with the empty state
+  // ("Start a conversation about this Source"). The user can switch to a
+  // previous session via the Sessions button if needed.
 
   // Create session mutation
   const createSessionMutation = useMutation({

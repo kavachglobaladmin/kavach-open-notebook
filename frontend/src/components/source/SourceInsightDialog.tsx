@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FileText, RefreshCw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -134,11 +133,6 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
           <DialogTitle className="flex items-center justify-between gap-2">
             <span>{t.sources.sourceInsight}</span>
             <div className="flex items-center gap-2">
-              {displayInsight?.insight_type && (
-                <Badge variant="outline" className="text-xs uppercase">
-                  {displayInsight.insight_type}
-                </Badge>
-              )}
               {sourceId && (
                 <Button
                   variant="outline"

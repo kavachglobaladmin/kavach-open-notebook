@@ -7,6 +7,9 @@ import { useAuthStore } from '@/lib/stores/auth-store'
 import { getConfig, getApiUrl } from '@/lib/config'
 import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, BookOpen } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { toast } from '@/lib/notifications/toast'
+import { getApiErrorMessage } from '@/lib/utils/error-handler'
+import { useTranslation } from '@/lib/hooks/use-translation'
 import Image from 'next/image'
 
 // Image Imports
@@ -137,6 +140,7 @@ function inputClass(hasError: boolean) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' | 'signup' }) {
+  const { t } = useTranslation()
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
 
   const [email, setEmail] = useState('')
@@ -162,15 +166,25 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   const isLoading = authLoading || localLoading
   const emailState = getEmailState(email)
 
-  const emailError = emailTouched && emailState === 'invalid' ? 'Enter a valid email address.' : ''
+  const emailError = emailTouched
+    ? (emailState === 'empty'
+      ? 'Email is required.'
+      : emailState === 'invalid'
+        ? 'Enter a valid email address.'
+        : '')
+    : ''
   const nameError = nameTouched && name.trim().length < 2 ? 'Name must be at least 2 characters.' : ''
   const passwordChecks = getPasswordChecks(password)
   const strengthLevel = getStrengthLevel(password)
   const passwordError =
     mode === 'signin'
       ? passwordTouched && !password.trim() ? 'Password is required.' : ''
-      : passwordTouched && password.length > 0 && !isPasswordValid(password)
-        ? 'Password does not meet requirements.'
+      : passwordTouched
+        ? (!password.trim()
+          ? 'Password is required.'
+          : !isPasswordValid(password)
+            ? 'Password does not meet requirements.'
+            : '')
         : ''
 
   useEffect(() => {
@@ -231,9 +245,22 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     }
     setLocalLoading(true)
     const result = await registerUserBackend(name.trim(), email.trim().toLowerCase(), password)
-    if (result.conflict) { setLocalError('Email already exists.'); setLocalLoading(false); return }
-    if (!result.ok) { setLocalError(result.error ?? 'Failed.'); setLocalLoading(false); return }
+    if (result.conflict) {
+      const message = 'Email already exists.'
+      setLocalError(message)
+      toast.error(message)
+      setLocalLoading(false)
+      return
+    }
+    if (!result.ok) {
+      const message = result.error ?? 'Failed.'
+      setLocalError(message)
+      toast.error(message)
+      setLocalLoading(false)
+      return
+    }
     saveUserLocally({ name: name.trim(), email: email.trim().toLowerCase(), password })
+    toast.success('Account created successfully')
     setLocalLoading(false)
     switchMode('signin')
   }
@@ -243,8 +270,16 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     if (emailState !== 'valid' || !password.trim()) return
     setLocalLoading(true)
     const ok = await login(email.trim().toLowerCase(), password)
-    if (!ok) { setLocalError('Invalid credentials.'); setLocalLoading(false); return }
+    if (!ok) {
+      const authError = useAuthStore.getState().error
+      const message = getApiErrorMessage(authError || 'Invalid credentials.', (key) => t(key), 'apiErrors.loginFailed')
+      setLocalError(message)
+      toast.error(message)
+      setLocalLoading(false)
+      return
+    }
     localStorage.setItem('kavach_session', 'true')
+    toast.success('Signed in successfully')
     router.push('/dashboard')
     setLocalLoading(false)
   }
@@ -257,7 +292,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#EBEFFE] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
-      <div className="flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-hidden border border-white z-10">
+      <div className="flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-y-auto border border-white z-10">
 
         {mode === 'signin' && <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />}
 
@@ -297,23 +332,47 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
             {mode === 'signup' && (
               <div className="space-y-1">
                 <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
-                <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} className={inputClass(!!nameError)} />
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onBlur={() => setNameTouched(true)}
+                  className={inputClass(!!nameError)}
+                />
+                {nameError && <p className="text-[12px] text-red-500 font-semibold pl-1">{nameError}</p>}
               </div>
             )}
 
             <div className="space-y-1">
               <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
-              <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass(!!emailError)} />
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onBlur={() => setEmailTouched(true)}
+                className={inputClass(!!emailError)}
+              />
+              {emailError && <p className="text-[12px] text-red-500 font-semibold pl-1">{emailError}</p>}
             </div>
 
             <div className="space-y-1">
               <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
               <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className={inputClass(!!passwordError)} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onBlur={() => setPasswordTouched(true)}
+                  className={inputClass(!!passwordError)}
+                />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
+              {passwordError && <p className="text-[12px] text-red-500 font-semibold pl-1">{passwordError}</p>}
               {mode === 'signin' && (
                 <div className="flex justify-end pt-1">
                   <button type="button" onClick={() => router.push('/forgot')} className="text-[11px] sm:text-[12px] text-[#8B5CF6] font-bold uppercase">

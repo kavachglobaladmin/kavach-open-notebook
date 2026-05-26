@@ -21,6 +21,29 @@ import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
 import { cn } from '@/lib/utils'
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function renderHighlighted(text: string, query: string) {
+  const q = query.trim()
+  if (!q) return text
+  const parts = q.split(/\s+/).filter(Boolean).slice(0, 6)
+  const needles = parts
+    .map(p => p.trim())
+    .filter(p => p.length >= 2)
+    .map(escapeRegExp)
+  if (needles.length === 0) return text
+
+  const splitRe = new RegExp(`(${needles.join('|')})`, 'ig')
+  const testRe = new RegExp(`^(${needles.join('|')})$`, 'i')
+  return text.split(splitRe).map((chunk, idx) => (
+    testRe.test(chunk)
+      ? <mark key={idx} className="bg-violet-100 text-violet-900 rounded px-1 py-0.5">{chunk}</mark>
+      : <span key={idx}>{chunk}</span>
+  ))
+}
+
 export default function SearchPage() {
   const { t } = useTranslation()
   const searchParams = useSearchParams()
@@ -294,12 +317,18 @@ export default function SearchPage() {
                               <button 
                                 onClick={() => {
                                   const [type, id] = result.parent_id.split(':')
-                                  openModal(type as any, id)
+                                  const modalType = (type === 'source_insight' ? 'insight' : type) as 'source' | 'note' | 'insight'
+                                  openModal(modalType, id)
                                 }}
                                 className="text-[#8A2BE2] font-bold text-[16px] hover:underline text-left block w-full"
                               >
-                                {result.title}
+                                {renderHighlighted(result.title, searchQuery)}
                               </button>
+                              {Array.isArray(result.matches) && result.matches.length > 0 && (
+                                <p className="mt-2 text-[13px] text-slate-600 leading-relaxed">
+                                  {renderHighlighted(result.matches[0], searchQuery)}
+                                </p>
+                              )}
                             </CardContent>
                           </Card>
                         ))}

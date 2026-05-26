@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import * as d3 from 'd3'
+import Image from 'next/image'
 import { mindmapApi, MindMapNode } from '@/lib/api/mindmap'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
@@ -482,10 +483,12 @@ function PhotosTab({ sourceId }: { sourceId: string }) {
             onClick={() => setSelectedImg(b64)}
             className="rounded-xl overflow-hidden border border-slate-200 hover:border-violet-400 transition-all shadow-sm hover:shadow-md"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={`data:image/png;base64,${b64}`}
               alt={`Image ${i + 1}`}
+              width={1200}
+              height={800}
+              unoptimized
               className="w-full h-40 object-contain bg-slate-50"
             />
           </button>
@@ -497,17 +500,19 @@ function PhotosTab({ sourceId }: { sourceId: string }) {
           onClick={() => setSelectedImg(null)}
         >
           <div className="relative max-w-3xl max-h-[90vh] p-2" onClick={e => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={`data:image/png;base64,${selectedImg}`}
               alt="Full size"
+              width={1800}
+              height={1200}
+              unoptimized
               className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain"
             />
             <button
               onClick={() => setSelectedImg(null)}
               className="absolute top-3 right-3 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/80 text-lg"
             >
-              ×
+              x
             </button>
           </div>
         </div>
@@ -686,3 +691,4 @@ export function MindMapInsightViewer({ content, sourceId, title }: { content: st
     </div>
   )
 }
+

@@ -32,6 +32,7 @@ interface NotebookContextStats {
 }
 
 interface ChatPanelProps {
+  className?: string
   messages: SourceChatMessage[]
   isStreaming: boolean
   contextIndicators: SourceChatContextIndicator | null
@@ -48,6 +49,8 @@ interface ChatPanelProps {
   loadingSessions?: boolean
   // Generic props for reusability
   title?: string
+  subtitle?: string
+  headerActions?: React.ReactNode
   contextType?: 'source' | 'notebook'
   // Notebook context stats (for notebook chat)
   notebookContextStats?: NotebookContextStats
@@ -55,9 +58,12 @@ interface ChatPanelProps {
   notebookId?: string
   // Suggested follow-up questions
   suggestedQuestions?: string[]
+  // Source title for source chat context display
+  sourceTitle?: string
 }
 
 export function ChatPanel({
+  className,
   messages,
   isStreaming,
   contextIndicators,
@@ -72,10 +78,13 @@ export function ChatPanel({
   onUpdateSession,
   loadingSessions = false,
   title,
+  subtitle,
+  headerActions,
   contextType = 'source',
   notebookContextStats,
   notebookId,
-  suggestedQuestions = []
+  suggestedQuestions = [],
+  sourceTitle
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -130,8 +139,19 @@ export function ChatPanel({
 
   const keyHint = 'Enter'
 
+  const connectedSourcesCount = useMemo(() => {
+    if (contextType === 'notebook') {
+      const statsCount = notebookContextStats
+        ? (notebookContextStats.sourcesInsights + notebookContextStats.sourcesFull)
+        : 0
+      return statsCount || (contextIndicators?.sources?.length ?? 0)
+    }
+    // For source chat, the "connected sources" is at least the current source.
+    return contextIndicators?.sources?.length ?? 1
+  }, [contextType, notebookContextStats, contextIndicators?.sources?.length])
+
   return (
-    <div className="flex flex-col h-full min-h-0 bg-white rounded-[20px] shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden border border-slate-100/80">
+    <div className={`flex flex-col h-full min-h-0 bg-white rounded-[20px] shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden border border-slate-100/80 ${className || ''}`}>
 
       {/* ── Inner header — matches image: bot icon + title + Sessions button ── */}
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 flex-shrink-0">
@@ -139,39 +159,52 @@ export function ChatPanel({
           <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center">
             <Bot className="h-4 w-4 text-slate-600" />
           </div>
-          <span className="text-[15px] font-bold text-slate-900 leading-none">
-            {title || (contextType === 'source'
-              ? t.chat.chatWith.replace('{name}', t.navigation.sources)
-              : t.chat.chatWith.replace('{name}', t.common.notebook))}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-[15px] font-bold text-slate-900 leading-none">
+              {title || (contextType === 'source'
+                ? t.chat.chatWith.replace('{name}', t.navigation.sources)
+                : t.chat.chatWith.replace('{name}', t.common.notebook))}
+            </span>
+            {subtitle && (
+              <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                {subtitle}
+              </span>
+            )}
+            <span className="text-[11px] font-semibold text-slate-500 mt-0.5">
+              {connectedSourcesCount} {connectedSourcesCount === 1 ? t.common.source : t.navigation.sources}
+            </span>
+          </div>
         </div>
-        {onSelectSession && onCreateSession && onDeleteSession && (
-          <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
-            <button
-              onClick={() => setSessionManagerOpen(true)}
-              disabled={loadingSessions}
-              className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 hover:text-slate-800 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
-            >
-              <Clock className="h-3.5 w-3.5" />
-              <span>{t.chat.sessions}</span>
-            </button>
-            <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
-              <DialogTitle className="sr-only">{t.chat.sessionsTitle}</DialogTitle>
-              <SessionManager
-                sessions={sessions}
-                currentSessionId={currentSessionId ?? null}
-                onCreateSession={(title) => onCreateSession?.(title)}
-                onSelectSession={(sessionId) => {
-                  onSelectSession(sessionId)
-                  setSessionManagerOpen(false)
-                }}
-                onUpdateSession={(sessionId, title) => onUpdateSession?.(sessionId, title)}
-                onDeleteSession={(sessionId) => onDeleteSession?.(sessionId)}
-                loadingSessions={loadingSessions}
-              />
-            </DialogContent>
-          </Dialog>
-        )}
+        <div className="flex items-center gap-2">
+          {headerActions}
+          {onSelectSession && onCreateSession && onDeleteSession && (
+            <Dialog open={sessionManagerOpen} onOpenChange={setSessionManagerOpen}>
+              <button
+                onClick={() => setSessionManagerOpen(true)}
+                disabled={loadingSessions}
+                className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 hover:text-slate-800 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>{t.chat.sessions}</span>
+              </button>
+              <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden">
+                <DialogTitle className="sr-only">{t.chat.sessionsTitle}</DialogTitle>
+                <SessionManager
+                  sessions={sessions}
+                  currentSessionId={currentSessionId ?? null}
+                  onCreateSession={(title) => onCreateSession?.(title)}
+                  onSelectSession={(sessionId) => {
+                    onSelectSession(sessionId)
+                    setSessionManagerOpen(false)
+                  }}
+                  onUpdateSession={(sessionId, title) => onUpdateSession?.(sessionId, title)}
+                  onDeleteSession={(sessionId) => onDeleteSession?.(sessionId)}
+                  loadingSessions={loadingSessions}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       {/* ── Messages area ── */}
@@ -267,6 +300,11 @@ export function ChatPanel({
               <Badge variant="outline" className="gap-1 text-[11px]">
                 <FileText className="h-3 w-3" />
                 {contextIndicators.sources.length} {t.navigation.sources}
+                {contextType === 'source' && sourceTitle && (
+                  <span className="ml-1 text-slate-500 font-normal truncate max-w-[140px]" title={sourceTitle}>
+                    · {sourceTitle}
+                  </span>
+                )}
               </Badge>
             ) : null}
             {contextIndicators.insights?.length > 0 ? (
@@ -281,11 +319,23 @@ export function ChatPanel({
                 {contextIndicators.notes.length} {contextIndicators.notes.length === 1 ? t.common.note : t.common.notes}
               </Badge>
             ) : null}
-            {/* {!contextIndicators.sources?.length && !contextIndicators.insights?.length && !contextIndicators.notes?.length && (
-              <span className="text-[11px] text-slate-400">
-                No sources or notes included in context. Toggle icons on cards to include them.
-              </span>
-            )} */}
+          </div>
+        </div>
+      )}
+
+      {/* ── Source context bar — always visible for source chat ── */}
+      {contextType === 'source' && !contextIndicators && (
+        <div className="border-t border-slate-100 px-5 py-2">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="outline" className="gap-1 text-[11px]">
+              <FileText className="h-3 w-3" />
+              1 {t.common.source}
+              {sourceTitle && (
+                <span className="ml-1 text-slate-500 font-normal truncate max-w-[140px]" title={sourceTitle}>
+                  · {sourceTitle}
+                </span>
+              )}
+            </Badge>
           </div>
         </div>
       )}
@@ -307,6 +357,7 @@ export function ChatPanel({
         isStreaming={isStreaming}
         modelOverride={modelOverride}
         onModelChange={onModelChange}
+        connectedSourcesCount={connectedSourcesCount}
         chatInputId={chatInputId}
         keyHint={keyHint}
         t={t}
@@ -402,6 +453,7 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
   isStreaming,
   modelOverride,
   onModelChange,
+  connectedSourcesCount,
   chatInputId,
   keyHint,
   t
@@ -410,9 +462,10 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
   isStreaming: boolean
   modelOverride?: string
   onModelChange?: (model?: string) => void
+  connectedSourcesCount: number
   chatInputId: string
   keyHint: string
-  t: any
+  t: ReturnType<typeof useTranslation>['t']
 }) {
   const [input, setInput] = useState('')
 
@@ -439,7 +492,12 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
       {/* Model row — matches image */}
       {onModelChange && (
         <div className="flex items-center justify-between px-5 pt-3 pb-1">
-          <span className="text-[12px] font-medium text-slate-400">{t.chat.model}</span>
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
+            <FileText className="h-3.5 w-3.5 text-slate-400" />
+            <span>
+              {connectedSourcesCount} {connectedSourcesCount === 1 ? t.common.source : t.navigation.sources}
+            </span>
+          </div>
           <ModelSelector
             currentModel={modelOverride}
             onModelChange={onModelChange}

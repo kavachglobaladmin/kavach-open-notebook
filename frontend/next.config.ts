@@ -9,7 +9,9 @@ allowedDevOrigins: [
 "0.0.0.0",
 "192.168.11.145",
 "192.168.11.162",
-"192.168.11.176"
+"192.168.11.176",
+"192.168.11.136",
+"192.168.11.182"
 ],
 
 // Hide the Next.js dev tools button (bottom-left N logo)

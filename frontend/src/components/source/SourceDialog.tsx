@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { SourceDetailContent } from './SourceDetailContent'
 import { ChatPanel } from './ChatPanel'
 import { useSourceChat } from '@/lib/hooks/useSourceChat'
+import { useSource } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { MessageSquare, Settings2 } from 'lucide-react'
 import { useState } from 'react'
@@ -66,6 +67,7 @@ export function SourceDialog({ open, onOpenChange, sourceId }: SourceDialogProps
 // Isolated so useSourceChat only runs when the dialog is open and sourceId is valid
 function ChatPanelColumn({ sourceId }: { sourceId: string }) {
   const chat = useSourceChat(sourceId)
+  const { data: sourceData } = useSource(sourceId)
   const [isConfigOpen, setIsConfigOpen] = useState(false)
 
   return (
@@ -114,6 +116,7 @@ function ChatPanelColumn({ sourceId }: { sourceId: string }) {
           onDeleteSession={chat.deleteSession}
           loadingSessions={chat.loadingSessions}
           suggestedQuestions={chat.suggestedQuestions}
+          sourceTitle={sourceData?.title ?? undefined}
         />
       </div>
     </div>

@@ -4,7 +4,13 @@ import { useState } from 'react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { ConfigureChatModal } from '@/components/source/ConfigureChatModal'
 import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
-import { SourceListResponse, NoteResponse } from '@/lib/types/api'
+import {
+  SourceListResponse,
+  NoteResponse,
+  SourceChatContextIndicator,
+  SourceChatMessage,
+  BaseChatSession,
+} from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 
 interface ChatColumnProps {
@@ -31,22 +37,53 @@ export function ChatColumn({
     contextSelections,
   })
 
-  // Build context indicators for ChatPanel
-  const contextIndicators = {
-    sourcesCount: Object.values(contextSelections.sources).filter(m => m !== 'off').length,
-    notesCount: Object.values(contextSelections.notes).filter(m => m !== 'off').length,
-    tokenCount: chat.tokenCount,
-    charCount: chat.charCount,
+  // Build context indicators for ChatPanel from current user selections.
+  const selectedSourceIds = sources
+    .filter((source) => (contextSelections.sources[source.id] ?? 'off') !== 'off')
+    .map((source) => source.id)
+
+  const selectedInsightSourceIds = sources
+    .filter((source) => contextSelections.sources[source.id] === 'insights')
+    .map((source) => source.id)
+
+  const selectedFullSourceIds = sources
+    .filter((source) => contextSelections.sources[source.id] === 'full')
+    .map((source) => source.id)
+
+  const selectedNoteIds = notes
+    .filter((note) => (contextSelections.notes[note.id] ?? 'off') !== 'off')
+    .map((note) => note.id)
+
+  const contextIndicators: SourceChatContextIndicator = {
+    sources: selectedSourceIds,
+    insights: selectedInsightSourceIds,
+    notes: selectedNoteIds,
   }
+
+  const panelMessages: SourceChatMessage[] = chat.messages.map((message) => ({
+    id: message.id,
+    type: message.type,
+    content: message.content,
+    timestamp: message.timestamp,
+  }))
+
+  const panelSessions: BaseChatSession[] = chat.sessions.map((session) => ({
+    id: session.id,
+    title: session.title,
+    created: session.created,
+    updated: session.updated,
+    message_count: session.message_count,
+    model_override: session.model_override ?? null,
+  }))
 
   return (
     <>
       {/* ChatPanel is now self-contained with its own white card + header */}
       <div className="h-full flex flex-col">
         <ChatPanel
-          messages={chat.messages as any}
+          messages={panelMessages}
           isStreaming={chat.isSending}
-          contextIndicators={contextIndicators as any}
+          contextIndicators={contextIndicators}
           onSendMessage={(message, model) => {
             const configContext = `[Style: ${chatConfig.goal}, Length: ${chatConfig.length}] `
             const cleanMessage = message.replace(configContext, '')
@@ -56,7 +93,7 @@ export function ChatColumn({
           onModelChange={(model) => {
             if (model !== undefined) chat.setModelOverride(model)
           }}
-          sessions={chat.sessions as any}
+          sessions={panelSessions}
           currentSessionId={chat.currentSessionId}
           onCreateSession={(title) => chat.createSession(title)}
           onSelectSession={chat.switchSession}
@@ -70,9 +107,9 @@ export function ChatColumn({
           notebookContextStats={{
             tokenCount: chat.tokenCount,
             charCount: chat.charCount,
-            sourcesInsights: 0,
-            sourcesFull: 0,
-            notesCount: 0,
+            sourcesInsights: selectedInsightSourceIds.length,
+            sourcesFull: selectedFullSourceIds.length,
+            notesCount: selectedNoteIds.length,
           }}
           suggestedQuestions={chat.suggestedQuestions}
         />
@@ -82,7 +119,7 @@ export function ChatColumn({
       {isConfigOpen && (
         <ConfigureChatModal
           currentConfig={chatConfig}
-          onSave={(newConfig: any) => {
+          onSave={(newConfig: { goal: string; length: string }) => {
             setChatConfig(newConfig)
             setIsConfigOpen(false)
           }}

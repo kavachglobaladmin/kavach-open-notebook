@@ -38,15 +38,16 @@ function resolveFromLocalStorage(email: string): string {
 
 async function fetchProfileName(): Promise<string | null> {
   const maxRetries = 3
-  let lastError: any = null
+  let lastError: unknown = null
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const res = await apiClient.get<{ email: string; name: string }>('/users/profile')
       return res.data?.name?.trim() || null
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error
-      if (error?.response?.status === 404 || error?.response?.status === 401) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 401) {
         return null
       }
       if (attempt < maxRetries - 1) {
@@ -75,6 +76,40 @@ type GlobalSearchResult = {
   subtitle?: string
   type: 'notebook' | 'source' | 'content'
   href: string
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function renderHighlighted(text: string, query: string) {
+  const q = query.trim()
+  if (!q) return text
+
+  const parts = q.split(/\s+/).filter(Boolean).slice(0, 6)
+  const needles = parts
+    .map(p => p.trim())
+    .filter(p => p.length >= 2)
+    .map(escapeRegExp)
+
+  if (needles.length === 0) return text
+
+  const splitRe = new RegExp(`(${needles.join('|')})`, 'ig')
+  const testRe = new RegExp(`^(${needles.join('|')})$`, 'i')
+  const chunks = text.split(splitRe)
+  return chunks.map((chunk, idx) => {
+    if (testRe.test(chunk)) {
+      return (
+        <mark
+          key={idx}
+          className="bg-violet-100 text-violet-900 rounded px-1 py-0.5"
+        >
+          {chunk}
+        </mark>
+      )
+    }
+    return <span key={idx}>{chunk}</span>
+  })
 }
 
 function normalizeText(value: string): string {
@@ -432,8 +467,14 @@ export function PageHeader({
                         onClick={() => handleGlobalResultClick(result)}
                         className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
                       >
-                        <div className="text-sm font-semibold text-slate-800 truncate">{result.title}</div>
-                        <div className="text-xs text-slate-500">{result.subtitle}</div>
+                        <div className="text-sm font-semibold text-slate-800 truncate">
+                          {renderHighlighted(result.title, normalizedSearch)}
+                        </div>
+                        {result.subtitle && (
+                          <div className="text-xs text-slate-500 line-clamp-2">
+                            {renderHighlighted(result.subtitle, normalizedSearch)}
+                          </div>
+                        )}
                       </button>
                     ))}
                     <button

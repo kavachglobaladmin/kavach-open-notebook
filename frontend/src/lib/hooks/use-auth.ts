@@ -4,6 +4,7 @@ import { useAuthStore } from '@/lib/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { queryClient } from '@/lib/api/query-client'
+import { toast } from '@/lib/notifications/toast'
 
 export function useAuth() {
   const router = useRouter()
@@ -69,6 +70,7 @@ export function useAuth() {
       sessionStorage.removeItem('kavach_api_password')
       sessionStorage.removeItem('redirectAfterLogin')
     }
+    toast.info('You have been signed out')
     router.push('/login')
   }
 
