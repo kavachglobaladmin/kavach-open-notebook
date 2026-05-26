@@ -114,6 +114,12 @@ export function ChatPanel({
     isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   }, [])
 
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const el = scrollAreaRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
   // Memoize the reference click handler
   const memoizedHandleReferenceClick = useCallback(handleReferenceClick, [openModal, t.common.noResults])
 
@@ -124,12 +130,13 @@ export function ChatPanel({
     if (newCount > prevMessageCountRef.current) {
       const shouldScroll = lastMsg?.type === 'human' || isAtBottomRef.current
       if (shouldScroll) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        const behavior: ScrollBehavior = prevMessageCountRef.current === 0 ? 'auto' : 'smooth'
+        requestAnimationFrame(() => scrollMessagesToBottom(behavior))
         isAtBottomRef.current = true
       }
     }
     prevMessageCountRef.current = newCount
-  }, [messages])
+  }, [messages, scrollMessagesToBottom])
 
   const handleSend = useCallback((messageText: string) => {
     if (messageText.trim() && !isStreaming) {
@@ -209,7 +216,7 @@ export function ChatPanel({
 
       {/* ── Messages area ── */}
       <div
-        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4"
         ref={scrollAreaRef}
         onScroll={handleScroll}
         style={{ overflowAnchor: 'auto' }}

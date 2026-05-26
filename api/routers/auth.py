@@ -22,7 +22,6 @@ from pydantic import BaseModel, Field
 
 from api.auth import create_access_token
 from open_notebook.database.repository import repo_query
-from open_notebook.utils.encryption import get_secret_from_env
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,10 +31,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.get("/status")
 async def get_auth_status():
     """
-    Check if authentication is enabled.
-    Returns whether a password is required to access the API.
+    Report whether authentication is required by the current backend.
+
+    The API now uses JWTAuthMiddleware globally (see api/main.py), so protected
+    endpoints always require a Bearer token. This endpoint must reflect that
+    runtime behavior; otherwise the frontend may incorrectly assume auth is off
+    and call protected endpoints without a token.
     """
-    auth_enabled = bool(get_secret_from_env("OPEN_NOTEBOOK_PASSWORD"))
+    auth_enabled = True
     return {
         "auth_enabled": auth_enabled,
         "message": (
