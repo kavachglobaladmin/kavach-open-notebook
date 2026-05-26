@@ -157,6 +157,15 @@ export function ChatPanel({
     return contextIndicators?.sources?.length ?? 1
   }, [contextType, notebookContextStats, contextIndicators?.sources?.length])
 
+  // Show typing dots only while waiting for the first AI response.
+  // As soon as an AI message starts streaming into the messages array, this hides.
+  const showThinkingDots = isStreaming && messages[messages.length - 1]?.type === 'human'
+
+  useEffect(() => {
+    if (!showThinkingDots) return
+    requestAnimationFrame(() => scrollMessagesToBottom('smooth'))
+  }, [showThinkingDots, scrollMessagesToBottom])
+
   return (
     <div className={`flex flex-col h-full min-h-0 bg-white rounded-[20px] shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden border border-slate-100/80 ${className || ''}`}>
 
@@ -293,6 +302,28 @@ export function ChatPanel({
               onSelectQuestion={(question) => memoizedOnSendMessage(question, modelOverride)}
               isStreaming={isStreaming}
             />
+          )}
+
+          {showThinkingDots && (
+            <div className="flex items-end gap-2.5 justify-start animate-in fade-in-0">
+              <div className="flex-shrink-0 mb-0.5">
+                <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center">
+                  <Bot className="h-4 w-4 text-slate-500" />
+                </div>
+              </div>
+
+              <div className="bg-[#F3F4F6] text-slate-800 rounded-[18px] rounded-bl-[6px] px-4 py-3 flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-slate-400 animate-bounce" />
+                <span
+                  className="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
+                  style={{ animationDelay: '120ms' }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-slate-400 animate-bounce"
+                  style={{ animationDelay: '240ms' }}
+                />
+              </div>
+            </div>
           )}
 
           <div ref={messagesEndRef} />
