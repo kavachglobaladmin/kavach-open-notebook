@@ -17,6 +17,7 @@ import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/comp
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
 import { DenseSummaryViewer, isDenseSummaryInsight } from '@/components/source/DenseSummaryViewer'
 import { toast } from '@/lib/notifications/toast'
+import { useSource } from '@/lib/hooks/use-sources'
 
 interface SourceInsightDialogProps {
   open: boolean
@@ -53,6 +54,9 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
 
   // Get source_id from fetched data (preferred) or passed-in insight
   const sourceId = fetchedInsight?.source_id ?? insight?.source_id
+  // Keep the canonical source ID (with prefix when present). Other source views
+  // already use prefixed IDs, and stripping can cause fetch misses.
+  const { data: sourceData } = useSource(sourceId ?? '')
 
   /**
    * FIX: Resolved the "no exported member" error by using a local type-check 
@@ -123,7 +127,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
       <DialogContent className={`flex flex-col max-h-[98vh] ${
         isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : 
         isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : 
-        isInfographic ? 'sm:max-w-[95vw] w-[95vw] h-[95vh]' : 
+        isInfographic ? 'sm:max-w-[98vw] w-[98vw] h-[96vh]'  : 
         isTimeline ? 'sm:max-w-5xl w-[90vw]' : 
         isInvestigativeProfile ? 'sm:max-w-4xl w-[90vw]' : 
         'sm:max-w-3xl'
@@ -184,7 +188,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className={`flex-1 min-h-0 ${isInfographic ? 'overflow-y-auto overflow-x-hidden' : 'overflow-y-auto'}`}>
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
                 <span className="text-sm text-muted-foreground">{t.common.loading}</span>
@@ -199,7 +203,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               ) : isBankAnalysis ? (
                 <BankAnalysisInsightViewer content={displayContent} />
               ) : isInfographic ? (
-                <InfographicInsightViewer content={displayContent} />
+                <InfographicInsightViewer content={displayContent} sourceTitle={sourceData?.title ?? undefined} />
               ) : isTimeline ? (
                 <TimelineAnalysisInsightViewer content={displayContent} />
               ) : isInvestigativeProfile ? (
