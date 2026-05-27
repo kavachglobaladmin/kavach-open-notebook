@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Bell, Save } from 'lucide-react'
+import { toast as sonnerToast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,14 +59,39 @@ function persistNotifications(nextNotifications: Notification[]) {
 
 // Global notification store
 let notifications: Notification[] = loadNotificationsFromStorage()
-let listeners: Set<() => void> = new Set()
+const listeners: Set<() => void> = new Set()
+
+function showNotificationPopup(notification: Notification) {
+  const options = {
+    description: notification.message || undefined,
+    duration: 4000,
+  }
+
+  switch (notification.type) {
+    case 'success':
+      sonnerToast.success(notification.title, options)
+      break
+    case 'error':
+      sonnerToast.error(notification.title, options)
+      break
+    case 'warning':
+      sonnerToast.warning(notification.title, options)
+      break
+    default:
+      sonnerToast.info(notification.title, options)
+      break
+  }
+}
 
 export function addNotification(notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) {
+  const now = Date.now()
+  const DUPLICATE_WINDOW_MS = 8000
   const isDuplicate = notifications.some(
     existing =>
       existing.title === notification.title &&
       existing.message === notification.message &&
-      existing.type === notification.type
+      existing.type === notification.type &&
+      now - existing.timestamp.getTime() < DUPLICATE_WINDOW_MS
   )
 
   if (isDuplicate) {
@@ -74,8 +100,8 @@ export function addNotification(notification: Omit<Notification, 'id' | 'timesta
 
   const newNotification: Notification = {
     ...notification,
-    id: `notif-${Date.now()}-${Math.random()}`,
-    timestamp: new Date(),
+    id: `notif-${now}-${Math.random()}`,
+    timestamp: new Date(now),
     read: false,
   }
   notifications.unshift(newNotification)
@@ -84,6 +110,9 @@ export function addNotification(notification: Omit<Notification, 'id' | 'timesta
     notifications = notifications.slice(0, 50)
   }
   persistNotifications(notifications)
+  if (typeof window !== 'undefined') {
+    showNotificationPopup(newNotification)
+  }
   listeners.forEach(listener => listener())
 }
 
