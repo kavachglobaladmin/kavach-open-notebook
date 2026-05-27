@@ -134,7 +134,17 @@ export const useAuthStore = create<AuthState>()(
             let errorMessage = 'Authentication failed.'
             try {
               const errData = await response.json()
-              errorMessage = errData?.detail ?? errorMessage
+              const detail = errData?.detail
+              if (typeof detail === 'string') {
+                errorMessage = detail
+              } else if (Array.isArray(detail)) {
+                const messages = detail
+                  .map((item: { msg?: string }) => item?.msg)
+                  .filter(Boolean)
+                if (messages.length > 0) {
+                  errorMessage = messages.join(' ')
+                }
+              }
             } catch { /* ignore */ }
 
             set({ error: errorMessage, isLoading: false, isAuthenticated: false, token: null, tokenExpiresAt: null })

@@ -15,10 +15,11 @@ the raw OPEN_NOTEBOOK_PASSWORD string.
 
 import hashlib
 import hmac
+import re
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.auth import create_access_token
 from open_notebook.database.repository import repo_query
@@ -52,6 +53,24 @@ async def get_auth_status():
 class UserLoginRequest(BaseModel):
     email: str = Field(..., min_length=3)
     password: str = Field(..., min_length=1)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        email = value.strip().lower()
+        email_regex = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
+        if not email_regex.match(email):
+            raise ValueError("Enter a valid email address.")
+        if len(email) > 254:
+            raise ValueError("Email address is too long.")
+        return email
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Password is required.")
+        return value
 
 
 class LoginResponse(BaseModel):

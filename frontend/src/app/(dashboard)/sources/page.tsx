@@ -124,12 +124,11 @@ export default function SourcesPage() {
           onSearchChange={setSearchTerm}
           searchPlaceholder="Search sources..."
           newLabel="NOTEBOOK"
-          onNew={() => {}} 
         />
 
         {/* Removed 'flex flex-col' so the block layout properly calculates inner heights, allowing robust scrolling */}
-        <main className="relative z-10 flex-1 overflow-y-auto p-6 md:p-10">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <main className="relative z-10 flex-1 overflow-y-auto p-4 sm:p-6 md:p-10">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6 sm:mb-8">
             <div>
               <h1 className="text-3xl font-extrabold text-[#6334E3] tracking-tight">All Sources</h1>
               <p className="text-slate-500 text-sm font-medium mt-1">
@@ -137,7 +136,7 @@ export default function SourcesPage() {
               </p>
             </div>
             
-            <div className="bg-white/70 backdrop-blur-md border border-white shadow-sm rounded-xl p-1.5 flex items-center gap-2">
+            <div className="bg-white/70 backdrop-blur-md border border-white shadow-sm rounded-xl p-1.5 flex items-center gap-2 self-start">
                <Button variant="ghost" size="sm" className="text-slate-500 gap-2 h-8 font-semibold">
                 <Filter className="h-4 w-4" />
                 Filter

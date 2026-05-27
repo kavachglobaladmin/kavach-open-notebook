@@ -16,8 +16,9 @@ from email.mime.text import MIMEText
 from typing import Dict
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from loguru import logger
+from open_notebook.database.repository import repo_query
 
 router = APIRouter(prefix="/otp", tags=["otp"])
 
@@ -92,6 +93,19 @@ def _otp_email_html(otp: str) -> str:
     """
 
 
+async def _user_exists(email: str) -> bool:
+    try:
+        result = await repo_query(
+            "SELECT id FROM kavach_user WHERE email = $email LIMIT 1",
+            {"email": email.lower().strip()},
+        )
+        return len(result) > 0
+    except Exception as exc:
+        if "does not exist" in str(exc):
+            return False
+        raise
+
+
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class SendOTPRequest(BaseModel):
@@ -101,6 +115,14 @@ class SendOTPRequest(BaseModel):
 class VerifyOTPRequest(BaseModel):
     email: EmailStr
     otp: str
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, value: str) -> str:
+        otp = value.strip()
+        if not otp.isdigit() or len(otp) != 6:
+            raise ValueError("OTP must be exactly 6 digits.")
+        return otp
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -112,6 +134,9 @@ async def send_otp(body: SendOTPRequest):
     No authentication required (this is the pre-login flow).
     """
     email = body.email.lower()
+    if not await _user_exists(email):
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+
     otp = _generate_otp()
     expires_at = datetime.utcnow() + timedelta(seconds=OTP_EXPIRY_SECONDS)
     _otp_store[email] = {"otp": otp, "expires_at": expires_at}

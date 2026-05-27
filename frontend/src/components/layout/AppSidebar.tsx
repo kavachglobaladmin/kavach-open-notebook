@@ -49,7 +49,7 @@ export function AppSidebar() {
   const { t } = useTranslation()
   const pathname = usePathname()
   const { logout } = useAuth()
-  const { isCollapsed, toggleCollapse } = useSidebarStore()
+  const { isCollapsed, toggleCollapse, setCollapsed } = useSidebarStore()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
 
   const [displayName, setDisplayName] = useState('')
@@ -83,6 +83,19 @@ export function AppSidebar() {
       setInitials(currentUserEmail.slice(0, 2).toUpperCase())
     }
   }, [currentUserEmail])
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1023px)')
+    const syncSidebar = (event: MediaQueryList | MediaQueryListEvent) => {
+      if (event.matches) {
+        setCollapsed(true)
+      }
+    }
+
+    syncSidebar(media)
+    media.addEventListener('change', syncSidebar)
+    return () => media.removeEventListener('change', syncSidebar)
+  }, [setCollapsed])
 
   const handleMobileItemClick = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024 && !isCollapsed) {

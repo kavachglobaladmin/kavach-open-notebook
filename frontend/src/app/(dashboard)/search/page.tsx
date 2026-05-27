@@ -166,13 +166,13 @@ export default function SearchPage() {
             </div>
 
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
-              <div className="flex justify-center mb-8 px-4 sticky top-0 z-20 pt-2 pb-4">
-                <div className="bg-white p-1.5 flex items-center justify-center rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 w-fit mx-auto">
+              <div className="flex justify-center mb-8 px-1 sm:px-4 sticky top-0 z-20 pt-2 pb-4">
+                <div className="bg-white p-1.5 flex items-center justify-center rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 w-full max-w-[420px] sm:w-fit mx-auto">
                   <Button 
                     variant="ghost"
                     onClick={() => setActiveTab('ask')}
                     className={cn(
-                      "h-[48px] rounded-full px-6 sm:px-10 text-[14px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
+                      "h-[48px] flex-1 sm:flex-none justify-center rounded-full px-4 sm:px-6 lg:px-10 text-[13px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
                       activeTab === 'ask' 
                         ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
                         : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
@@ -185,7 +185,7 @@ export default function SearchPage() {
                     variant="ghost"
                     onClick={() => setActiveTab('search')}
                     className={cn(
-                      "h-[48px] rounded-full px-6 sm:px-10 text-[14px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
+                      "h-[48px] flex-1 sm:flex-none justify-center rounded-full px-4 sm:px-6 lg:px-10 text-[13px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
                       activeTab === 'search' 
                         ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
                         : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"

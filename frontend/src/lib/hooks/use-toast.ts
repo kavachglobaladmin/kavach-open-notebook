@@ -1,5 +1,5 @@
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { addNotification } from '@/components/layout/NotificationCenter'
+import { toast as appToast } from '@/lib/notifications/toast'
 
 type ToastProps = {
   title?: string
@@ -16,11 +16,11 @@ export function useToast() {
       const resolvedTitle = title || (isError ? t.common.error : t.common.success)
       const resolvedMessage = description || ''
 
-      addNotification({
-        title: resolvedTitle,
-        message: resolvedMessage,
-        type: isError ? 'error' : 'success',
-      })
+      if (isError) {
+        appToast.error(resolvedTitle, { description: resolvedMessage })
+      } else {
+        appToast.success(resolvedTitle, { description: resolvedMessage })
+      }
     }
   }
 }

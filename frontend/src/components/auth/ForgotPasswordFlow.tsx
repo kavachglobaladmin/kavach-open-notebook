@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, CheckCircle2, Eye, EyeOff, BookOpen } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Eye, EyeOff, BookOpen, XCircle } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { toast } from '@/lib/notifications/toast'
@@ -12,13 +12,6 @@ import Image from 'next/image'
 import forgotIllust from '@/assets/Wavy_Gen-01_Single-071.jpg'
 
 // ── User helpers (localStorage) ───────────────────────────────────────────────
-function emailExists(email: string): boolean {
-  try {
-    const users = JSON.parse(localStorage.getItem('kavach_users') || '[]')
-    return users.some((u: { email: string }) => u.email.toLowerCase() === email.toLowerCase())
-  } catch { return false }
-}
-
 function updateUserPassword(email: string, newPassword: string): boolean {
   try {
     const users = JSON.parse(localStorage.getItem('kavach_users') || '[]')
@@ -38,6 +31,24 @@ function isPasswordValid(pw: string): boolean {
     /[a-z]/.test(pw) &&
     /[^a-zA-Z0-9]/.test(pw)
   )
+}
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+type PasswordCheck = { label: string; pass: boolean }
+function getPasswordChecks(pw: string): PasswordCheck[] {
+  return [
+    { label: 'At least 8 characters', pass: pw.length >= 8 },
+    { label: 'At least 1 uppercase letter (A-Z)', pass: /[A-Z]/.test(pw) },
+    { label: 'At least 1 lowercase letter (a-z)', pass: /[a-z]/.test(pw) },
+    { label: 'At least 1 special character', pass: /[^a-zA-Z0-9]/.test(pw) },
+  ]
+}
+function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
+  return getPasswordChecks(pw).filter(c => c.pass).length as 0 | 1 | 2 | 3 | 4
+}
+const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
+const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#A855F7']
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -99,6 +110,48 @@ function Logo() {
           <span className="text-[18px] font-bold text-[#7B3AED] uppercase leading-none tracking-tight">NOTEBOOKS</span>
           <span className="text-[12px] text-slate-500 font-medium leading-tight">AI Knowledge Base</span>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PasswordStrength({ password }: { password: string }) {
+  if (!password) return null
+
+  const checks = getPasswordChecks(password)
+  const strengthLevel = getStrengthLevel(password)
+  const strengthLabel = STRENGTH_LABEL[strengthLevel]
+  const strengthColor = STRENGTH_COLOR[strengthLevel]
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {[1, 2, 3, 4].map((bar) => (
+            <span
+              key={bar}
+              className="h-1.5 w-8 rounded-full transition-colors"
+              style={{ backgroundColor: strengthLevel >= bar ? strengthColor : '#e2e8f0' }}
+            />
+          ))}
+        </div>
+        <span className="text-[12px] font-semibold" style={{ color: strengthColor || '#64748b' }}>
+          {strengthLabel || 'Too weak'}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {checks.map((check) => (
+          <div key={check.label} className="flex items-center gap-1.5 text-[12px]">
+            {check.pass ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+            )}
+            <span className={check.pass ? 'text-emerald-600 font-medium' : 'text-slate-500'}>
+              {check.label}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -186,18 +239,17 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
     setError('')
     setEmailTouched(true)
     if (!email.trim()) { setError('Email is required.'); return }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email.'); return }
-    if (!emailExists(email)) { setError('No account found with this email.'); return }
+    if (!EMAIL_REGEX.test(email.trim())) { setError('Enter a valid email.'); return }
     setLoading(true)
     try {
-      await apiSendOTP(email.trim().toLowerCase())
+      const normalizedEmail = normalizeEmail(email)
+      await apiSendOTP(normalizedEmail)
       // Persist email for subsequent steps
-      sessionStorage.setItem(EMAIL_KEY, email.trim().toLowerCase())
+      sessionStorage.setItem(EMAIL_KEY, normalizedEmail)
       toast.success('OTP sent successfully')
       router.push('/otp')
     } catch (err) {
-      const detail = err instanceof Error ? err.message : 'Failed to send OTP.'
-      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.genericError')
+      const message = getApiErrorMessage(err, key => t(key), 'apiErrors.genericError')
       setError(message)
       toast.error(message)
     } finally { setLoading(false) }
@@ -210,12 +262,11 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
     if (otp.length !== 6) { setError('Please enter all 6 digits.'); return }
     setLoading(true)
     try {
-      await apiVerifyOTP(email.trim().toLowerCase(), otp)
+      await apiVerifyOTP(normalizeEmail(email), otp)
       toast.success('OTP verified successfully')
       router.push('/reset-password')
     } catch (err) {
-      const detail = err instanceof Error ? err.message : 'Invalid or expired OTP.'
-      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.unauthorized')
+      const message = getApiErrorMessage(err, key => t(key), 'apiErrors.unauthorized')
       setError(message)
       toast.error(message)
     } finally { setLoading(false) }
@@ -234,7 +285,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
     setLoading(true)
     try {
-      const userEmail = email.trim().toLowerCase()
+      const userEmail = normalizeEmail(email)
 
       // 1. Update password in the database (SurrealDB kavach_user table)
       await apiResetPassword(userEmail, newPassword)
@@ -248,8 +299,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
       setSuccess(true)
       toast.success('Password updated successfully')
     } catch (err) {
-      const detail = err instanceof Error ? err.message : 'Failed to update password.'
-      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.genericError')
+      const message = getApiErrorMessage(err, key => t(key), 'apiErrors.genericError')
       setError(message)
       toast.error(message)
     } finally { setLoading(false) }
@@ -258,13 +308,12 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
   const handleResendOTP = async () => {
     setError(''); setLoading(true)
     try {
-      await apiSendOTP(email.trim().toLowerCase())
+      await apiSendOTP(normalizeEmail(email))
       setOtpDigits(['', '', '', '', '', '']); setTimeLeft(60); setCanResend(false)
       setTimeout(() => otpRefs.current[0]?.focus(), 50)
       toast.success('OTP resent successfully')
     } catch (err) {
-      const detail = err instanceof Error ? err.message : 'Failed to resend OTP.'
-      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.genericError')
+      const message = getApiErrorMessage(err, key => t(key), 'apiErrors.genericError')
       setError(message)
       toast.error(message)
     } finally { setLoading(false) }
@@ -341,7 +390,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                     {emailTouched && !email.trim() && (
                       <p className="text-[12px] text-red-500 font-semibold pl-1">Email is required.</p>
                     )}
-                    {emailTouched && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
+                    {emailTouched && email.trim() && !EMAIL_REGEX.test(email.trim()) && (
                       <p className="text-[12px] text-red-500 font-semibold pl-1">Enter a valid email.</p>
                     )}
                   </div>
@@ -415,6 +464,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                       {newPasswordTouched && !newPassword.trim() && (
                         <p className="text-[12px] text-red-500 font-semibold pl-1">New password is required.</p>
                       )}
+                      <PasswordStrength password={newPassword} />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-bold text-slate-700 ml-1">Confirm Password</label>
@@ -434,6 +484,9 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                       </div>
                       {confirmPasswordTouched && !confirmPassword.trim() && (
                         <p className="text-[12px] text-red-500 font-semibold pl-1">Confirm password is required.</p>
+                      )}
+                      {confirmPasswordTouched && confirmPassword.trim() && newPassword !== confirmPassword && (
+                        <p className="text-[12px] text-red-500 font-semibold pl-1">Passwords do not match.</p>
                       )}
                     </div>
                   </>

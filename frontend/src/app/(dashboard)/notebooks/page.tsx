@@ -124,11 +124,11 @@ export default function NotebooksPage() {
           />
 
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-[1400px] mx-auto px-8 py-8 space-y-8">
+            <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
 
               {/* ── Heading ── */}
               <div>
-                <h1 className="text-[32px] font-bold text-[#6334E3] tracking-tight">
+                <h1 className="text-[26px] sm:text-[32px] font-bold text-[#6334E3] tracking-tight">
                   Active Cases
                 </h1>
                 <p className="text-[14px] text-slate-500 font-medium mt-2">

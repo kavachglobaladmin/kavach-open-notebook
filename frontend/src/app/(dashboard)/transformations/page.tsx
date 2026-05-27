@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { DefaultPromptEditor } from './components/DefaultPromptEditor'
 import { TransformationPlayground } from './components/TransformationPlayground'
 import { TransformationEditorDialog } from './components/TransformationEditorDialog'
-import { useTransformations } from '@/lib/hooks/use-transformations'
+import { useDeleteTransformation, useTransformations } from '@/lib/hooks/use-transformations'
 import { Transformation } from '@/lib/types/transformations'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { Plus, Copy, Pencil, Trash2, Play, ChevronDown } from 'lucide-react'
@@ -190,10 +191,13 @@ export default function TransformationsPage() {
   const [selectedTransformation, setSelectedTransformation] = useState<Transformation | undefined>()
   const [searchTerm, setSearchTerm] = useState('')
   const { data: transformations, isLoading } = useTransformations()
+  const deleteTransformation = useDeleteTransformation()
 
   // ── Editor dialog state ───────────────────────────────────────────────────
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingTransformation, setEditingTransformation] = useState<Transformation | undefined>()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [transformationToDelete, setTransformationToDelete] = useState<Transformation | undefined>()
 
   const handlePlayground = (transformation: Transformation) => {
     setSelectedTransformation(transformation)
@@ -211,7 +215,15 @@ export default function TransformationsPage() {
   }
 
   const handleDelete = (transformation: Transformation) => {
-    console.log('delete', transformation.id)
+    setTransformationToDelete(transformation)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!transformationToDelete?.id) return
+    await deleteTransformation.mutateAsync(transformationToDelete.id)
+    setDeleteDialogOpen(false)
+    setTransformationToDelete(undefined)
   }
 
   return (
@@ -225,7 +237,7 @@ export default function TransformationsPage() {
         />
 
         <div className="flex-1 overflow-y-auto relative z-10">
-          <div className="w-full px-6 md:px-12 py-10 pb-24 space-y-8 text-left">
+          <div className="w-full px-4 sm:px-6 md:px-10 lg:px-12 py-6 sm:py-8 md:py-10 pb-20 sm:pb-24 space-y-6 sm:space-y-8 text-left">
 
             {/* Header row */}
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
@@ -257,7 +269,7 @@ export default function TransformationsPage() {
             </div>
 
             {/* Tab Pills */}
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex flex-wrap items-center gap-3 mb-6">
               <button
                 onClick={() => setActiveTab('transformations')}
                 className={`px-6 py-3 rounded-full font-bold text-[14.5px] transition-all ${
@@ -415,6 +427,19 @@ export default function TransformationsPage() {
           if (!open) setEditingTransformation(undefined)
         }}
         transformation={editingTransformation}
+      />
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setTransformationToDelete(undefined)
+        }}
+        title={t.sources.delete}
+        description={t.transformations.deleteConfirm}
+        confirmText={t.common.delete}
+        confirmVariant="destructive"
+        onConfirm={handleDeleteConfirm}
+        isLoading={deleteTransformation.isPending}
       />
     </AppShell>
   )
