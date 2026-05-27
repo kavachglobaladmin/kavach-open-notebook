@@ -74,7 +74,7 @@ export function SystemInfo() {
           {/* GitHub link — always shown */}
           <div className="pt-2">
             <a
-              href="https://github.com/lfnovo/open-notebook"
+              href="https://github.com/kavachglobaladmin/kavach-open-notebook"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-[#FF7043] hover:underline inline-flex items-center gap-1 font-medium"
