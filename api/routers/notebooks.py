@@ -54,47 +54,47 @@ async def get_notebooks(
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
-        # Build the query with counts, filtered by owner when a user is present.
-        # Also include legacy notebooks that have no owner (owner IS NULL) so that
-        # notebooks created before user-scoping was introduced are still visible.
-        # On first access by a logged-in user, those legacy notebooks are claimed
-        # (owner is set) so they become properly scoped going forward.
+        # Wrap field name in backticks to avoid SurrealDB v2 keyword conflicts
+        safe_order_by = order_by.replace("updated", "`updated`").replace("created", "`created`")
+        if archived is True:
+            archived_condition = "AND (archived = true)"
+        elif archived is False:
+            archived_condition = (
+                "AND (archived = false OR archived = NONE "
+                "OR archived = null OR archived IS NULL)"
+            )
+        else:
+            archived_condition = ""
+
         if current_user:
+            # Return only notebooks owned by this user.
+            # Legacy unowned notebooks are handled by the claim-unowned endpoint
+            # which runs on page load and assigns them to the current user.
             query = f"""
                 SELECT *,
                 count(<-reference.in) as source_count,
                 count(<-artifact.in) as note_count
                 FROM notebook
-                WHERE owner = $owner OR owner = 'user' OR owner = NONE OR owner = null
-                ORDER BY {order_by}
+                WHERE owner = $owner
+                {archived_condition}
+                ORDER BY `updated` DESC
             """
             result = await repo_query(query, {"owner": current_user})
-            # Migrate legacy notebooks (owner='user' or no owner) to current user
-            for nb in result:
-                nb_owner = nb.get("owner")
-                if nb_owner != current_user:
-                    nb_id = str(nb.get("id", ""))
-                    try:
-                        await repo_query(
-                            "UPDATE $id SET owner = $owner",
-                            {"id": nb_id, "owner": current_user}
-                        )
-                        logger.info(f"Migrated notebook {nb_id} owner from '{nb_owner}' to '{current_user}'")
-                    except Exception as migrate_err:
-                        logger.warning(f"Could not migrate notebook {nb_id} owner: {migrate_err}")
         else:
+            # No authenticated user (auth disabled) — return all notebooks.
+            if archived_condition:
+                where_clause = f"WHERE 1=1 {archived_condition}"
+            else:
+                where_clause = ""
             query = f"""
                 SELECT *,
                 count(<-reference.in) as source_count,
                 count(<-artifact.in) as note_count
                 FROM notebook
-                ORDER BY {order_by}
+                {where_clause}
+                ORDER BY `updated` DESC
             """
             result = await repo_query(query)
-
-        # Filter by archived status if specified
-        if archived is not None:
-            result = [nb for nb in result if nb.get("archived") == archived]
 
         # Build responses — calculate storage_used_mb only for notebooks with a limit
         responses = []
@@ -122,6 +122,61 @@ async def get_notebooks(
         )
 
 
+@router.post("/notebooks/claim-unowned")
+async def claim_unowned_notebooks(
+    current_user: Optional[str] = Depends(get_current_user),
+):
+    """
+    Assign all unowned notebooks (owner = NONE/null/'user') to the current user.
+    Called automatically on the notebooks page load to migrate legacy data.
+    Returns the count of notebooks claimed.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        # SurrealDB v3: type::is::none() renamed to type::is_none()
+        # Simple equality checks like `owner = NONE` don't always work in WHERE clauses
+        result = await repo_query(
+            """
+            UPDATE notebook
+            SET owner = $owner
+            WHERE type::is_none(owner)
+               OR owner = null
+               OR owner = 'user'
+            """,
+            {"owner": current_user},
+        )
+        claimed = len(result) if result else 0
+        logger.info(f"[notebooks] {current_user} claimed {claimed} unowned notebooks")
+        return {"claimed": claimed}
+    except Exception as e:
+        logger.error(f"Error claiming unowned notebooks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/notebooks/debug-owner")
+async def debug_notebook_owners(
+    current_user: Optional[str] = Depends(get_current_user),
+):
+    """
+    Debug endpoint — returns all notebooks with their owner field.
+    Shows what email is being received as X-User-Email and what owners exist in DB.
+    """
+    all_notebooks = await repo_query("SELECT id, name, owner FROM notebook")
+    return {
+        "received_x_user_email": current_user,
+        "total_notebooks": len(all_notebooks),
+        "notebooks": [
+            {
+                "id": str(nb.get("id", "")),
+                "name": nb.get("name", ""),
+                "owner": nb.get("owner"),
+            }
+            for nb in all_notebooks
+        ],
+    }
+
+
 @router.post("/notebooks", response_model=NotebookResponse)
 async def create_notebook(
     notebook: NotebookCreate,
@@ -133,6 +188,7 @@ async def create_notebook(
         # Ensure owner is always set — fall back to X-User-Email header directly
         # in case get_current_user() returns None due to a timing issue.
         owner = current_user or request.headers.get("X-User-Email") or None
+        logger.info(f"[notebooks] Creating notebook '{notebook.name}' with owner='{owner}' (current_user='{current_user}', header='{request.headers.get('X-User-Email')}')")
 
         new_notebook = Notebook(
             name=notebook.name,
@@ -270,14 +326,16 @@ async def update_notebook(
 
         await notebook.save()
 
-        # Query with counts after update
-        query = """
+        # Re-fetch with counts after save
+        result = await repo_query(
+            """
             SELECT *,
             count(<-reference.in) as source_count,
             count(<-artifact.in) as note_count
             FROM $notebook_id
-        """
-        result = await repo_query(query, {"notebook_id": ensure_record_id(notebook_id)})
+            """,
+            {"notebook_id": ensure_record_id(notebook_id)},
+        )
 
         if result:
             nb = result[0]
@@ -286,13 +344,15 @@ async def update_notebook(
                 name=nb.get("name", ""),
                 description=nb.get("description", ""),
                 archived=nb.get("archived", False),
+                storage_limit_mb=nb.get("storage_limit_mb"),
+                storage_used_mb=None,
                 created=str(nb.get("created", "")),
                 updated=str(nb.get("updated", "")),
                 source_count=nb.get("source_count", 0),
                 note_count=nb.get("note_count", 0),
             )
 
-        # Fallback if query fails
+        # Fallback
         return NotebookResponse(
             id=notebook.id or "",
             name=notebook.name,

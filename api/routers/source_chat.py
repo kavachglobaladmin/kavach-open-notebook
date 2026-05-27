@@ -921,7 +921,7 @@ async def stream_source_chat_response(
             source_id=source_id,
             include_insights=True,
             include_notes=False,
-            max_tokens=4000  # Reduced to leave room for response + history
+            max_tokens=6000  # Increased to ensure full context is available
         )
         context_data = await cb.build()
 
@@ -940,6 +940,8 @@ async def stream_source_chat_response(
         raw_insights = context_data.get('insights', [])
         formatted_context = _format_source_context(context_data, raw_insights)
 
+        logger.info(f"[SourceChat] Context built: {len(formatted_context)} chars, {len(raw_insights)} insights")
+
         # ── Preflight: ONLY short-circuit if answer is truly not found ────
         preflight = _answer_from_context_only(message, formatted_context)
         if preflight and preflight.strip().lower() == "not found in source.":
@@ -952,12 +954,12 @@ async def stream_source_chat_response(
         # ── Build system prompt ────────────────────────────────────────────
         system_prompt = (
             "You are an expert investigative analyst. "
-            "Answer questions using ONLY the SOURCE CONTEXT provided. "
-            "Never use external knowledge. "
+            "Answer questions using ONLY the SOURCE CONTEXT provided below. "
+            "Never use external knowledge or information outside the source. "
             "Give COMPREHENSIVE, DETAILED answers with ALL relevant facts — "
-            "dates, names, locations, amounts, events, relationships. "
-            "Never give short answers. "
-            "If not found in source, say 'Not found in source.'"
+            "dates, names, locations, amounts, events, relationships, and connections. "
+            "Never give short answers. Always provide complete information. "
+            "If information is not found in the source, say 'Not found in source.'"
         )
 
         # ── Get conversation history (last 2 turns only) ───────────────────
@@ -973,7 +975,7 @@ async def stream_source_chat_response(
             f"SOURCE CONTEXT:\n\n{formatted_context}\n\n"
             f"---\n"
             f"Using ONLY the above source context, answer this question "
-            f"in full detail:\n\n{message}"
+            f"in full detail with all relevant information:\n\n{message}"
         )
 
         payload = [SystemMessage(content=system_prompt)] + list(history) + [
@@ -982,6 +984,8 @@ async def stream_source_chat_response(
         ]
 
         dynamic_max_tokens = 2048
+
+        logger.info(f"[SourceChat] Streaming response for: {message[:100]}")
 
         # ── Stream tokens ──────────────────────────────────────────────────
         full_response = []
@@ -1000,6 +1004,8 @@ async def stream_source_chat_response(
             yield f"data: {json.dumps(token_event)}\n\n"
 
         complete_content = "".join(full_response)
+        logger.info(f"[SourceChat] Response complete: {len(complete_content)} chars")
+        
         ai_event = {"type": "ai_message", "content": complete_content, "timestamp": None}
         yield f"data: {json.dumps(ai_event)}\n\n"
 

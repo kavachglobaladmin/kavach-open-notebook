@@ -1,5 +1,5 @@
-import { toast as sonnerToast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { addNotification } from '@/components/layout/NotificationCenter'
 
 type ToastProps = {
   title?: string
@@ -12,15 +12,15 @@ export function useToast() {
 
   return {
     toast: ({ title, description, variant = 'default' }: ToastProps) => {
-      if (variant === 'destructive') {
-        sonnerToast.error(title || t.common.error, {
-          description,
-        })
-      } else {
-        sonnerToast.success(title || t.common.success, {
-          description,
-        })
-      }
+      const isError = variant === 'destructive'
+      const resolvedTitle = title || (isError ? t.common.error : t.common.success)
+      const resolvedMessage = description || ''
+
+      addNotification({
+        title: resolvedTitle,
+        message: resolvedMessage,
+        type: isError ? 'error' : 'success',
+      })
     }
   }
 }

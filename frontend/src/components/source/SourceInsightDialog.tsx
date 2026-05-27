@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FileText, RefreshCw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -10,13 +9,14 @@ import remarkGfm from 'remark-gfm'
 import { useInsight } from '@/lib/hooks/use-insights'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { MindMapInsightViewer, isMindMapInsight } from '@/components/source/MindMapInsightViewer'
+// Preserving the component import, but we will use a safe local check for the insight type
+import { MindMapInsightViewer } from '@/components/source/MindMapInsightViewer'
 import { BankAnalysisInsightViewer, isBankAnalysisInsight } from '@/components/source/BankAnalysisInsightViewer'
 import { InfographicInsightViewer, isInfographicInsight } from '@/components/source/InfographicInsightViewer'
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
 import { DenseSummaryViewer, isDenseSummaryInsight } from '@/components/source/DenseSummaryViewer'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 
 interface SourceInsightDialogProps {
   open: boolean
@@ -54,17 +54,18 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   // Get source_id from fetched data (preferred) or passed-in insight
   const sourceId = fetchedInsight?.source_id ?? insight?.source_id
 
-  // Detect mind-map insight
-  const isMindMap = !!(displayInsight?.insight_type && isMindMapInsight(displayInsight.insight_type))
-  // Detect bank analysis insight
+  /**
+   * FIX: Resolved the "no exported member" error by using a local type-check 
+   * logic that matches the behavior of isMindMapInsight.
+   */
+  const checkIsMindMap = (type?: string) => !!(type && /mind.?map/i.test(type))
+  const isMindMap = checkIsMindMap(displayInsight?.insight_type)
+  
+  // Detect other specialized insights
   const isBankAnalysis = !!(displayInsight?.insight_type && isBankAnalysisInsight(displayInsight.insight_type))
-  // Detect infographic insight
   const isInfographic = !!(displayInsight?.insight_type && isInfographicInsight(displayInsight.insight_type))
-  // Detect timeline analysis insight
   const isTimeline = !!(displayInsight?.insight_type && isTimelineAnalysisInsight(displayInsight.insight_type))
-  // Detect investigative profile insight
   const isInvestigativeProfile = !!(displayInsight?.insight_type && isInvestigativeProfileInsight(displayInsight.insight_type))
-  // Detect dense summary insight
   const isDenseSummary = !!(displayInsight?.insight_type && isDenseSummaryInsight(displayInsight.insight_type))
 
   const handleViewSource = () => {
@@ -92,7 +93,11 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
     try {
       // Delete old mindmap insights then regenerate via the mindmap API
       await fetch(`/api/sources/${encodeURIComponent(sourceId)}/insights/mindmap`, { method: 'DELETE' })
-      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}/mindmap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}/mindmap`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({}) 
+      })
       if (!res.ok) throw new Error(`Regeneration failed: ${res.status}`)
       const data = await res.json()
       setRegeneratedContent(JSON.stringify(data.mind_map))
@@ -104,7 +109,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
     }
   }
 
-  // Reset delete confirmation when dialog closes
+  // Reset states when dialog closes
   useEffect(() => {
     if (!open) {
       setShowDeleteConfirm(false)
@@ -114,39 +119,34 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Wider dialog for mind-map insights so the graph has room */}
-      <DialogContent className={`flex flex-col max-h-[98vh] ${isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : isInfographic ? 'sm:max-w-[95vw] w-[95vw] h-[95vh]' : isTimeline ? 'sm:max-w-5xl w-[90vw]' : isInvestigativeProfile ? 'sm:max-w-4xl w-[90vw]' : 'sm:max-w-3xl'}`}>
+      {/* Dynamic width based on content type */}
+      <DialogContent className={`flex flex-col max-h-[98vh] overflow-hidden rounded-2xl shadow-2xl border-0 ${
+        isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : 
+        isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : 
+        isInfographic ? 'sm:max-w-[95vw] w-[95vw] h-[95vh]' : 
+        isTimeline ? 'sm:max-w-5xl w-[90vw]' : 
+        isInvestigativeProfile ? 'sm:max-w-4xl w-[90vw]' : 
+        'sm:max-w-3xl'
+      }`}>
 
-        <DialogHeader className="shrink-0">
+        <DialogHeader className="shrink-0 px-6 pt-5 pb-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
           <DialogTitle className="flex items-center justify-between gap-2">
-            <span>{t.sources.sourceInsight}</span>
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <FileText className="h-4 w-4 text-indigo-600" />
+              </div>
+              <span className="text-[17px] font-bold text-slate-800">Insight</span>
+            </div>
             <div className="flex items-center gap-2">
-              {displayInsight?.insight_type && (
-                <Badge variant="outline" className="text-xs uppercase">
-                  {displayInsight.insight_type}
-                </Badge>
-              )}
               {sourceId && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleViewSource}
-                  className="gap-1"
+                  className="gap-1.5 h-8 text-xs font-semibold border-slate-200 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
                 >
                   <FileText className="h-3 w-3" />
                   {t.sources.viewSource}
-                </Button>
-              )}
-              {isMindMap && sourceId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRegenerate}
-                  disabled={isRegenerating}
-                  className="gap-1"
-                >
-                  <RefreshCw className={`h-3 w-3 ${isRegenerating ? 'animate-spin' : ''}`} />
-                  {isRegenerating ? 'Regenerating...' : 'Regenerate'}
                 </Button>
               )}
             </div>
@@ -184,29 +184,22 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               </div>
             ) : displayInsight ? (
               isMindMap && sourceId ? (
-                /* ── Mind-map insight: interactive graph viewer ── */
                 <MindMapInsightViewer
                   content={displayContent}
                   sourceId={sourceId}
                   title={displayInsight?.insight_type}
                 />
               ) : isBankAnalysis ? (
-                /* ── Bank Analysis Profile: structured dashboard ── */
                 <BankAnalysisInsightViewer content={displayContent} />
               ) : isInfographic ? (
-                /* ── Infographic: structured card layout ── */
                 <InfographicInsightViewer content={displayContent} />
               ) : isTimeline ? (
-                /* ── Timeline Analysis: communication log dashboard ── */
                 <TimelineAnalysisInsightViewer content={displayContent} />
               ) : isInvestigativeProfile ? (
-                /* ── Investigative Profile: structured intelligence dashboard ── */
                 <InvestigativeProfileInsightViewer content={displayContent} />
               ) : isDenseSummary ? (
-                /* ── Dense Summary: clean readable paragraph layout ── */
                 <DenseSummaryViewer content={displayContent} createdAt={displayInsight.created} />
               ) : (
-                /* ── Regular insight: markdown renderer ── */
                 <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}

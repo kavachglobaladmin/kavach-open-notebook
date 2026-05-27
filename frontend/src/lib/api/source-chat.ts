@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { getApiUrl } from '@/lib/config'
 import {
   SourceChatSession,
   SourceChatSessionWithMessages,
@@ -46,40 +47,54 @@ export const sourceChatApi = {
   },
 
   // Messaging with streaming
-  sendMessage: (sourceId: string, sessionId: string, data: SendMessageRequest) => {
-    // Get auth token using the same logic as apiClient interceptor
-    let token = null
+  sendMessage: async (sourceId: string, sessionId: string, data: SendMessageRequest) => {
+    const apiUrl = await getApiUrl()
+    const baseURL = apiUrl ? `${apiUrl}/api` : '/api'
+    const url = `${baseURL}/sources/${sourceId}/chat/sessions/${sessionId}/messages`
+
+    // Build auth headers — must match apiClient interceptor exactly.
+    // The backend PasswordAuthMiddleware validates the raw API password,
+    // NOT a JWT. The raw password is stored in sessionStorage as
+    // 'kavach_api_password' (memory-only, survives page reload within tab).
+    const extraHeaders: Record<string, string> = {}
     if (typeof window !== 'undefined') {
-      const authStorage = localStorage.getItem('auth-storage')
-      if (authStorage) {
-        try {
-          const { state } = JSON.parse(authStorage)
-          if (state?.token) {
-            token = state.token
-          }
-        } catch (error) {
-          console.error('Error parsing auth storage:', error)
+      try {
+        // 1. Prefer raw API password from sessionStorage (same as apiClient)
+        const apiPassword = sessionStorage.getItem('kavach_api_password')
+        if (apiPassword) {
+          extraHeaders['Authorization'] = `Bearer ${apiPassword}`
         }
-      }
+
+        // 2. Resolve user email for scoping (same fallback chain as apiClient)
+        const authStorage = localStorage.getItem('auth-storage')
+        if (authStorage) {
+          const { state } = JSON.parse(authStorage)
+          const userEmail = state?.currentUserEmail ?? null
+          if (userEmail) {
+            extraHeaders['X-User-Email'] = userEmail
+          }
+        }
+      } catch { /* ignore */ }
     }
 
-    // Use relative URL to leverage Next.js rewrites
-    // This works both in dev (Next.js proxy) and production (Docker network)
-    const url = `/api/sources/${sourceId}/chat/sessions/${sessionId}/messages`
-
-    // Use fetch with ReadableStream for SSE
-    return fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
+        ...extraHeaders,
       },
       body: JSON.stringify(data)
-    }).then(response => {
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      return response.body
     })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Streaming failed: ${response.status} - ${error}`)
+    }
+
+    if (!response.body) {
+      throw new Error('No response body')
+    }
+
+    return response.body
   }
 }

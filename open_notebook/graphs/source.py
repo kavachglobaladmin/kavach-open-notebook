@@ -442,7 +442,10 @@ def _ocr_pdf_sync(file_path: str) -> str:
     """
     try:
         import easyocr
-        reader = easyocr.Reader(["en", "hi"], gpu=False, verbose=False)
+        import torch as _torch
+        _use_gpu = _torch.cuda.is_available()
+        reader = easyocr.Reader(["en", "hi"], gpu=_use_gpu, verbose=False)
+        logger.info(f"EasyOCR initialized — GPU={'YES' if _use_gpu else 'NO'}")
     except Exception as e:
         logger.warning(f"EasyOCR init failed: {e}. OCR fallback unavailable.")
         reader = None
@@ -553,8 +556,19 @@ async def content_process(state: SourceState) -> dict:
     try:
         model_manager = ModelManager()
         defaults = await model_manager.get_defaults()
-        if defaults.default_speech_to_text_model:
-            stt_model = await Model.get(defaults.default_speech_to_text_model)
+        stt_model_id = defaults.default_speech_to_text_model
+        if stt_model_id:
+            try:
+                stt_model = await Model.get(stt_model_id)
+            except Exception as e:
+                logger.warning(
+                    f"Default speech-to-text model {stt_model_id} was not found; "
+                    "clearing stale default reference."
+                )
+                defaults.default_speech_to_text_model = None
+                await defaults.save()
+                stt_model = None
+
             if stt_model:
                 content_state["audio_provider"] = stt_model.provider
                 content_state["audio_model"] = stt_model.name
@@ -571,25 +585,152 @@ async def content_process(state: SourceState) -> dict:
     content_text = processed_state.content or ""
     is_pdf = file_path and str(file_path).lower().endswith(".pdf")
 
+    # ── Bank Statement Pipeline: only run for PDFs that look like bank statements ──
+    # Check filename for bank-statement keywords to avoid running the slow pipeline on every PDF.
+    # The pipeline can take up to 3 minutes; non-bank PDFs should skip it entirely.
+    _BANK_KEYWORDS = {
+        "statement", "bank", "account", "passbook", "transaction",
+        "hdfc", "sbi", "icici", "axis", "kotak", "canara", "federal",
+        "pnb", "bob", "ubi", "idbi", "yes bank", "indusind",
+    }
+    _fname_lower = str(file_path).lower() if file_path else ""
+    _is_bank_pdf = is_pdf and file_path and any(kw in _fname_lower for kw in _BANK_KEYWORDS)
+
+    if _is_bank_pdf:
+        logger.info(f"PDF detected: '{file_path}'. Extracting text for storage...")
+        try:
+            from open_notebook.bank_statement.pipeline import run_pipeline
+
+            # 3-minute timeout — if OCR takes longer, fall through to _ocr_fallback
+            result = await asyncio.wait_for(
+                asyncio.to_thread(run_pipeline, file_path, None),
+                timeout=180
+            )
+            total = result.get("total_transactions", 0)
+
+            if total > 0:
+                # Pipeline parsed transactions successfully — build structured full_text
+                lines = []
+
+                # Account details
+                detail_cards = result.get("detail_cards", [])
+                if detail_cards:
+                    lines.append("=== ACCOUNT DETAILS ===")
+                    for f in detail_cards:
+                        lines.append(f"{f.get('label', '')}: {f.get('value', '')}")
+                    lines.append("")
+
+                # Cash flow
+                cf = result.get("cashflow", {})
+                if cf:
+                    lines.append("=== CASH FLOW SUMMARY ===")
+                    for k, v in cf.items():
+                        lines.append(f"{k.replace('_', ' ').title()}: {v}")
+                    lines.append("")
+
+                # Monthly summary
+                monthly = result.get("monthly", [])
+                if monthly:
+                    lines.append("=== MONTHLY SUMMARY ===")
+                    for row in monthly:
+                        lines.append(
+                            f"{row.get('month', '')} | Credit: {row.get('credit', '0')} | "
+                            f"Debit: {row.get('debit', '0')} | Balance: {row.get('balance', '0')}"
+                        )
+                    lines.append("")
+
+                # All transactions
+                txns = result.get("transactions", [])
+                if txns:
+                    lines.append(f"=== ALL TRANSACTIONS ({len(txns)}) ===")
+                    for tx in txns:
+                        lines.append(
+                            f"{tx.get('date','')} | {tx.get('description','')} | "
+                            f"Dr:{tx.get('debit','0.00')} | Cr:{tx.get('credit','0.00')} | "
+                            f"Bal:{tx.get('balance','0.00')} | {tx.get('type','')}"
+                        )
+                    lines.append("")
+
+                full_text = "\n".join(lines)
+                logger.info(
+                    f"bank_statement pipeline: {total} transactions, {len(full_text)} chars"
+                )
+                processed_state.content = full_text
+                if not processed_state.title:
+                    import os as _os
+                    processed_state.title = _os.path.splitext(_os.path.basename(file_path))[0]
+                return {"content_state": processed_state}
+
+            # Pipeline got 0 transactions — use raw extracted text if available
+            raw_text = result.get("_extracted_text", "")
+            if raw_text and raw_text.strip():
+                logger.info(
+                    f"bank_statement pipeline: 0 transactions but got {len(raw_text)} chars raw text"
+                )
+                processed_state.content = raw_text
+                if not processed_state.title:
+                    import os as _os
+                    processed_state.title = _os.path.splitext(_os.path.basename(file_path))[0]
+                return {"content_state": processed_state}
+
+            # Pipeline returned nothing (OCR timed out or failed) — fall through to _ocr_fallback
+            logger.info("bank_statement pipeline returned no text — trying _ocr_fallback")
+
+        except asyncio.TimeoutError:
+            logger.warning(f"bank_statement pipeline timed out for '{file_path}' — falling back to OCR")
+        except Exception as _e:
+            logger.warning(f"bank_statement pipeline failed: {_e} — falling back to OCR")
+
+    content_text = processed_state.content or ""
+
+    # ── Mobile CDR / SMS exports (CSV, TXT): structure full_text like bank summaries ──
+    if file_path and content_text.strip():
+        try:
+            from open_notebook.mobile_data.pipeline import (
+                build_searchable_text,
+                run_pipeline_from_text,
+                sniff_maybe_mobile,
+            )
+
+            title_hint = getattr(processed_state, "title", None) or ""
+            if sniff_maybe_mobile(title_hint, str(file_path), content_text[:16000]):
+                mr = await asyncio.to_thread(run_pipeline_from_text, content_text)
+                if mr.get("total_records", 0) > 0:
+                    excerpt_cap = 180_000
+                    tail = (
+                        content_text[:excerpt_cap]
+                        if len(content_text) > excerpt_cap
+                        else content_text
+                    )
+                    processed_state.content = (
+                        f"{build_searchable_text(mr)}\n\n=== SOURCE EXCERPT ===\n{tail}"
+                    )
+                    content_text = processed_state.content or ""
+                    logger.info(
+                        f"mobile_data pipeline: {mr['total_records']} rows embedded in source text"
+                    )
+        except Exception as _mob:
+            logger.warning(f"mobile_data pipeline skip: {_mob}")
+
     # Trigger OCR fallback when:
     #   - content is empty/missing, OR
     #   - it's a PDF and the extracted text is suspiciously sparse (< 200 chars total)
-    #     which indicates a scanned/image-based PDF that content_core couldn't read well
     needs_ocr = (not content_text.strip()) or (is_pdf and len(content_text.strip()) < 200)
 
     if needs_ocr:
-        # ── OCR fallback for file-based sources (scanned PDFs, image PDFs) ──
+        # For PDFs where pipeline returned nothing — use _ocr_fallback to get raw text.
+        # This raw text is stored as full_text and used by bank-analysis endpoint later.
         if file_path:
-            logger.info(
-                f"content_core returned {'empty' if not content_text.strip() else 'sparse'} "
-                f"text for file '{file_path}'. Attempting OCR fallback..."
-            )
+            logger.info(f"Attempting EasyOCR fallback for '{file_path}'...")
             ocr_text = await _ocr_fallback(file_path)
             if ocr_text and ocr_text.strip():
                 logger.info(
                     f"OCR fallback succeeded — extracted {len(ocr_text)} chars from '{file_path}'"
                 )
                 processed_state.content = ocr_text
+                if not processed_state.title and file_path:
+                    import os as _os
+                    processed_state.title = _os.path.splitext(_os.path.basename(str(file_path)))[0]
                 return {"content_state": processed_state}
             else:
                 logger.warning(f"OCR fallback also returned empty text for '{file_path}'")
@@ -620,11 +761,26 @@ async def save_source(state: SourceState) -> dict:
 
     # Update the source with processed content
     source.asset = Asset(url=content_state.url, file_path=content_state.file_path)
-    source.full_text = content_state.content
+    source.full_text = content_state.content  # Always save original content
 
     # Preserve existing title if none provided in processed content
     if content_state.title:
         source.title = content_state.title
+
+    # Detect language and translate non-English content
+    if source.full_text and source.full_text.strip():
+        try:
+            from open_notebook.utils.translation import translate_to_english
+            model_id = None  # Use default model
+            translated, lang = await translate_to_english(source.full_text, model_id=model_id)
+            source.content_language = lang
+            if lang != "en":
+                source.translated_content = translated
+                logger.info(f"[Source] Translated content from '{lang}' to English for source {source.id}")
+            else:
+                source.translated_content = None
+        except Exception as e:
+            logger.warning(f"[Source] Translation failed for source {source.id}: {e}")
 
     await source.save()
 
@@ -664,15 +820,23 @@ def trigger_transformations(state: SourceState, config: RunnableConfig) -> List[
 
 async def transform_content(state: TransformationState) -> Optional[dict]:
     source = state["source"]
-    content = source.full_text
+    # Use translated content for transformations if available (better quality)
+    # Fall back to original full_text
+    content = source.translated_content if source.translated_content else source.full_text
     if not content:
         return None
     transformation: Transformation = state["transformation"]
 
     logger.debug(f"Applying transformation {transformation.name}")
     result = await transform_graph.ainvoke(
-        dict(input_text=content, transformation=transformation)  # type: ignore[arg-type]
+        dict(
+            source=source,
+            input_text=content,
+            transformation=transformation,
+            save_insight=False,  # Don't save inside run_transformation — we save once here
+        )  # type: ignore[arg-type]
     )
+    # Save insight once here after LLM completes
     await source.add_insight(transformation.title, result["output"])
     return {
         "transformation": [

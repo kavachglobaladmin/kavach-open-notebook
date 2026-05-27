@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { NotebookHeader } from '../components/NotebookHeader'
 import { SourcesColumn } from '../components/SourcesColumn'
 import { NotesColumn } from '../components/NotesColumn'
@@ -30,8 +31,12 @@ export default function NotebookPage() {
   const { t } = useTranslation()
   const params = useParams()
 
-  // Ensure the notebook ID is properly decoded from URL
-  const notebookId = params?.id ? decodeURIComponent(params.id as string) : ''
+  // Reconstruct the full SurrealDB record ID from the URL param.
+  // The URL contains only the short ID (e.g. "2jvvymcm2ls9dqvpw2kx") to avoid
+  // colons in the path which Next.js rejects. We prepend "notebook:" here so
+  // the API receives the full record ID it expects.
+  const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
+  const notebookId = rawParam.includes(':') ? rawParam : (rawParam ? `notebook:${rawParam}` : '')
 
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
   const {
@@ -52,6 +57,9 @@ export default function NotebookPage() {
 
   // Mobile tab state (Sources, Notes, or Chat)
   const [mobileActiveTab, setMobileActiveTab] = useState<'sources' | 'notes' | 'chat'>('chat')
+
+  // Search term for PageHeader
+  const [searchTerm, setSearchTerm] = useState('')
 
   // Context selection state
   const [contextSelections, setContextSelections] = useState<ContextSelections>({
@@ -129,12 +137,29 @@ export default function NotebookPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex-shrink-0 p-6 pb-0">
-          <NotebookHeader notebook={notebook} />
-        </div>
+      <div className="flex flex-col flex-1 min-h-0 relative overflow-hidden" style={{ background: '#ECEDF8' }}>
 
-        <div className="flex-1 p-6 pt-6 overflow-x-auto flex flex-col">
+        {/* Top-right purple glow — exact match to Cases page */}
+        <div
+          className="absolute top-[-10%] right-[-5%] w-[55%] h-[70%] rounded-full pointer-events-none z-0"
+          style={{
+            background: 'radial-gradient(ellipse at 70% 30%, rgba(180,160,255,0.60) 0%, rgba(200,185,255,0.35) 30%, rgba(220,210,255,0.15) 55%, transparent 75%)',
+            filter: 'blur(60px)',
+          }}
+        />
+
+        <div className="relative z-10 flex flex-col flex-1 min-h-0">
+          <PageHeader
+            searchValue={searchTerm}
+            onSearchChange={setSearchTerm}
+            searchPlaceholder="Search notebook..."
+            newLabel="NOTEBOOK"
+          />
+          <div className="flex-shrink-0 px-4 pt-3 pb-0">
+            <NotebookHeader notebook={notebook} />
+          </div>
+
+          <div className="flex-1 p-4 pt-4 overflow-x-auto flex flex-col min-h-0">
           {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
           {!isDesktop && (
             <>
@@ -186,8 +211,9 @@ export default function NotebookPage() {
                   <ChatColumn
                     notebookId={notebookId}
                     contextSelections={contextSelections}
-                    sources={sources}
+                    sources={sources ?? []}
                     sourcesLoading={sourcesLoading}
+                    notes={notes ?? []}
                   />
                 )}
               </div>
@@ -196,13 +222,13 @@ export default function NotebookPage() {
 
           {/* Desktop: Collapsible columns layout */}
           <div className={cn(
-            'hidden lg:flex h-full min-h-0 gap-6 transition-all duration-150',
+            'hidden lg:flex h-full min-h-0 gap-4 transition-all duration-150',
             'flex-row'
           )}>
-            {/* Sources Column */}
+            {/* Sources Column — equal 1/3 */}
             <div className={cn(
-              'transition-all duration-150',
-              sourcesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3'
+              'transition-all duration-150 flex-shrink-0',
+              sourcesCollapsed ? 'w-12' : 'flex-1 min-w-0'
             )}>
               <SourcesColumn
                 sources={sources}
@@ -218,10 +244,10 @@ export default function NotebookPage() {
               />
             </div>
 
-            {/* Notes Column */}
+            {/* Notes Column — equal 1/3 */}
             <div className={cn(
-              'transition-all duration-150 flex flex-col h-full',
-              notesCollapsed ? 'w-12 flex-shrink-0' : 'flex-none basis-1/3'
+              'transition-all duration-150 flex flex-col h-full flex-shrink-0',
+              notesCollapsed ? 'w-12' : 'flex-1 min-w-0'
             )}>
               <NotesColumn
                 notes={notes}
@@ -232,18 +258,20 @@ export default function NotebookPage() {
               />
             </div>
 
-            {/* Chat Column — right side, takes remaining space */}
+            {/* Chat Column — equal 1/3 */}
             <div className="flex-1 min-w-0 h-full">
               <ChatColumn
                 notebookId={notebookId}
                 contextSelections={contextSelections}
-                sources={sources}
+                sources={sources ?? []}
                 sourcesLoading={sourcesLoading}
+                notes={notes ?? []}
               />
             </div>
           </div>
         </div>
-      </div>
+        </div>{/* end relative z-10 */}
+      </div>{/* end background wrapper */}
     </AppShell>
   )
 }

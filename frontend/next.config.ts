@@ -4,9 +4,19 @@ const nextConfig: NextConfig = {
 
 allowedDevOrigins: [
 "192.168.11.240",
+"192.168.11.131",
 "localhost",
-"0.0.0.0"
+"0.0.0.0",
+"192.168.11.145",
+"192.168.11.214",
+"192.168.11.162",
+"192.168.11.176",
+"192.168.11.136",
+"192.168.11.182"
 ],
+
+// Hide the Next.js dev tools button (bottom-left N logo)
+devIndicators: false,
 // Enable standalone output for optimized Docker deployment
 output: "standalone",
 

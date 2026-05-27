@@ -42,6 +42,8 @@ export interface SourceListResponse {
 
 export interface SourceDetailResponse extends SourceListResponse {
   full_text: string
+  translated_content?: string | null   // English translation (if original is non-English)
+  content_language?: string | null     // Detected language code (e.g. "hi", "en")
   notebooks?: string[]  // List of notebook IDs this source is linked to
 }
 

@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { Newspaper, RefreshCw, AlertCircle } from 'lucide-react'
 import { InfographicInsightViewer } from '@/components/source/InfographicInsightViewer'
 

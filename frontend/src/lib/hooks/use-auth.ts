@@ -4,6 +4,7 @@ import { useAuthStore } from '@/lib/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { queryClient } from '@/lib/api/query-client'
+import { toast } from '@/lib/notifications/toast'
 
 export function useAuth() {
   const router = useRouter()
@@ -39,14 +40,13 @@ export function useAuth() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasHydrated, authRequired])
 
-  const handleLogin = async (password: string) => {
+  const handleLogin = async (email: string, password: string) => {
     // Clear all cached queries before login so stale data from a previous
     // user session is never shown to the newly logged-in user.
     queryClient.clear()
 
-    const success = await login(password)
+    const success = await login(email, password)
     if (success) {
-      // Check if there's a stored redirect path
       const redirectPath = sessionStorage.getItem('redirectAfterLogin')
       if (redirectPath) {
         sessionStorage.removeItem('redirectAfterLogin')
@@ -70,6 +70,7 @@ export function useAuth() {
       sessionStorage.removeItem('kavach_api_password')
       sessionStorage.removeItem('redirectAfterLogin')
     }
+    toast.info('You have been signed out')
     router.push('/login')
   }
 

@@ -5,7 +5,6 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -116,45 +115,68 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-4xl w-full max-h-[90vh] overflow-hidden p-0">
+      <DialogContent className="sm:max-w-4xl w-full max-h-[90vh] overflow-hidden p-0 rounded-[24px] border-0 shadow-2xl flex flex-col">
         <DialogTitle className="sr-only">
           {isEditing ? t.common.edit : t.transformations.createNew}
         </DialogTitle>
         <DialogDescription className="sr-only">
-           {isEditing ? t.common.editTransformation : t.transformations.createNew}
+          {isEditing ? t.common.editTransformation : t.transformations.createNew}
         </DialogDescription>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex h-full flex-col">
+
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
           {isEditing && isLoading ? (
             <div className="flex-1 flex items-center justify-center py-10">
               <span className="text-sm text-muted-foreground">{t.common.loading}</span>
             </div>
           ) : (
             <>
-              <div className="border-b px-6 py-4 space-y-4">
-                <div>
-                  <Label htmlFor={nameId} className="text-sm font-medium">
+              {/* ── Themed header ── */}
+              <div
+                className="px-7 py-5 flex-shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, #EEF0FB 0%, #E8E4F5 50%, #EBF0FB 100%)',
+                  borderBottom: '1px solid #E2E8F0',
+                }}
+              >
+                <h2 className="text-[20px] font-extrabold text-[#5B21B6] leading-tight">
+                  {isEditing ? t.common.edit : t.transformations.createNew}
+                </h2>
+                <p className="text-[13px] text-slate-500 font-medium mt-0.5">
+                  {isEditing
+                    ? 'Update the transformation details and prompt below.'
+                    : 'Define a new transformation with a name, title, and system prompt.'}
+                </p>
+              </div>
+
+              {/* ── Fields ── */}
+              <div className="px-7 py-5 space-y-5 border-b border-slate-100 flex-shrink-0 bg-white">
+                {/* Name */}
+                <div className="space-y-1.5">
+                  <Label htmlFor={nameId} className="text-[13px] font-bold text-slate-700">
                     {t.transformations.name}
                   </Label>
                   <Controller
                     control={control}
                     name="name"
                     render={({ field }) => (
-                        <Input
+                      <Input
                         id={nameId}
                         {...field}
                         placeholder={t.transformations.namePlaceholder}
                         autoComplete="off"
+                        className="h-[42px] rounded-xl border-slate-200 focus-visible:ring-[#8B5CF6] focus-visible:border-[#8B5CF6] text-slate-900 placeholder:text-slate-400"
                       />
                     )}
                   />
                   {errors.name && (
-                    <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>
+                    <p className="text-xs text-red-500 font-medium mt-1">{errors.name.message}</p>
                   )}
                 </div>
 
+                {/* Title + Apply Default */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor={titleId} className="text-sm font-medium">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={titleId} className="text-[13px] font-bold text-slate-700">
                       {t.common.title}
                     </Label>
                     <Controller
@@ -162,15 +184,16 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                       name="title"
                       render={({ field }) => (
                         <Input
-                           id={titleId}
-                           {...field}
-                           placeholder={t.transformations.titlePlaceholder}
-                           autoComplete="off"
-                         />
+                          id={titleId}
+                          {...field}
+                          placeholder={t.transformations.titlePlaceholder}
+                          autoComplete="off"
+                          className="h-[42px] rounded-xl border-slate-200 focus-visible:ring-[#8B5CF6] focus-visible:border-[#8B5CF6] text-slate-900 placeholder:text-slate-400"
+                        />
                       )}
                     />
                   </div>
-                  <div className="flex items-center gap-2 pt-6 md:pt-8">
+                  <div className="flex items-center gap-3 pt-6 md:pt-7">
                     <Controller
                       control={control}
                       name="apply_default"
@@ -179,74 +202,98 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                           id={defaultId}
                           checked={field.value}
                           onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+                          className="border-[#8B5CF6] data-[state=checked]:bg-[#8B5CF6] data-[state=checked]:border-[#8B5CF6]"
                         />
                       )}
                     />
-                     <Label htmlFor={defaultId} className="text-sm">
-                       {t.transformations.suggestDefault}
-                     </Label>
+                    <Label htmlFor={defaultId} className="text-[13px] font-semibold text-slate-600 cursor-pointer">
+                      {t.transformations.suggestDefault}
+                    </Label>
                   </div>
                 </div>
 
-                <div>
-                   <Label htmlFor={descriptionId} className="text-sm font-medium">
-                     {t.notebooks.addDescription.replace('...', '')}
-                   </Label>
+                {/* Description */}
+                <div className="space-y-1.5">
+                  <Label htmlFor={descriptionId} className="text-[13px] font-bold text-slate-700">
+                    {t.notebooks.addDescription.replace('...', '')}
+                  </Label>
                   <Controller
                     control={control}
                     name="description"
                     render={({ field }) => (
                       <Textarea
-                         id={descriptionId}
-                         {...field}
-                         placeholder={t.transformations.descriptionPlaceholder}
-                         rows={2}
-                         autoComplete="off"
+                        id={descriptionId}
+                        {...field}
+                        placeholder={t.transformations.descriptionPlaceholder}
+                        rows={2}
+                        autoComplete="off"
+                        className="rounded-xl border-slate-200 focus-visible:ring-[#8B5CF6] focus-visible:border-[#8B5CF6] text-slate-900 placeholder:text-slate-400 resize-none"
                       />
                     )}
                   />
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-4">
-                <Label htmlFor={promptId} className="text-sm font-medium">{t.transformations.systemPrompt}</Label>
-                <Controller
-                  control={control}
-                  name="prompt"
-                  render={({ field }) => (
-                    <MarkdownEditor
-                      key={transformation?.id ?? 'new-transformation'}
-                      value={field.value}
-                      onChange={field.onChange}
-                      height={420}
-                      placeholder={t.transformations.promptPlaceholder}
-                      className="rounded-md border"
-                      textareaId={promptId}
-                      name={field.name}
-                    />
-                  )}
-                />
+              {/* ── Prompt editor ── */}
+              <div className="flex-1 overflow-y-auto px-7 py-5 bg-white">
+                <Label htmlFor={promptId} className="text-[13px] font-bold text-slate-700">
+                  {t.transformations.systemPrompt}
+                </Label>
+                <div className="mt-1.5">
+                  <Controller
+                    control={control}
+                    name="prompt"
+                    render={({ field }) => (
+                      <MarkdownEditor
+                        key={transformation?.id ?? 'new-transformation'}
+                        value={field.value}
+                        onChange={field.onChange}
+                        height={260}
+                        placeholder={t.transformations.promptPlaceholder}
+                        className="rounded-xl border border-slate-200"
+                        textareaId={promptId}
+                        name={field.name}
+                      />
+                    )}
+                  />
+                </div>
                 {errors.prompt && (
-                  <p className="text-sm text-red-600 mt-1">{errors.prompt.message}</p>
+                  <p className="text-xs text-red-500 font-medium mt-1">{errors.prompt.message}</p>
                 )}
-                 <p className="text-xs text-muted-foreground mt-3">
-                   {t.transformations.promptHint}
-                 </p>
+                <p className="text-xs text-slate-400 font-medium mt-2">
+                  {t.transformations.promptHint}
+                </p>
               </div>
             </>
           )}
 
-          <div className="border-t px-6 py-4 flex justify-end gap-2">
-             <Button type="button" variant="outline" onClick={handleClose}>
-               {t.common.cancel}
-             </Button>
-              <Button type="submit" disabled={isSaving || (isEditing && isLoading)}>
-                {isSaving
-                  ? isEditing ? `${t.common.saving}...` : `${t.common.creating}...`
-                  : isEditing
-                    ? t.common.editTransformation
-                    : t.transformations.createNew}
-              </Button>
+          {/* ── Footer buttons — themed ── */}
+          <div
+            className="flex-shrink-0 px-7 py-4 flex justify-end gap-3 bg-white"
+            style={{ borderTop: '1px solid #F1F5F9' }}
+          >
+            <button
+              type="button"
+              onClick={handleClose}
+              className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors"
+            >
+              {t.common.cancel}
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || (isEditing && isLoading)}
+              className="px-6 py-2.5 rounded-xl text-[13px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+              style={{
+                background: 'linear-gradient(90deg, #5B21B6 0%, #7C3AED 100%)',
+                boxShadow: '0 4px 14px 0 rgba(109,40,217,0.28)',
+              }}
+            >
+              {isSaving
+                ? isEditing ? `${t.common.saving}...` : `${t.common.creating}...`
+                : isEditing
+                  ? t.common.saveChanges
+                  : t.transformations.createNew}
+            </button>
           </div>
         </form>
       </DialogContent>

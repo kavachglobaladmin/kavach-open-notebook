@@ -98,8 +98,10 @@ export const sourcesApi = {
     return response.data
   },
 
-  retry: async (id: string) => {
-    const response = await apiClient.post<SourceResponse>(`/sources/${id}/retry`)
+  retry: async (id: string, notebookId?: string) => {
+    const response = await apiClient.post<SourceResponse>(`/sources/${id}/retry`, undefined, {
+      params: notebookId ? { notebook_id: notebookId } : undefined,
+    })
     return response.data
   },
 

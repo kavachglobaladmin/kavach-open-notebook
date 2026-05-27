@@ -125,11 +125,22 @@ infographicClient.interceptors.request.use(async (config) => {
 
 export const infographicApi = {
   generate: async (sourceId: string): Promise<InfographicResponse> => {
-    const response = await infographicClient.post<InfographicResponse>(
-      `/sources/${encodeURIComponent(sourceId)}/infographic`,
-      { model_name: 'qwen3', temperature: 0.2 }
-    )
-    return response.data
+    try {
+      console.log('[InfographicAPI] Generating infographic for source:', sourceId)
+      const response = await infographicClient.post<InfographicResponse>(
+        `/sources/${encodeURIComponent(sourceId)}/infographic`,
+        { model_name: 'qwen3', temperature: 0.2 }
+      )
+      console.log('[InfographicAPI] Generation successful, response:', response.data)
+      
+      // Cache the result
+      saveCachedInfographic(sourceId, response.data)
+      
+      return response.data
+    } catch (error) {
+      console.error('[InfographicAPI] Generation failed:', error)
+      throw error
+    }
   },
 
   getStatus: async (sourceId: string): Promise<{ status: string | null; message?: string }> => {
@@ -139,5 +150,15 @@ export const infographicApi = {
     } catch {
       return { status: null }
     }
+  },
+
+  // Retrieve cached infographic if available
+  getCached: (sourceId: string): InfographicResponse | null => {
+    return loadCachedInfographic(sourceId)
+  },
+
+  // Clear cache for a source
+  clearCache: (sourceId: string): void => {
+    clearCachedInfographic(sourceId)
   },
 }

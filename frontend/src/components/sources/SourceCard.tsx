@@ -26,8 +26,10 @@ import {
   Unlink,
   GitBranch,
   Newspaper,
-  Lightbulb,
   Network,
+  BarChart2,
+  PhoneCall,
+  Lightbulb,
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -39,6 +41,8 @@ import { MindMapDialog } from '@/components/source/MindMapDialog'
 import { InfographicDialog } from '@/components/source/InfographicDialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ProfileGraphModal } from '@/components/sources/ProfileGraphModal'
+import { BankAnalysisDialog } from '@/components/source/BankAnalysisDialog'
+import { MobileDataAnalysisDialog } from '@/components/source/MobileDataAnalysisDialog'
 
 interface SourceCardProps {
   source: SourceListResponse
@@ -144,6 +148,28 @@ export function SourceCard({
   const [mindMapOpen, setMindMapOpen] = useState(false)
   const [infographicOpen, setInfographicOpen] = useState(false)
   const [profileGraphOpen, setProfileGraphOpen] = useState(false)
+  const [bankAnalysisOpen, setBankAnalysisOpen] = useState(false)
+  const [mobileAnalysisOpen, setMobileAnalysisOpen] = useState(false)
+
+  const filePathUi = source.asset?.file_path ?? ''
+  const titleAndPath = `${source.title ?? ''} ${filePathUi}`
+  const mobileHint =
+    /cdr|call\s*detail|sms|subscriber|tower|\blac\b|cell\s*id|mobile\s*data|phone\s*log|imei\b|call\s*log/i
+
+  const isMobileDataFile =
+    !!source.asset?.file_path &&
+    (/\.(csv|tsv)$/i.test(filePathUi) ||
+      (/\.(txt|log)$/i.test(filePathUi) && mobileHint.test(titleAndPath)) ||
+      (/\.pdf$/i.test(filePathUi) && mobileHint.test(titleAndPath)))
+
+  // Detect if this is a bank statement file — only show for PDF files with bank-related names
+  // Must be a PDF file (not just any file with "bank" in the name)
+  const isBankFile = !!(source.asset?.file_path) && (
+    /\.pdf$/i.test(source.asset.file_path)
+  ) && (
+    /bank|statement|acct|account/i.test(source.title ?? '') ||
+    /bank|statement|acct|account/i.test(source.asset?.file_path ?? '')
+  )
   // Once we've seen a terminal status, stop polling entirely
   const [terminalStatus, setTerminalStatus] = useState<string | null>(
     sourceWithStatus.status === 'completed' || sourceWithStatus.status === 'failed'
@@ -168,9 +194,23 @@ export function SourceCard({
 
   // Determine current status
   // If source has a command_id but no status, treat as "new" (just created)
+  // If a source already has meaningful output (insights / embeddings / topics),
+  // don't keep showing processing/failed after reload due to stale command status.
+  const hasInsights = (source.insights_count ?? 0) > 0
+  const hasDerivedOutput =
+    hasInsights ||
+    !!source.embedded ||
+    ((source.topics?.length ?? 0) > 0)
   const rawStatus = statusData?.status || sourceWithStatus.status
-  const currentStatus: SourceStatus = isSourceStatus(rawStatus)
-    ? rawStatus
+  const normalizedRawStatus =
+    (rawStatus === 'failed' && hasDerivedOutput)
+      ? 'completed'
+      : ((rawStatus === 'new' || rawStatus === 'queued' || rawStatus === 'running') && hasDerivedOutput)
+        ? 'completed'
+        : rawStatus
+
+  const currentStatus: SourceStatus = isSourceStatus(normalizedRawStatus)
+    ? normalizedRawStatus
     : (sourceWithStatus.command_id ? 'new' : 'completed')
 
 
@@ -251,7 +291,7 @@ export function SourceCard({
       )}
       onClick={(e) => {
         // Don't open source detail if a dialog is already open
-        if (mindMapOpen || infographicOpen || profileGraphOpen) return
+        if (mindMapOpen || infographicOpen || profileGraphOpen || bankAnalysisOpen) return
         handleCardClick()
       }}
     >
@@ -316,16 +356,14 @@ export function SourceCard({
                 {sourceType === 'link' ? t.sources.addUrl : sourceType === 'upload' ? t.sources.uploadFile : t.sources.enterText}
               </Badge>
 
-              {isCompleted && (
-                <Badge
-                  variant={source.insights_count > 0 ? 'default' : 'outline'}
-                  className="text-xs flex items-center gap-1"
-                  title={`${source.insights_count} insight${source.insights_count !== 1 ? 's' : ''}`}
-                >
-                  <Lightbulb className="h-3 w-3 shrink-0" />
-                  <span>{source.insights_count} {source.insights_count === 1 ? 'Insight' : 'Insights'}</span>
+              {/* Insight count badge — shown when source has insights */}
+              {hasInsights && isCompleted && (
+                <Badge variant="outline" className="text-xs flex items-center gap-1 text-amber-600 border-amber-300 bg-amber-50">
+                  <Lightbulb className="h-3 w-3" />
+                  {source.insights_count} {source.insights_count === 1 ? t.common.insight : t.common.insights}
                 </Badge>
               )}
+
               {source.topics && source.topics.length > 0 && isCompleted && (
                 <>
                   {source.topics.slice(0, 2).map((topic, index) => (
@@ -358,6 +396,37 @@ export function SourceCard({
             {/* Mind Map button - removed */}
 
             {/* Infographic button - removed */}
+
+            {/* Bank Analysis button — show for uploaded PDF files (even while processing) */}
+            {isBankFile && (isCompleted || isProcessing) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-green-600 hover:bg-green-50 transition-colors"
+                title="Bank Statement Analysis"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setBankAnalysisOpen(true)
+                }}
+              >
+                <BarChart2 className="h-4 w-4" />
+              </Button>
+            )}
+
+            {isMobileDataFile && (isCompleted || isProcessing) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                title={t.sources.mobileData.analysisTooltip}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMobileAnalysisOpen(true)
+                }}
+              >
+                <PhoneCall className="h-4 w-4" />
+              </Button>
+            )}
 
             {/* Profile Graph button */}
             <Button
@@ -496,6 +565,23 @@ export function SourceCard({
             (source.asset?.file_path ? `/api/sources/${source.id}/download` : undefined)
           }
         />
+
+        {/* Bank Analysis Dialog */}
+        {bankAnalysisOpen && (
+          <BankAnalysisDialog
+            sourceId={source.id}
+            open={bankAnalysisOpen}
+            onClose={() => setBankAnalysisOpen(false)}
+          />
+        )}
+
+        {mobileAnalysisOpen && (
+          <MobileDataAnalysisDialog
+            sourceId={source.id}
+            open={mobileAnalysisOpen}
+            onClose={() => setMobileAnalysisOpen(false)}
+          />
+        )}
       </div>
     </Card>
   )

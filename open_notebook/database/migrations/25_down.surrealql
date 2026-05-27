@@ -1,0 +1,2 @@
+-- Migration 25 rollback
+REMOVE TABLE bank_statement_config;

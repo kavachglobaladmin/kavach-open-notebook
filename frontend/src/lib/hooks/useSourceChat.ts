@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { sourceChatApi } from '@/lib/api/source-chat'
@@ -52,10 +52,11 @@ export function useSourceChat(sourceId: string) {
     // Only clear when explicitly switching sessions (handled in switchSession)
   }, [currentSession])
 
-  // Auto-select most recent session when sessions are loaded
+  // Auto-select most recent session when sessions are loaded so the user
+  // continues their previous conversation instead of seeing an empty state.
   useEffect(() => {
     if (sessions.length > 0 && !currentSessionId) {
-      // Find most recent session (sessions are sorted by created date desc from API)
+      // Sessions are sorted by created date desc from API — pick the most recent
       const mostRecentSession = sessions[0]
       setCurrentSessionId(mostRecentSession.id)
     }

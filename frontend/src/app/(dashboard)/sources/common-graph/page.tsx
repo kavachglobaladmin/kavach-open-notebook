@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { sourcesApi } from '@/lib/api/sources'
 import { CommonGraphResponse, SourceListResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
@@ -277,6 +278,7 @@ export default function CommonGraphPage() {
   const [graphOpen, setGraphOpen] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState('')
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
+  const [searchTerm, setSearchTerm] = useState('')
 
   const { data: models = [] } = useModels()
   const { data: defaults } = useModelDefaults()
@@ -324,7 +326,14 @@ export default function CommonGraphPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col h-full w-full px-6 py-6">
+      <div className="flex flex-col h-full w-full">
+        <PageHeader
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search sources..."
+          hideNew
+        />
+        <div className="flex-1 px-6 py-6">
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold">Create common graph</h1>
@@ -406,6 +415,7 @@ export default function CommonGraphPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>{/* end flex-1 px-6 py-6 */}
       </div>
     </AppShell>
   )

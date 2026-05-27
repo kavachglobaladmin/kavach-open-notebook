@@ -36,6 +36,13 @@ _CLASSIFICATION_RULES: list[tuple[list[str], type[OpenNotebookError], str | None
         ConfigurationError,
         None,
     ),
+    # Provider/model 404 phrasing (Esperanto / OpenAI-compatible / Ollama)
+    # Catches: "model 'mistral:latest' not found (status code: 404)"
+    (
+        ["model '", "model \"", "not found (status code: 404)", "status code: 404", "404"],
+        ConfigurationError,
+        "Configured model was not found by the provider. Please check Settings -> Models and select an available model for this task.",
+    ),
     # Configuration errors from provision.py (pass through)
     (
         ["no model configured", "please go to settings"],

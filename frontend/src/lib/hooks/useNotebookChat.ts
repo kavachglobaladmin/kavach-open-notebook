@@ -406,7 +406,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { chatApi } from '@/lib/api/chat'
@@ -506,11 +506,10 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     }
   }, [currentSession, currentSessionId]) // watch both so clearing works on session deselect
 
-  // Auto-select most recent session only on initial load (when no session is active)
-  // Do NOT auto-select after deletion — let the UI stay empty so user can choose
+  // Auto-select most recent session on initial load so the user continues
+  // their previous conversation instead of seeing an empty state.
   useEffect(() => {
     if (sessions.length > 0 && currentSessionId === null) {
-      // Only auto-select on first load (messages is empty = fresh load, not post-delete)
       if (messages.length === 0) {
         const mostRecentSession = sessions[0]
         setCurrentSessionId(mostRecentSession.id)

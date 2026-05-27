@@ -115,6 +115,9 @@ class TransformationCreate(BaseModel):
     apply_default: bool = Field(
         False, description="Whether to apply this transformation by default"
     )
+    model_id: Optional[str] = Field(
+        None, description="Optional model ID to use for this transformation"
+    )
 
 
 class TransformationUpdate(BaseModel):
@@ -129,6 +132,9 @@ class TransformationUpdate(BaseModel):
     apply_default: Optional[bool] = Field(
         None, description="Whether to apply this transformation by default"
     )
+    model_id: Optional[str] = Field(
+        None, description="Optional model ID to use for this transformation"
+    )
 
 
 class TransformationResponse(BaseModel):
@@ -138,6 +144,7 @@ class TransformationResponse(BaseModel):
     description: str
     prompt: str
     apply_default: bool
+    model_id: Optional[str] = None
     created: str
     updated: str
 
@@ -149,7 +156,7 @@ class TransformationExecuteRequest(BaseModel):
         ..., description="ID of the transformation to execute"
     )
     input_text: str = Field(..., description="Text to transform")
-    model_id: str = Field(..., description="Model ID to use for the transformation")
+    model_id: Optional[str] = Field(None, description="Model ID to use (uses default transformation model if not provided)")
 
 
 class TransformationExecuteResponse(BaseModel):
@@ -358,6 +365,8 @@ class SourceResponse(BaseModel):
     topics: Optional[List[str]]
     asset: Optional[AssetModel]
     full_text: Optional[str]
+    translated_content: Optional[str] = None   # English translation (if original is non-English)
+    content_language: Optional[str] = None     # Detected language code (e.g. "hi", "en")
     embedded: bool
     embedded_chunks: int
     file_available: Optional[bool] = None

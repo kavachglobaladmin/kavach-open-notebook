@@ -5,17 +5,12 @@ import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Search, ChevronDown, AlertCircle, Settings, Save, MessageCircleQuestion } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { ChevronDown, AlertCircle, Save, Sparkles, Search, SendHorizontal, ArrowRight, Lightbulb, Link2, Brain, Zap } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -24,41 +19,55 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
+import { cn } from '@/lib/utils'
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function renderHighlighted(text: string, query: string) {
+  const q = query.trim()
+  if (!q) return text
+  const parts = q.split(/\s+/).filter(Boolean).slice(0, 6)
+  const needles = parts
+    .map(p => p.trim())
+    .filter(p => p.length >= 2)
+    .map(escapeRegExp)
+  if (needles.length === 0) return text
+
+  const splitRe = new RegExp(`(${needles.join('|')})`, 'ig')
+  const testRe = new RegExp(`^(${needles.join('|')})$`, 'i')
+  return text.split(splitRe).map((chunk, idx) => (
+    testRe.test(chunk)
+      ? <mark key={idx} className="bg-violet-100 text-violet-900 rounded px-1 py-0.5">{chunk}</mark>
+      : <span key={idx}>{chunk}</span>
+  ))
+}
 
 export default function SearchPage() {
   const { t } = useTranslation()
-  // URL params
   const searchParams = useSearchParams()
   const urlQuery = searchParams?.get('q') || ''
   const rawMode = searchParams?.get('mode')
   const urlMode = rawMode === 'search' ? 'search' : 'ask'
 
-  // Tab state (controlled)
   const [activeTab, setActiveTab] = useState<'ask' | 'search'>(
     urlMode === 'search' ? 'search' : 'ask'
   )
 
-  // Search state
   const [searchQuery, setSearchQuery] = useState(urlMode === 'search' ? urlQuery : '')
   const [searchType, setSearchType] = useState<'text' | 'vector'>('text')
   const [searchSources, setSearchSources] = useState(true)
   const [searchNotes, setSearchNotes] = useState(true)
-
-  // Ask state
   const [askQuestion, setAskQuestion] = useState(urlMode === 'ask' ? urlQuery : '')
-
-  // Advanced models dialog
   const [showAdvancedModels, setShowAdvancedModels] = useState(false)
   const [customModels, setCustomModels] = useState<{
     strategy: string
     answer: string
     finalAnswer: string
   } | null>(null)
-
-  // Save to notebooks dialog
   const [showSaveDialog, setShowSaveDialog] = useState(false)
 
-  // Hooks
   const searchMutation = useSearch()
   const ask = useAsk()
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
@@ -66,26 +75,16 @@ export default function SearchPage() {
   const { openModal } = useModalManager()
 
   const modelNameById = useMemo(() => {
-    if (!availableModels) {
-      return new Map<string, string>()
-    }
+    if (!availableModels) return new Map<string, string>()
     return new Map(availableModels.map((model) => [model.id, model.name]))
   }, [availableModels])
 
-  const resolveModelName = (id?: string | null) => {
-    if (!id) return t.searchPage.notSet
-    return modelNameById.get(id) ?? id
-  }
-
   const hasEmbeddingModel = !!modelDefaults?.default_embedding_model
-
-  // Track if we've already auto-triggered from URL params
   const hasAutoTriggeredRef = useRef(false)
   const lastUrlParamsRef = useRef({ q: '', mode: '' })
 
   const handleSearch = useCallback(() => {
     if (!searchQuery.trim()) return
-
     searchMutation.mutate({
       query: searchQuery,
       type: searchType,
@@ -105,24 +104,17 @@ export default function SearchPage() {
 
   const handleAsk = useCallback(() => {
     if (!askQuestion.trim() || !modelDefaults?.default_chat_model) return
-
     const models = customModels || {
       strategy: modelDefaults.default_chat_model,
       answer: modelDefaults.default_chat_model,
       finalAnswer: modelDefaults.default_chat_model
     }
-
     ask.sendAsk(askQuestion, models)
   }, [askQuestion, modelDefaults, customModels, ask])
 
-  // Auto-trigger search/ask when arriving with URL params
   useEffect(() => {
-    // Skip if already triggered or no query
     if (hasAutoTriggeredRef.current || !urlQuery) return
-
-    // Wait for models to load before triggering ask
     if (urlMode === 'ask' && modelsLoading) return
-
     if (urlMode === 'search') {
       handleSearch()
       hasAutoTriggeredRef.current = true
@@ -132,7 +124,6 @@ export default function SearchPage() {
     }
   }, [urlQuery, urlMode, modelsLoading, modelDefaults, handleSearch, handleAsk])
 
-  // Handle URL param changes while on page
   useEffect(() => {
     const currentQ = searchParams?.get('q') || ''
     const rawCurrentMode = searchParams?.get('mode')
@@ -140,310 +131,247 @@ export default function SearchPage() {
 
     if (currentQ !== lastUrlParamsRef.current.q || currentMode !== lastUrlParamsRef.current.mode) {
       lastUrlParamsRef.current = { q: currentQ, mode: currentMode }
-
       if (currentQ) {
         if (currentMode === 'search') {
           setSearchQuery(currentQ)
           setActiveTab('search')
-          hasAutoTriggeredRef.current = false
         } else {
           setAskQuestion(currentQ)
           setActiveTab('ask')
-          hasAutoTriggeredRef.current = false
         }
+        hasAutoTriggeredRef.current = false
       }
     }
   }, [searchParams])
 
   return (
     <AppShell>
-      <PageHeader 
-        searchValue={searchQuery} 
-        onSearchChange={(val) => setSearchQuery(val)} 
-      />
-      <div className="p-4 md:p-8 max-w-[1600px] mx-auto w-full">
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">{t.searchPage.askAndSearch}</h1>
+      <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#FAFBFF]">
+        {/* Background Gradients */}
+        <div className="absolute top-[10%] -left-[10%] w-[50%] h-[60%] rounded-full bg-[#E0F2FE] mix-blend-multiply blur-[120px] opacity-60 pointer-events-none"></div>
+        <div className="absolute -top-[10%] right-[-5%] w-[45%] h-[65%] rounded-full bg-[#F3E8FF] mix-blend-multiply blur-[120px] opacity-80 pointer-events-none"></div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 min-h-[calc(100vh-220px)] p-6 md:p-12">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
-            
-            {/* Centered Pill Tabs matching the exact UI with text un-wrapped */}
-            <div className="flex justify-center mb-12">
-              <TabsList className="bg-transparent border-0 gap-4 h-auto p-0 flex flex-wrap justify-center">
-                <TabsTrigger 
-                  value="ask"
-                  className="rounded-full px-8 py-2.5 text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center justify-center data-[state=active]:bg-[#F05A28] data-[state=active]:text-white data-[state=active]:border-[#F05A28] data-[state=inactive]:bg-[#FFF4F0] data-[state=inactive]:text-[#F05A28] border data-[state=inactive]:border-[#F05A28]"
-                >
-                  <MessageCircleQuestion className="h-4 w-4 mr-2" />
-                  {t.searchPage.askBeta || 'Ask (Beta)'}
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="search"
-                  className="rounded-full px-8 py-2.5 text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center justify-center data-[state=active]:bg-[#F05A28] data-[state=active]:text-white data-[state=active]:border-[#F05A28] data-[state=inactive]:bg-[#FFF4F0] data-[state=inactive]:text-[#F05A28] border data-[state=inactive]:border-[#F05A28]"
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  {t.searchPage.search}
-                </TabsTrigger>
-              </TabsList>
+        <PageHeader 
+          searchValue={searchQuery} 
+          onSearchChange={(val) => setSearchQuery(val)}
+          newLabel="NOTEBOOK"
+        />
+        
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-8 pb-20 max-w-[1000px] mx-auto w-full relative z-10 min-h-full">
+            <div className="text-center mb-6">
+              <h1 className="text-3xl md:text-[32px] font-bold text-[#8A2BE2] mb-2 tracking-tight">Ask & Search</h1>
+              <p className="text-[14px] md:text-[15px] text-slate-500 font-medium">Your AI-powered knowledge assistant</p>
             </div>
 
-            {/* ASK CONTENT */}
-            <TabsContent value="ask" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-              <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.searchPage.askYourKb || 'Ask'}</h2>
-                <p className="text-gray-500 text-sm">{t.searchPage.askYourKbDesc || 'Ask Questions About Your Knowledge Base'}</p>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
+              <div className="flex justify-center mb-8 px-4 sticky top-0 z-20 pt-2 pb-4">
+                <div className="bg-white p-1.5 flex items-center justify-center rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 w-fit mx-auto">
+                  <Button 
+                    variant="ghost"
+                    onClick={() => setActiveTab('ask')}
+                    className={cn(
+                      "h-[48px] rounded-full px-6 sm:px-10 text-[14px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
+                      activeTab === 'ask' 
+                        ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
+                        : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
+                    )}
+                  >
+                    <Sparkles className="h-[18px] w-[18px]" />
+                    Ask AI (Beta)
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    onClick={() => setActiveTab('search')}
+                    className={cn(
+                      "h-[48px] rounded-full px-6 sm:px-10 text-[14px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
+                      activeTab === 'search' 
+                        ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
+                        : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
+                    )}
+                  >
+                    <Search className="h-[18px] w-[18px]" />
+                    Search
+                  </Button>
+                </div>
               </div>
 
-              <div className="max-w-4xl mx-auto space-y-8">
-                {/* Ask Input Container (Exact match styled) */}
-                <div className="border border-gray-200 rounded-2xl shadow-sm bg-white overflow-hidden transition-all focus-within:border-[#F05A28] focus-within:ring-1 focus-within:ring-[#F05A28]">
-                  <div className="p-2">
-                    <Textarea
-                      placeholder={t.searchPage.enterQuestionPlaceholder || 'Enter Your Question...'}
-                      value={askQuestion}
-                      onChange={(e) => setAskQuestion(e.target.value)}
-                      onKeyDown={(e) => {
-                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !ask.isStreaming && askQuestion.trim()) {
-                          e.preventDefault()
-                          handleAsk()
-                        }
-                      }}
-                      disabled={ask.isStreaming}
-                      className="border-0 shadow-none focus-visible:ring-0 resize-none text-base md:text-lg min-h-[120px] p-4 bg-transparent"
-                      aria-label={t.common.accessibility.enterQuestion}
-                    />
+              <div className="bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-6 md:p-10 w-full mb-10">
+                
+                <TabsContent value="ask" className="mt-0 focus-visible:outline-none">
+                  <div className="text-center mb-8">
+                    <h2 className="text-[20px] md:text-[24px] font-bold text-slate-900 mb-1.5">Ask Your Knowledge Base</h2>
+                    <p className="text-slate-500 text-[14px]">Get AI-powered answers from your documents</p>
                   </div>
-                  
-                  <div className="border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white">
-                    {!hasEmbeddingModel ? (
-                      <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-1.5 rounded-md w-full sm:w-auto">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>{t.searchPage.noEmbeddingModel}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3 flex-wrap flex-1 w-full sm:w-auto">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowAdvancedModels(true)}
-                            disabled={ask.isStreaming}
-                            className="bg-[#FFF4F0] hover:bg-[#FFE8E0] text-[#F05A28] hover:text-[#D94E20] h-9 px-4 rounded-md"
-                          >
-                            <Settings className="h-4 w-4 mr-2" />
-                            {t.searchPage.advanced || 'Advanced Models'}
-                          </Button>
-                          <div className="hidden lg:flex gap-2 text-xs">
-                            <Badge variant="outline" className="bg-gray-50 font-normal text-gray-500 border-gray-200">
-                              Strategy: {resolveModelName(customModels?.strategy || modelDefaults?.default_chat_model)}
-                            </Badge>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-3 w-full sm:w-auto">
-                          {ask.finalAnswer && (
+                  <div className="space-y-6">
+                    <div>
+                      <div className="relative mb-5">
+                        <Textarea
+                          placeholder="What are the connections between Project Alpha and the latest market trends?"
+                          value={askQuestion}
+                          onChange={(e) => setAskQuestion(e.target.value)}
+                          disabled={ask.isStreaming}
+                          className="border border-slate-100 shadow-sm transition-all duration-200 focus-visible:ring-1 focus-visible:ring-[#8A2BE2] resize-none text-[15px] min-h-[140px] p-5 pb-12 bg-[#F8F9FE] rounded-[16px] w-full placeholder:text-slate-400"
+                        />
+                        <div className="absolute right-5 bottom-5 w-6 h-6 rounded-full bg-purple-100/50"></div>
+                      </div>
+                      
+                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                        {!hasEmbeddingModel ? (
+                          <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-4 py-3 rounded-[12px] w-full font-medium">
+                            <AlertCircle className="h-5 w-5" />
+                            <span>{t.searchPage.noEmbeddingModel}</span>
+                          </div>
+                        ) : (
+                          <>
                             <Button
                               variant="outline"
-                              onClick={() => setShowSaveDialog(true)}
-                              className="border-[#F05A28] text-[#F05A28] hover:bg-[#FFF4F0] h-10 px-6"
+                              onClick={() => setShowAdvancedModels(true)}
+                              disabled={ask.isStreaming}
+                              className="bg-[#F5F3FF] hover:bg-[#EDE9FE] border-none text-[#8A2BE2] font-bold h-[52px] px-6 rounded-[12px] w-full sm:w-auto shrink-0 transition-colors"
                             >
-                              <Save className="h-4 w-4 mr-2" />
-                              {t.searchPage.saveToNotebooks}
+                              Advanced Mode <ChevronDown className="h-4 w-4 ml-2" />
                             </Button>
-                          )}
-                          <Button
-                            onClick={handleAsk}
-                            disabled={ask.isStreaming || !askQuestion.trim()}
-                            className="bg-[#F05A28] hover:bg-[#D94E20] text-white px-8 h-10 rounded-md text-sm font-medium tracking-wide uppercase w-full sm:w-auto"
-                          >
-                            {ask.isStreaming ? (
-                              <>
-                                <LoadingSpinner size="sm" className="mr-2" />
-                                {t.searchPage.processing || 'PROCESSING'}
-                              </>
-                            ) : (
-                              <>
-                                <MessageCircleQuestion className="h-4 w-4 mr-2" />
-                                {t.searchPage.ask || 'ASK'}
-                              </>
+
+                            {ask.finalAnswer && (
+                              <Button
+                                onClick={() => setShowSaveDialog(true)}
+                                className="border-[#8A2BE2] text-[#8A2BE2] bg-transparent border-2 hover:bg-[#8A2BE2] hover:text-white h-[52px] px-6 rounded-[12px] font-bold w-full sm:w-auto transition-all"
+                              >
+                                <Save className="h-4 w-4 mr-2" /> Save
+                              </Button>
                             )}
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
+                            
+                            <Button
+                              onClick={handleAsk}
+                              disabled={ask.isStreaming || !askQuestion.trim()}
+                              className="bg-[#8A2BE2] hover:bg-[#7A26C9] text-white h-[52px] rounded-[12px] px-8 font-bold flex-1 shadow-md shadow-purple-500/20 w-full sm:w-auto flex items-center justify-center gap-2.5 transition-all"
+                            >
+                              <Sparkles className="h-5 w-5" />
+                              {ask.isStreaming ? <LoadingSpinner size="sm" /> : "Ask AI"}
+                              {!ask.isStreaming && <SendHorizontal className="h-5 w-5" /> }
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
 
-                {/* Ask Streaming Response */}
-                <StreamingResponse
-                  isStreaming={ask.isStreaming}
-                  strategy={ask.strategy}
-                  answers={ask.answers}
-                  finalAnswer={ask.finalAnswer}
-                />
-              </div>
-            </TabsContent>
-
-            {/* SEARCH CONTENT */}
-            <TabsContent value="search" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
-              <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-gray-900 mb-3">{t.searchPage.search || 'Search'}</h2>
-                <p className="text-gray-500 text-sm">
-                  Search Your Knowledge Base For Specific Keywords Or Concepts
-                </p>
-              </div>
-
-              <div className="max-w-4xl mx-auto space-y-8">
-                {/* Search Input Container (Exact match styled) */}
-                <div className="border border-gray-200 rounded-2xl shadow-sm bg-white overflow-hidden transition-all focus-within:border-[#F05A28] focus-within:ring-1 focus-within:ring-[#F05A28]">
-                  <div className="p-2">
-                    <Textarea
-                      placeholder={t.searchPage.enterSearchPlaceholder || 'Enter Search Query...'}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      disabled={searchMutation.isPending}
-                      className="border-0 shadow-none focus-visible:ring-0 resize-none text-base md:text-lg min-h-[120px] p-4 bg-transparent"
-                      aria-label={t.common.accessibility.enterSearch}
+                    <StreamingResponse
+                      isStreaming={ask.isStreaming}
+                      strategy={ask.strategy}
+                      answers={ask.answers}
+                      finalAnswer={ask.finalAnswer}
                     />
                   </div>
-                  
-                  <div className="border-t border-gray-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white">
-                    <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
-                      {/* Search Type Dropdown Mimicking UI */}
-                      <div className="relative inline-flex items-center">
+                </TabsContent>
+
+                <TabsContent value="search" className="mt-0 focus-visible:outline-none">
+                  <div className="text-center mb-8">
+                    <div className="mx-auto w-[60px] h-[60px] rounded-2xl bg-[#8A2BE2] flex items-center justify-center shadow-lg shadow-purple-500/30 mb-5">
+                      <Search className="h-7 w-7 text-white" />
+                    </div>
+                    <h2 className="text-[20px] md:text-[24px] font-bold text-slate-900 mb-1.5">Search Your Knowledge Base</h2>
+                    <p className="text-slate-500 text-[14px]">Find documents or concepts instantly</p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-5">
+                      <Input
+                        placeholder="Enter search query..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        className="h-[56px] border border-slate-100 bg-[#F8F9FE] rounded-[16px] px-6 text-[15px] focus-visible:ring-1 focus-visible:ring-[#8A2BE2] shadow-sm"
+                      />
+                      
+                      <div className="flex flex-col sm:flex-row gap-3">
                         <select
                           value={searchType}
                           onChange={(e) => setSearchType(e.target.value as 'text' | 'vector')}
-                          disabled={!hasEmbeddingModel || modelsLoading || searchMutation.isPending}
-                          className="appearance-none bg-[#FFF4F0] hover:bg-[#FFE8E0] text-[#F05A28] text-sm font-medium pl-4 pr-10 py-2.5 rounded-md outline-none cursor-pointer transition-colors border-none disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="bg-[#F5F3FF] text-[#8A2BE2] text-[14px] font-bold px-6 py-3 rounded-[12px] outline-none border-none h-[52px] w-full sm:w-48 cursor-pointer"
                         >
-                          <option value="text">Search Type: Text</option>
-                          <option value="vector" disabled={!hasEmbeddingModel}>Search Type: Vector</option>
+                          <option value="text">All Documents</option>
+                          <option value="vector">Vector Only</option>
                         </select>
-                        <ChevronDown className="absolute right-3 h-4 w-4 text-[#F05A28] pointer-events-none" />
-                      </div>
-                      
-                      {/* Preserved underlying functionality for Search Locations */}
-                      <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-700 transition-colors">
-                          <Checkbox 
-                            checked={searchSources} 
-                            onCheckedChange={(c) => setSearchSources(c as boolean)} 
-                            disabled={searchMutation.isPending}
-                            className="data-[state=checked]:bg-[#F05A28] data-[state=checked]:border-[#F05A28]" 
-                          /> 
-                          {t.searchPage.searchSources || 'Sources'}
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-700 transition-colors">
-                          <Checkbox 
-                            checked={searchNotes} 
-                            onCheckedChange={(c) => setSearchNotes(c as boolean)} 
-                            disabled={searchMutation.isPending}
-                            className="data-[state=checked]:bg-[#F05A28] data-[state=checked]:border-[#F05A28]" 
-                          /> 
-                          {t.searchPage.searchNotes || 'Notes'}
-                        </label>
+
+                        <Button
+                          onClick={handleSearch}
+                          disabled={searchMutation.isPending || !searchQuery.trim()}
+                          className="bg-[#8A2BE2] hover:bg-[#7A26C9] text-white h-[52px] rounded-[12px] px-10 font-bold shadow-md shadow-purple-500/20 flex-1 transition-all"
+                        >
+                          {searchMutation.isPending ? <LoadingSpinner size="sm" /> : "Search"}
+                        </Button>
                       </div>
                     </div>
 
-                    <Button
-                      onClick={handleSearch}
-                      disabled={searchMutation.isPending || !searchQuery.trim()}
-                      className="bg-[#F05A28] hover:bg-[#D94E20] text-white px-8 h-10 rounded-md text-sm font-medium tracking-wide uppercase w-full sm:w-auto"
-                    >
-                      {searchMutation.isPending ? (
-                        <LoadingSpinner size="sm" className="mr-2" />
-                      ) : (
-                        <Search className="h-4 w-4 mr-2" />
-                      )}
-                      {t.searchPage.search || 'SEARCH'}
-                    </Button>
-                  </div>
-                </div>
-
-                {!hasEmbeddingModel && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-amber-600">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{t.searchPage.vectorSearchWarning}</span>
-                  </div>
-                )}
-
-                {/* Search Results Block (Preserved Logic) */}
-                {searchMutation.data && (
-                  <div className="mt-8 space-y-4 text-left">
-                    <div className="flex items-center justify-between px-2">
-                      <h3 className="text-sm font-medium text-gray-700">
-                        {t.searchPage.resultsFound.replace('{count}', searchMutation.data.total_count.toString())}
-                      </h3>
-                      <Badge variant="outline" className="bg-gray-50 text-gray-600 font-normal">
-                        {searchMutation.data.search_type === 'text' ? t.searchPage.textSearch : t.searchPage.vectorSearch}
-                      </Badge>
-                    </div>
-
-                    {searchMutation.data.results.length === 0 ? (
-                      <Card className="border-gray-100 shadow-sm">
-                        <CardContent className="pt-8 pb-8 text-center text-muted-foreground">
-                          {t.searchPage.noResultsFor.replace('{query}', searchQuery)}
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 pb-4">
-                        {searchMutation.data.results.map((result, index) => {
-                          if (!result.parent_id) {
-                            console.warn('Search result with null parent_id:', result)
-                            return null
-                          }
-                          const [type, id] = result.parent_id.split(':')
-                          const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
-
-                          return (
-                            <Card key={index} className="border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                              <CardContent className="p-5">
-                                <div className="flex items-start justify-between gap-4">
-                                  <div className="flex-1">
-                                    <button
-                                      onClick={() => openModal(modalType, id)}
-                                      className="text-[#F05A28] hover:text-[#D94E20] hover:underline font-medium text-left"
-                                    >
-                                      {result.title}
-                                    </button>
-                                    <Badge variant="secondary" className="ml-3 bg-[#FFF4F0] text-[#F05A28] hover:bg-[#FFE8E0] font-medium">
-                                      {result.final_score.toFixed(2)}
-                                    </Badge>
-                                  </div>
-                                </div>
-
-                                {result.matches && result.matches.length > 0 && (
-                                  <Collapsible className="mt-4">
-                                    <CollapsibleTrigger className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors">
-                                      <ChevronDown className="h-4 w-4" />
-                                      {t.searchPage.matches.replace('{count}', result.matches.length.toString())}
-                                    </CollapsibleTrigger>
-                                    <CollapsibleContent className="mt-3 space-y-2">
-                                      {result.matches.map((match, i) => (
-                                        <div key={i} className="text-sm text-gray-600 pl-4 py-1.5 border-l-2 border-[#F05A28]/30 bg-gray-50/50 rounded-r-md">
-                                          {match}
-                                        </div>
-                                      ))}
-                                    </CollapsibleContent>
-                                  </Collapsible>
-                                )}
-                              </CardContent>
-                            </Card>
-                          )
-                        })}
+                    {searchMutation.data && (
+                      <div className="mt-8 space-y-4 text-left">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                          <span className="text-[14px] font-bold text-slate-600">Results ({searchMutation.data.total_count})</span>
+                        </div>
+                        {searchMutation.data.results.map((result, index) => (
+                          <Card key={index} className="border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow rounded-[16px]">
+                            <CardContent className="p-5">
+                              <button 
+                                onClick={() => {
+                                  const [type, id] = result.parent_id.split(':')
+                                  const modalType = (type === 'source_insight' ? 'insight' : type) as 'source' | 'note' | 'insight'
+                                  openModal(modalType, id)
+                                }}
+                                className="text-[#8A2BE2] font-bold text-[16px] hover:underline text-left block w-full"
+                              >
+                                {renderHighlighted(result.title, searchQuery)}
+                              </button>
+                              {Array.isArray(result.matches) && result.matches.length > 0 && (
+                                <p className="mt-2 text-[13px] text-slate-600 leading-relaxed">
+                                  {renderHighlighted(result.matches[0], searchQuery)}
+                                </p>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
                       </div>
                     )}
                   </div>
-                )}
+                </TabsContent>
               </div>
-            </TabsContent>
-          </Tabs>
+
+              <div className="w-full">
+                <h3 className="text-slate-800 font-bold text-[16px] mb-4 px-1">Quick Actions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <QuickActionCard 
+                    title="Summarize Sources" 
+                    desc="Get key insights from your entire knowledge base" 
+                    icon={<Lightbulb className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#FF8A00]" 
+                  />
+                  <QuickActionCard 
+                    title="Find Connections" 
+                    desc="Discover hidden relationships between documents" 
+                    icon={<Link2 className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#3B82F6]" 
+                  />
+                  <QuickActionCard 
+                    title="Deep Analysis" 
+                    desc="Comprehensive analysis across multiple sources" 
+                    icon={<Brain className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#E83E8C]" 
+                  />
+                  <QuickActionCard 
+                    title="Quick Insights" 
+                    desc="Fast answers from your knowledge base" 
+                    icon={<Zap className="text-white h-[22px] w-[22px]" />} 
+                    iconBg="bg-[#10B981]" 
+                  />
+                </div>
+              </div>
+            </Tabs>
+          </div>
         </div>
       </div>
 
-      {/* Global Modals for Advanced Options and Notebooks */}
       <AdvancedModelsDialog
         open={showAdvancedModels}
         onOpenChange={setShowAdvancedModels}
@@ -454,15 +382,21 @@ export default function SearchPage() {
         }}
         onSave={setCustomModels}
       />
-
-      {ask.finalAnswer && (
-        <SaveToNotebooksDialog
-          open={showSaveDialog}
-          onOpenChange={setShowSaveDialog}
-          question={askQuestion}
-          answer={ask.finalAnswer}
-        />
-      )}
     </AppShell>
+  )
+}
+
+function QuickActionCard({ title, desc, icon, iconBg }: { title: string, desc: string, icon: React.ReactNode, iconBg: string }) {
+  return (
+    <button className="flex items-center gap-4 p-5 bg-white rounded-[16px] border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all text-left w-full group">
+      <div className={cn("w-[48px] h-[48px] rounded-[14px] flex items-center justify-center shrink-0 shadow-sm", iconBg)}>
+        {icon}
+      </div>
+      <div className="flex-1">
+        <h4 className="font-bold text-slate-800 text-[15px] mb-1">{title}</h4>
+        <p className="text-slate-500 text-[13px] leading-snug">{desc}</p>
+      </div>
+      <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
+    </button>
   )
 }

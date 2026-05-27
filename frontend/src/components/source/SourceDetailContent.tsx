@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Bold, Italic, Strikethrough, Link, Quote, Code,
   Image as ImageIcon, Table, List, ListOrdered,
@@ -71,10 +72,12 @@ import {
   Database,
   AlertCircle,
   MessageSquare,
+  BarChart2,
 } from 'lucide-react'
+import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications/toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
 import { FormattedViewDialog } from '@/components/source/FormattedViewDialog'
@@ -82,11 +85,103 @@ import { NotebookAssociations } from '@/components/source/NotebookAssociations'
 
 // Safe paginated content renderer — avoids browser crash on large documents
 const PAGE = 3000
+
+/**
+ * Remove large repeated content blocks from extracted document text.
+ *
+ * Strategy: find the longest repeated substring at the block level.
+ * If the second half of the document is substantially identical to the first
+ * half (or any large contiguous block repeats), remove the duplicate.
+ *
+ * This handles the common case where a DOCX extraction duplicates the entire
+ * document body (e.g. the same interrogation report appearing twice).
+ */
+function deduplicateContent(text: string): string {
+  if (!text || text.length < 200) return text
+
+  const lines = text.split('\n')
+  const totalLines = lines.length
+
+  // Try to find a large repeated block: check if the second half of the
+  // document is a near-duplicate of the first half.
+  // We test several split points (50%, 40%, 60%) to find the best match.
+  const splitPoints = [
+    Math.floor(totalLines * 0.5),
+    Math.floor(totalLines * 0.4),
+    Math.floor(totalLines * 0.6),
+  ]
+
+  for (const splitAt of splitPoints) {
+    if (splitAt < 5) continue
+    const firstHalf = lines.slice(0, splitAt)
+    const secondHalf = lines.slice(splitAt)
+
+    // Normalize both halves for comparison
+    const normalize = (ls: string[]) =>
+      ls.map(l => l.trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean).join('|')
+
+    const firstNorm = normalize(firstHalf)
+    const secondNorm = normalize(secondHalf)
+
+    if (!firstNorm || !secondNorm) continue
+
+    // Check similarity: if second half starts with the same content as first half
+    // (allowing for some extra content at the end of the second half)
+    const minLen = Math.min(firstNorm.length, secondNorm.length)
+    const overlap = firstNorm.slice(0, minLen)
+    const secondStart = secondNorm.slice(0, minLen)
+
+    // If 85%+ of the content matches, it's a duplicate
+    let matchCount = 0
+    const step = Math.max(1, Math.floor(minLen / 200))
+    for (let i = 0; i < minLen; i += step) {
+      if (overlap[i] === secondStart[i]) matchCount++
+    }
+    const similarity = matchCount / Math.ceil(minLen / step)
+
+    if (similarity >= 0.85) {
+      // The second half is a duplicate — keep only the first half
+      // But if the second half has MORE content, keep the longer one
+      const firstContent = firstHalf.filter(l => l.trim()).length
+      const secondContent = secondHalf.filter(l => l.trim()).length
+      if (secondContent > firstContent * 1.3) {
+        // Second half has significantly more content — keep second half
+        return secondHalf.join('\n')
+      }
+      return firstHalf.join('\n')
+    }
+  }
+
+  // Fallback: deduplicate identical consecutive line-groups (smaller scale)
+  // Remove any sequence of 3+ lines that appears more than once
+  const BLOCK = 3
+  const seenBlocks = new Set<string>()
+  const keep = new Array<boolean>(totalLines).fill(true)
+  const nonEmptyIdx: number[] = []
+  for (let i = 0; i < totalLines; i++) {
+    if (lines[i].trim()) nonEmptyIdx.push(i)
+  }
+
+  for (let w = 0; w <= nonEmptyIdx.length - BLOCK; w++) {
+    const windowIdx = nonEmptyIdx.slice(w, w + BLOCK)
+    const fp = windowIdx.map(i => lines[i].trim().toLowerCase().replace(/\s+/g, ' ')).join('|||')
+    if (seenBlocks.has(fp)) {
+      for (const idx of windowIdx) keep[idx] = false
+    } else {
+      seenBlocks.add(fp)
+    }
+  }
+
+  return lines.filter((_, i) => keep[i]).join('\n')
+}
+
 function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: string }) {
   const [visible, setVisible] = useState(PAGE)
   if (!text) return <p className="text-sm text-muted-foreground">{noContentLabel}</p>
-  const slice = text.slice(0, visible)
-  const hasMore = visible < text.length
+  // Deduplicate repeated content blocks before rendering
+  const dedupedText = deduplicateContent(text)
+  const slice = dedupedText.slice(0, visible)
+  const hasMore = visible < dedupedText.length
   return (
     <div className="space-y-2">
       {slice.split(/\n{2,}/).filter(Boolean).map((para, i) => (
@@ -95,7 +190,7 @@ function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: s
       {hasMore && (
         <div className="pt-3 flex flex-col items-center gap-1">
           <span className="text-xs text-muted-foreground">
-            {visible.toLocaleString()} / {text.length.toLocaleString()} chars
+            {visible.toLocaleString()} / {dedupedText.length.toLocaleString()} chars
           </span>
           <button
             onClick={() => setVisible(v => v + PAGE)}
@@ -437,6 +532,8 @@ export function SourceDetailContent({
   const [loading, setLoading] = useState(true)
   const [loadingInsights, setLoadingInsights] = useState(false)
   const [creatingInsight, setCreatingInsight] = useState(false)
+  const [insightSyncUntil, setInsightSyncUntil] = useState<number | null>(null)
+  const createInsightLockRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isEmbedding, setIsEmbedding] = useState(false)
@@ -446,6 +543,7 @@ export function SourceDetailContent({
   const [insightToDelete, setInsightToDelete] = useState<string | null>(null)
   const [deletingInsight, setDeletingInsight] = useState(false)
   const [isMarkdownView, setIsMarkdownView] = useState(false)
+  const [showOriginalContent, setShowOriginalContent] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const fetchSource = useCallback(async () => {
@@ -525,17 +623,48 @@ export function SourceDetailContent({
     [searchQuery]
   )
 
-  const fetchInsights = useCallback(async () => {
+  const fetchInsights = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
     try {
-      setLoadingInsights(true)
+      if (!silent) {
+        setLoadingInsights(true)
+      }
       const data = await insightsApi.listForSource(sourceId)
-      setInsights(data)
+      // De-duplicate insights that may be returned twice (same type/content)
+      // Keep the most recently updated one.
+      const byFingerprint = new Map<string, SourceInsightResponse>()
+      for (const insight of data) {
+        const fingerprint = `${insight.insight_type}::${insight.content}`
+        const existing = byFingerprint.get(fingerprint)
+        if (!existing) {
+          byFingerprint.set(fingerprint, insight)
+          continue
+        }
+        const existingUpdated = new Date(existing.updated).getTime()
+        const currentUpdated = new Date(insight.updated).getTime()
+        if (!Number.isNaN(currentUpdated) && currentUpdated >= existingUpdated) {
+          byFingerprint.set(fingerprint, insight)
+        }
+      }
+      const deduped = Array.from(byFingerprint.values())
+      setInsights(deduped)
+      return deduped
     } catch (err) {
       console.error('Failed to fetch insights:', err)
+      return []
     } finally {
-      setLoadingInsights(false)
+      if (!silent) {
+        setLoadingInsights(false)
+      }
     }
   }, [sourceId])
+
+  const getInsightsSignature = useCallback((items: SourceInsightResponse[]): string => {
+    return items
+      .map(item => `${item.id}:${item.updated}:${item.content.length}`)
+      .sort()
+      .join('||')
+  }, [])
 
   const fetchTransformations = useCallback(async () => {
     try {
@@ -554,14 +683,35 @@ export function SourceDetailContent({
     }
   }, [fetchInsights, fetchSource, fetchTransformations, sourceId])
 
+  // Poll insights while generation is running, and keep polling briefly after completion
+  // so newly persisted records appear without requiring a hard refresh.
+  useEffect(() => {
+    const hasPostSyncWindow = insightSyncUntil !== null && Date.now() < insightSyncUntil
+    if (!creatingInsight && !hasPostSyncWindow) return
+    const interval = setInterval(() => {
+      void fetchInsights({ silent: true })
+      if (insightSyncUntil !== null && Date.now() >= insightSyncUntil) {
+        setInsightSyncUntil(null)
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [creatingInsight, fetchInsights, insightSyncUntil])
+
   const createInsight = async () => {
+    // Prevent rapid double-clicks / repeated submits before React state updates
+    if (createInsightLockRef.current) return
     if (!selectedTransformation) {
       toast.error(t.sources.selectTransformation)
       return
     }
 
     try {
+      createInsightLockRef.current = true
       setCreatingInsight(true)
+      setInsightSyncUntil(Date.now() + 120000)
+      const previousCount = insights.length
+      const previousSignature = getInsightsSignature(insights)
+
       const response = await insightsApi.create(sourceId, {
         transformation_id: selectedTransformation
       })
@@ -569,28 +719,51 @@ export function SourceDetailContent({
       setSelectedTransformation('')
 
       if (response.command_id) {
-        insightsApi.waitForCommand(response.command_id, {
+        // Wait for transformation command to finish.
+        const success = await insightsApi.waitForCommand(response.command_id, {
           maxAttempts: 120,
           intervalMs: 2000
-        }).then(success => {
-          if (success) {
-            void fetchInsights()
-            queryClient.invalidateQueries({ queryKey: ['sources'] })
-          }
-        }).catch(err => {
-          console.error('Error waiting for insight command:', err)
         })
+
+        if (!success) {
+          toast.error(t.common.error)
+          return
+        }
+
+        // run_transformation completion may be slightly earlier than insight record creation.
+        // Poll a few times silently until the new insight appears.
+        let updated = false
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const latest = await fetchInsights({ silent: true })
+          const latestSignature = getInsightsSignature(latest)
+          if (latest.length > previousCount || latestSignature !== previousSignature) {
+            updated = true
+            break
+          }
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+
+        if (!updated) {
+          // Last fetch to sync even if count didn't increase (e.g., overwrite update).
+          await fetchInsights({ silent: true })
+        }
+
+        // Keep a short post-completion sync window to catch eventual consistency delays.
+        setInsightSyncUntil(Date.now() + 45000)
+        queryClient.invalidateQueries({ queryKey: ['sources'] })
+        return
       } else {
-        setTimeout(() => {
-          void fetchInsights()
-          queryClient.invalidateQueries({ queryKey: ['sources'] })
-        }, 5000)
+        await new Promise(resolve => setTimeout(resolve, 2500))
+        await fetchInsights({ silent: true })
+        setInsightSyncUntil(Date.now() + 45000)
+        queryClient.invalidateQueries({ queryKey: ['sources'] })
       }
     } catch (err) {
       console.error('Failed to create insight:', err)
       toast.error(t.common.error)
     } finally {
       setCreatingInsight(false)
+      createInsightLockRef.current = false
     }
   }
 
@@ -883,17 +1056,30 @@ export function SourceDetailContent({
                     </CardDescription>
                   )}
                 </div>
-                {!isYouTubeUrl && source.full_text && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 font-semibold border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950 transition-all"
-                    onClick={() => setIsMarkdownView(true)}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Formatted View
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {!isYouTubeUrl && source.full_text && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 font-semibold border-blue-200 text-blue-900 dark:border-blue-800 transition-all"
+                      onClick={() => setIsMarkdownView(true)}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Formatted View
+                    </Button>
+                  )}
+                  {!isYouTubeUrl && source.translated_content && (
+                    <Button
+                      variant={showOriginalContent ? 'default' : 'outline'}
+                      size="sm"
+                      className="gap-2 font-semibold"
+                      onClick={() => setShowOriginalContent(v => !v)}
+                      title={showOriginalContent ? 'Show English translation' : 'Show original language content'}
+                    >
+                      {showOriginalContent ? '🌐 English' : `📄 Original (${(source.content_language ?? '').toUpperCase()})`}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {isYouTubeUrl && youTubeVideoId && (
@@ -923,22 +1109,21 @@ export function SourceDetailContent({
                   </div>
                 )}
                 {!isYouTubeUrl && source.full_text && (
-                  <SafeContent text={source.full_text || ''} noContentLabel={t.sources.noContent} />
+                  <SafeContent
+                    text={
+                      // Show original if toggled OR if no translation available
+                      showOriginalContent || !source.translated_content
+                        ? source.full_text
+                        : source.translated_content
+                    }
+                    noContentLabel={t.sources.noContent}
+                  />
                 )}
                 {!isYouTubeUrl && !source.full_text && (
                   <SafeContent text={''} noContentLabel={t.sources.noContent} />
                 )}
               </CardContent>
             </Card>
-
-            {isMarkdownView && source.full_text && (
-              <FormattedViewDialog
-                text={source.full_text}
-                sourceId={source.id}
-                open={isMarkdownView}
-                onClose={() => setIsMarkdownView(false)}
-              />
-            )}
           </TabsContent>
 
           <TabsContent value="insights" className="mt-6">
@@ -1046,6 +1231,7 @@ export function SourceDetailContent({
               </CardContent>
             </Card>
           </TabsContent>
+
 
           <TabsContent value="details" className="mt-6">
             <Card>
@@ -1226,6 +1412,19 @@ export function SourceDetailContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Render the FormattedViewDialog inside a Portal attached directly to document.body.
+          This fully escapes the DOM hierarchy, preventing layout containers or stacking 
+          contexts from cutting it off behind the sidebar or navbar. */}
+      {isMarkdownView && source.full_text && typeof window !== 'undefined' && createPortal(
+        <FormattedViewDialog
+          text={showOriginalContent || !source.translated_content ? source.full_text : source.translated_content}
+          sourceId={source.id}
+          open={isMarkdownView}
+          onClose={() => setIsMarkdownView(false)}
+        />,
+        document.body
+      )}
     </div>
   )
 }

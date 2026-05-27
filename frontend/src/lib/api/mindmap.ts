@@ -1,6 +1,4 @@
-import axios from 'axios'
-import { apiClient } from './client'
-import { getApiUrl } from '@/lib/config'
+import apiClient from './client'
 
 export interface MindMapNode {
   label: string
@@ -20,17 +18,24 @@ export interface MindMapRequest {
 /* -------------------------------------------------- */
 /* 🔥 NORMALIZE ANY RESPONSE FORMAT */
 /* -------------------------------------------------- */
-function normalizeMindMap(data: any): MindMapResponse {
+function normalizeMindMap(data: unknown): MindMapResponse {
+  const parsed = data as {
+    mind_map?: MindMapNode
+    label?: string
+    source_id?: string
+    data?: MindMapNode
+  }
+
   // case 1: already correct
-  if (data?.mind_map?.label) {
-    return data
+  if (parsed?.mind_map?.label) {
+    return parsed as MindMapResponse
   }
 
   // case 2: backend returned direct node
-  if (data?.label) {
+  if (parsed?.label) {
     return {
-      mind_map: data,
-      source_id: data.source_id || 'unknown',
+      mind_map: parsed as unknown as MindMapNode,
+      source_id: parsed.source_id || 'unknown',
     }
   }
 
@@ -43,10 +48,10 @@ function normalizeMindMap(data: any): MindMapResponse {
   }
 
   // case 4: wrapped response
-  if (data?.data?.label) {
+  if (parsed?.data?.label) {
     return {
-      mind_map: data.data,
-      source_id: data.source_id || 'unknown',
+      mind_map: parsed.data,
+      source_id: parsed.source_id || 'unknown',
     }
   }
 
@@ -56,41 +61,16 @@ function normalizeMindMap(data: any): MindMapResponse {
 
 /* -------------------------------------------------- */
 
-const mindmapClient = axios.create({
-  timeout: 0,
-  headers: { 'Content-Type': 'application/json' },
-  withCredentials: false,
-})
-
-mindmapClient.interceptors.request.use(async (config) => {
-  const apiUrl = await getApiUrl()
-  config.baseURL = `${apiUrl}/api`
-
-  if (typeof window !== 'undefined') {
-    const authStorage = localStorage.getItem('auth-storage')
-    if (authStorage) {
-      try {
-        const { state } = JSON.parse(authStorage)
-        if (state?.token) {
-          config.headers.Authorization = `Bearer ${state.token}`
-        }
-      } catch {}
-    }
-  }
-
-  return config
-})
-
 export const mindmapApi = {
   /* ---------------- GENERATE ---------------- */
   generate: async (
     sourceId: string,
     options: MindMapRequest = {}
   ): Promise<MindMapResponse> => {
-
-    const response = await mindmapClient.post(
+    const response = await apiClient.post(
       `/sources/${encodeURIComponent(sourceId)}/mindmap`,
-      { model_name: 'qwen3', temperature: 0.2, ...options }
+      { model_name: 'qwen3', temperature: 0.2, ...options },
+      { timeout: 0 }
     )
 
     // ✅ IMPORTANT FIX
@@ -99,7 +79,7 @@ export const mindmapApi = {
 
   /* ---------------- IMAGES ---------------- */
   getImages: async (sourceId: string) => {
-    const response = await mindmapClient.get(
+    const response = await apiClient.get(
       `/sources/${encodeURIComponent(sourceId)}/images`
     )
     return response.data
@@ -111,7 +91,7 @@ export const mindmapApi = {
     nodeName: string,
     rootSubject: string
   ) => {
-    const response = await mindmapClient.post(
+    const response = await apiClient.post(
       `/sources/${encodeURIComponent(sourceId)}/node-summary`,
       { node_name: nodeName, root_subject: rootSubject }
     )
@@ -120,7 +100,7 @@ export const mindmapApi = {
 
   /* ---------------- SOURCE SUMMARY ---------------- */
   getSourceSummary: async (sourceId: string) => {
-    const response = await mindmapClient.post(
+    const response = await apiClient.post(
       `/sources/${encodeURIComponent(sourceId)}/summary`,
       {}
     )

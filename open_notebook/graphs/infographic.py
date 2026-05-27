@@ -22,6 +22,186 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("InfographicPipeline")
 
 
+def _clean_scalar(value: Any) -> Optional[str]:
+    """Normalize scalar values and drop placeholders/empty content."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    placeholders = {
+        "null", "none", "n/a", "na", "...", "-", "--", "unknown",
+        "field name", "value", "location", "detail", "status",
+        "yyyy-mm-dd", "<actual date>", "<actual value>", "<detected type>",
+        "<actual fir number>", "<actual ipc section>", "<actual police station name>",
+        "<actual finding title>", "<actual factual detail from document>",
+    }
+    if lowered in placeholders:
+        return None
+    return text
+
+
+def _normalize_dict_values(data: Dict[str, Any]) -> Dict[str, str]:
+    normalized: Dict[str, str] = {}
+    for key, value in data.items():
+        clean_key = _clean_scalar(key)
+        if not clean_key:
+            continue
+        if isinstance(value, (list, dict)):
+            if isinstance(value, list):
+                joined = " | ".join(
+                    clean for item in value if (clean := _clean_scalar(item))
+                )
+                if joined:
+                    normalized[clean_key] = joined
+            continue
+        clean_value = _clean_scalar(value)
+        if clean_value:
+            normalized[clean_key] = clean_value
+    return normalized
+
+
+def _infer_document_type(text: str, data: Dict[str, Any]) -> str:
+    raw_type = (_clean_scalar(data.get("document_type")) or "").lower()
+    if raw_type in {"mobile_cdr", "bank_statement", "ir_document", "general"}:
+        return raw_type
+
+    haystack = f"{text[:6000]}\n{json.dumps(data, ensure_ascii=False)}".lower()
+    if any(token in haystack for token in ["cdr", "imei", "imsi", "call detail", "b party", "cell id"]):
+        return "mobile_cdr"
+    if any(token in haystack for token in ["balance", "debit", "credit", "account", "ifsc", "withdrawal", "deposit"]):
+        return "bank_statement"
+    if any(token in haystack for token in ["fir", "police station", "under trial", "accused", "gangster", "arrested", "encounter"]):
+        return "ir_document"
+    return "general"
+
+
+def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text: str) -> Dict[str, Any]:
+    normalized = dict(data or {})
+    normalized["document_type"] = _infer_document_type(text, normalized)
+
+    header = normalized.get("header") if isinstance(normalized.get("header"), dict) else {}
+    title = _clean_scalar(header.get("title")) or _clean_scalar(source_title) or "Document Analysis"
+    subtitle = _clean_scalar(header.get("subtitle"))
+
+    subject = _normalize_dict_values(normalized.get("subject", {}) if isinstance(normalized.get("subject"), dict) else {})
+    personal = _normalize_dict_values(normalized.get("personal", {}) if isinstance(normalized.get("personal"), dict) else {})
+    account = _normalize_dict_values(normalized.get("account", {}) if isinstance(normalized.get("account"), dict) else {})
+    financial_summary = _normalize_dict_values(normalized.get("financial_summary", {}) if isinstance(normalized.get("financial_summary"), dict) else {})
+
+    highlight_items: List[Dict[str, str]] = []
+    for item in normalized.get("highlights", []) or []:
+        if not isinstance(item, dict):
+            continue
+        item_title = _clean_scalar(item.get("title"))
+        item_subtitle = _clean_scalar(item.get("subtitle"))
+        item_description = _clean_scalar(item.get("description"))
+        if not item_title and not item_description:
+            continue
+        if not item_title:
+            item_title = item_description[:80]
+        if not item_description:
+            item_description = item_title
+        highlight_items.append({
+            "title": item_title,
+            "subtitle": item_subtitle or "",
+            "description": item_description,
+        })
+
+    timeline_events: List[Dict[str, str]] = []
+    seen_timeline = set()
+    for item in normalized.get("timeline_events", []) or []:
+        if not isinstance(item, dict):
+            continue
+        date = _clean_scalar(item.get("date"))
+        event = _clean_scalar(item.get("event"))
+        if not date or not event:
+            continue
+        key = (date, event)
+        if key in seen_timeline:
+            continue
+        seen_timeline.add(key)
+        timeline_events.append({"date": date, "event": event})
+
+    case_details: List[Dict[str, str]] = []
+    seen_cases = set()
+    for item in normalized.get("case_details", []) or []:
+        if not isinstance(item, dict):
+            continue
+        case = {
+            "fir_no": _clean_scalar(item.get("fir_no")) or "",
+            "section": _clean_scalar(item.get("section")) or "",
+            "date": _clean_scalar(item.get("date")) or "",
+            "police_station": _clean_scalar(item.get("police_station")) or "",
+            "status": _clean_scalar(item.get("status")) or "",
+        }
+        if not any(case.values()):
+            continue
+        key = tuple(case.values())
+        if key in seen_cases:
+            continue
+        seen_cases.add(key)
+        case_details.append(case)
+
+    associates: List[Dict[str, str]] = []
+    seen_associates = set()
+    for item in normalized.get("associates", []) or []:
+        if not isinstance(item, dict):
+            continue
+        name = _clean_scalar(item.get("name"))
+        relation = _clean_scalar(item.get("relation")) or "associate"
+        if not name:
+            continue
+        key = (name, relation)
+        if key in seen_associates:
+            continue
+        seen_associates.add(key)
+        associates.append({"name": name, "relation": relation})
+
+    stat = normalized.get("stat") if isinstance(normalized.get("stat"), dict) else {}
+    stat_value = _clean_scalar(stat.get("value"))
+    stat_label = _clean_scalar(stat.get("label"))
+    if not stat_value:
+        if normalized["document_type"] == "ir_document" and case_details:
+            stat_value = str(len(case_details))
+            stat_label = stat_label or "Cases Identified"
+        elif normalized["document_type"] == "bank_statement" and financial_summary.get("closing_balance"):
+            stat_value = financial_summary["closing_balance"]
+            stat_label = stat_label or "Closing Balance"
+        elif timeline_events:
+            stat_value = str(len(timeline_events))
+            stat_label = stat_label or "Timeline Events"
+        elif highlight_items:
+            stat_value = str(len(highlight_items))
+            stat_label = stat_label or "Key Findings"
+
+    if not subtitle:
+        if normalized["document_type"] == "ir_document":
+            subtitle = subject.get("Social Status") or subject.get("Status") or (timeline_events[0]["date"] if timeline_events else None)
+        elif normalized["document_type"] == "bank_statement":
+            subtitle = account.get("Bank") or account.get("Account Number") or financial_summary.get("closing_balance")
+        elif normalized["document_type"] == "mobile_cdr":
+            subtitle = subject.get("Phone Number") or subject.get("Period")
+
+    result: Dict[str, Any] = {
+        "source_id": normalized.get("source_id", ""),
+        "document_type": normalized["document_type"],
+        "header": {"title": title, "subtitle": subtitle or ""},
+        "subject": subject if subject else None,
+        "personal": personal if personal else None,
+        "account": account if account else None,
+        "financial_summary": financial_summary if financial_summary else None,
+        "highlights": highlight_items,
+        "timeline_events": timeline_events,
+        "case_details": case_details,
+        "associates": associates,
+    }
+    if stat_value or stat_label:
+        result["stat"] = {"value": stat_value or "", "label": stat_label or ""}
+    return result
+
+
 # ============================================================================
 # CDR DIRECT PARSER — no LLM needed for CSV call records
 # ============================================================================
@@ -483,6 +663,7 @@ class InfographicPipeline:
         logger.info("LLM completed.")
 
         data["source_id"] = source_id
+        data = _normalize_infographic_output(data, source.title or "Unknown Source", clean_text)
         logger.info(f"Infographic generated successfully for source_id: {source_id}")
         return data
 

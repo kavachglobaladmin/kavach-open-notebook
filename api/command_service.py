@@ -50,7 +50,7 @@ class CommandService:
             status = await get_command_status(job_id)
             return {
                 "job_id": job_id,
-                "status": status.status if status else "unknown",
+                "status": status.status.value if status and hasattr(status.status, 'value') else (status.status if status else "unknown"),
                 "result": status.result if status else None,
                 "error_message": getattr(status, "error_message", None)
                 if status

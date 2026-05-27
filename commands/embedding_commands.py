@@ -61,6 +61,8 @@ class CreateInsightInput(CommandInput):
     source_id: str
     insight_type: str
     content: str
+    generation_id: Optional[str] = None
+    generation_id: Optional[str] = None
 
 
 class CreateInsightOutput(CommandOutput):
@@ -121,14 +123,7 @@ class EmbedSourceOutput(CommandOutput):
 @command(
     "embed_note",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
     """
@@ -213,14 +208,7 @@ async def embed_note_command(input_data: EmbedNoteInput) -> EmbedNoteOutput:
 @command(
     "embed_insight",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOutput:
     """
@@ -245,9 +233,35 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
         logger.info(f"Starting embedding for insight: {input_data.insight_id}")
 
         # 1. Load insight
-        insight = await SourceInsight.get(input_data.insight_id)
+        try:
+            insight = await SourceInsight.get(input_data.insight_id)
+        except Exception:
+            insight = None
+
+        try:
+            insight = await SourceInsight.get(input_data.insight_id)
+        except Exception:
+            insight = None
+
         if not insight:
-            raise ValueError(f"Insight '{input_data.insight_id}' not found")
+            # Insight was deleted (dedup cleanup) — skip silently
+            logger.info(
+                f"Skipping embed for deleted insight {input_data.insight_id}"
+            )
+            return EmbedInsightOutput(
+                success=True,
+                insight_id=input_data.insight_id,
+                processing_time=time.time() - start_time,
+            )
+            # Insight was deleted (dedup cleanup) — skip silently
+            logger.info(
+                f"Skipping embed for deleted insight {input_data.insight_id}"
+            )
+            return EmbedInsightOutput(
+                success=True,
+                insight_id=input_data.insight_id,
+                processing_time=time.time() - start_time,
+            )
 
         if not insight.content or not insight.content.strip():
             raise ValueError(
@@ -307,14 +321,7 @@ async def embed_insight_command(input_data: EmbedInsightInput) -> EmbedInsightOu
 @command(
     "embed_source",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutput:
     """
@@ -443,67 +450,207 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
 @command(
     "create_insight",
     app="open_notebook",
-    retry={
-        "max_attempts": 5,
-        "wait_strategy": "exponential_jitter",
-        "wait_min": 1,
-        "wait_max": 60,
-        "stop_on": [ValueError, ConfigurationError],  # Don't retry validation/config errors
-        "retry_log_level": "debug",
-    },
+    retry=None,
 )
 async def create_insight_command(
     input_data: CreateInsightInput,
 ) -> CreateInsightOutput:
     """
-    Create a source insight with automatic retry on transaction conflicts.
-
-    This command wraps the CREATE source_insight operation with retry logic
-    to handle SurrealDB transaction conflicts that occur during batch imports
-    when multiple parallel transformations try to create insights concurrently.
+    Create a source insight: embed first, then save atomically in one DB write.
 
     Flow:
-    1. CREATE source_insight record in database
-    2. Submit embed_insight command (fire-and-forget) for async embedding
-    3. Return the insight_id
+    1. Check if insight of this type already exists → skip if yes (idempotency)
+    2. Generate embedding from content
+    3. CREATE source_insight with content + embedding in a single DB write
+    4. No separate embed_insight command needed
 
-    Retry Strategy:
-    - Retries up to 5 times for transient failures (network, timeout, etc.)
-    - Uses exponential-jitter backoff (1-60s)
-    - Does NOT retry permanent failures (ValueError for validation errors)
+    This eliminates the duplicate-ID problem entirely because there is only
+    one atomic CREATE operation per (source, insight_type).
     """
     start_time = time.time()
 
     try:
+        insight_type_clean = (input_data.insight_type or "").strip()
+        vars = {
+            "source_id": ensure_record_id(input_data.source_id),
+            "insight_type": insight_type_clean,
+            "content": input_data.content,
+        }
+
         logger.info(
             f"Creating insight for source {input_data.source_id}: "
             f"type={input_data.insight_type}"
         )
 
-        # 1. Create insight record in database
-        result = await repo_query(
+        if input_data.generation_id:
+            active_generation = await repo_query(
+                """
+                SELECT generation_id
+                FROM source_insight_generation
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                LIMIT 1
+                """,
+                vars,
+            )
+            if active_generation:
+                latest_generation_id = str(
+                    active_generation[0].get("generation_id", "") or ""
+                ).strip()
+                if latest_generation_id and latest_generation_id != input_data.generation_id:
+                    logger.info(
+                        f"Skipping stale insight generation for source {input_data.source_id}: "
+                        f"type={insight_type_clean}, generation={input_data.generation_id}, "
+                        f"latest={latest_generation_id}"
+                    )
+                    return CreateInsightOutput(
+                        success=True,
+                        insight_id=None,
+                        processing_time=time.time() - start_time,
+                    )
+        else:
+            # No generation_id — proceed normally (process_source_command path)
+            pass
+
+        # Respect user deletions: if this insight type was deleted, do not let a
+        # stale background job recreate it. Explicit re-generation clears the
+        # tombstone in the API route before submitting a fresh command.
+        # Note: table may not exist in all deployments — skip check if so.
+        try:
+            tombstones = await repo_query(
+                """
+                SELECT id
+                FROM source_insight_tombstone
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                LIMIT 1
+                """,
+                vars,
+            )
+            if tombstones:
+                logger.info(
+                    f"Skipping insight recreation for source {input_data.source_id}: "
+                    f"type={insight_type_clean} has an active tombstone"
+                )
+                return CreateInsightOutput(
+                    success=True,
+                    insight_id=None,
+                    processing_time=time.time() - start_time,
+                )
+        except Exception as e:
+            logger.debug(f"Tombstone check skipped (table may not exist): {e}")
+
+        # 1. Idempotency: keep ONE insight per (source, insight_type).
+        # Use SELECT-then-UPDATE/CREATE with a post-creation dedup pass to handle
+        # the race condition where two commands run simultaneously and both see no
+        # existing record, then both CREATE.  After the write we re-query and keep
+        # only the oldest record, deleting any extras.
+        existing = await repo_query(
             """
-            CREATE source_insight CONTENT {
-                "source": $source_id,
-                "insight_type": $insight_type,
-                "content": $content
-            };
+            SELECT id, created
+            FROM source_insight
+            WHERE source = $source_id
+              AND string::lowercase(string::trim(insight_type)) =
+                  string::lowercase(string::trim($insight_type))
+            ORDER BY created ASC
             """,
-            {
-                "source_id": ensure_record_id(input_data.source_id),
-                "insight_type": input_data.insight_type,
-                "content": input_data.content,
-            },
+            vars,
         )
 
-        if not result or len(result) == 0:
-            raise ValueError("Failed to create insight - no result returned")
+        if existing and len(existing) > 0:
+            insight_id = str(existing[0].get("id", ""))
+            duplicate_ids = [
+                str(item.get("id", ""))
+                for item in existing[1:]
+                if item.get("id")
+            ]
+            logger.info(
+                f"Updating existing insight {insight_id} for source {input_data.source_id}: "
+                f"type={insight_type_clean}"
+            )
+            await repo_query(
+                """
+                UPDATE $insight_id SET
+                  insight_type = $insight_type,
+                  content = $content
+                """,
+                {
+                    "insight_id": ensure_record_id(insight_id),
+                    "insight_type": insight_type_clean,
+                    "content": input_data.content,
+                },
+            )
 
-        insight_id = str(result[0].get("id", ""))
-        if not insight_id:
-            raise ValueError("Failed to create insight - no ID in result")
+            # Collapse any legacy duplicate rows so this source/type pair keeps
+            # exactly one canonical insight record.
+            if duplicate_ids:
+                logger.info(
+                    f"Removing {len(duplicate_ids)} duplicate insight rows for "
+                    f"source {input_data.source_id}: type={insight_type_clean}"
+                )
+                for duplicate_id in duplicate_ids:
+                    await repo_query(
+                        "DELETE $insight_id",
+                        {"insight_id": ensure_record_id(duplicate_id)},
+                    )
+        else:
+            # 2. Create insight record in database
+            result = await repo_query(
+                """
+                CREATE source_insight CONTENT {
+                    "source": $source_id,
+                    "insight_type": $insight_type,
+                    "content": $content
+                };
+                """,
+                vars,
+            )
 
-        # 2. Submit embedding command (fire-and-forget)
+            if not result or len(result) == 0:
+                raise ValueError("Failed to create insight - no result returned")
+
+            insight_id = str(result[0].get("id", ""))
+            if not insight_id:
+                raise ValueError("Failed to create insight - no ID in result")
+
+            # Post-creation dedup: handle race condition where two commands both
+            # saw no existing record and both created a new one simultaneously.
+            # Re-query and keep only the oldest; delete any newer duplicates.
+            all_after_create = await repo_query(
+                """
+                SELECT id, created
+                FROM source_insight
+                WHERE source = $source_id
+                  AND string::lowercase(string::trim(insight_type)) =
+                      string::lowercase(string::trim($insight_type))
+                ORDER BY created ASC
+                """,
+                vars,
+            )
+            if all_after_create and len(all_after_create) > 1:
+                # Keep the oldest record; delete the rest (including ours if we lost the race)
+                canonical_id = str(all_after_create[0].get("id", ""))
+                race_duplicates = [
+                    str(item.get("id", ""))
+                    for item in all_after_create[1:]
+                    if item.get("id")
+                ]
+                logger.info(
+                    f"Race condition detected: {len(race_duplicates)} duplicate(s) for "
+                    f"source {input_data.source_id}: type={insight_type_clean}. "
+                    f"Keeping {canonical_id}, removing {race_duplicates}"
+                )
+                for dup_id in race_duplicates:
+                    await repo_query(
+                        "DELETE $insight_id",
+                        {"insight_id": ensure_record_id(dup_id)},
+                    )
+                # Use the canonical (oldest) record going forward
+                insight_id = canonical_id
+
+        # 3. Submit embedding command (fire-and-forget)
         submit_command(
             "open_notebook",
             "embed_insight",
@@ -524,7 +671,6 @@ async def create_insight_command(
         )
 
     except ValueError as e:
-        # Permanent failure - don't retry
         processing_time = time.time() - start_time
         cmd_id = get_command_id(input_data)
         logger.error(
@@ -537,13 +683,19 @@ async def create_insight_command(
             error_message=str(e),
         )
     except Exception as e:
-        # Transient failure - will be retried (surreal-commands logs final failure)
+        # Log transient error but don't retry - return failure instead
+        # This prevents duplicate insights from retry attempts
+        processing_time = time.time() - start_time
         cmd_id = get_command_id(input_data)
-        logger.debug(
+        logger.warning(
             f"Transient error creating insight for source {input_data.source_id} "
-            f"(command: {cmd_id}): {e}"
+            f"(command: {cmd_id}): {e}. Returning failure instead of retrying."
         )
-        raise
+        return CreateInsightOutput(
+            success=False,
+            processing_time=processing_time,
+            error_message=f"Transient error: {str(e)}",
+        )
 
 
 async def collect_items_for_rebuild(

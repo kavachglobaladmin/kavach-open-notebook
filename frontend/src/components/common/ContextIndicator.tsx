@@ -16,11 +16,11 @@ interface ContextIndicatorProps {
 
 // Helper function to format large numbers with K/M suffixes
 function formatNumber(num: number): string {
-  if (num >= 1000000) {
-    return `${(num / 1000000).toFixed(1)}M`
+  if (num >= 1_000_000) {
+    return `${(num / 1_000_000).toFixed(1)}M`
   }
-  if (num >= 1000) {
-    return `${(num / 1000).toFixed(1)}K`
+  if (num >= 1_000) {
+    return `${(num / 1_000).toFixed(1)}K`
   }
   return num.toString()
 }
@@ -31,9 +31,10 @@ export function ContextIndicator({
   notesCount,
   tokenCount,
   charCount,
-  className
+  className,
 }: ContextIndicatorProps) {
-  const hasContext = (sourcesInsights + sourcesFull) > 0 || notesCount > 0
+  const totalSources = sourcesInsights + sourcesFull
+  const hasContext = totalSources > 0 || notesCount > 0
 
   if (!hasContext) {
     return (
@@ -44,48 +45,66 @@ export function ContextIndicator({
   }
 
   return (
-    <div className={cn('flex-shrink-0 flex items-center justify-between gap-2 py-2 px-3 border-t bg-muted/30', className)}>
-      <div className="flex items-center gap-2">
+    <div
+      className={cn(
+        'flex-shrink-0 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 px-3 border-t bg-muted/30',
+        className,
+      )}
+    >
+      {/* Left: context badges */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">Context:</span>
 
-        <div className="flex items-center gap-1.5">
-          {sourcesInsights > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-amber-600 border-amber-600/50 cursor-default">
-                  <Lightbulb className="h-3 w-3" />
-                  <span>{sourcesInsights}</span>
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Insights for {sourcesInsights} source{sourcesInsights !== 1 ? 's' : ''}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+        {/* Total source count badge — always shown when there are sources */}
+        {totalSources > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-primary border-primary/50 cursor-default"
+              >
+                <FileText className="h-3 w-3" />
+                <span>{totalSources}</span>
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>
+                {totalSources} source{totalSources !== 1 ? 's' : ''} in context
+                {sourcesInsights > 0 && ` (${sourcesInsights} via insights)`}
+                {sourcesFull > 0 && ` (${sourcesFull} full text)`}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
-          {sourcesFull > 0 && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-primary border-primary/50 cursor-default">
-                  <FileText className="h-3 w-3" />
-                  <span>{sourcesFull}</span>
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{sourcesFull} full source{sourcesFull !== 1 ? 's' : ''}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
+        {/* Insight count badge — shown when any sources are in insights mode */}
+        {sourcesInsights > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-amber-600 border-amber-600/50 cursor-default"
+              >
+                <Lightbulb className="h-3 w-3" />
+                <span>{sourcesInsights}</span>
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Insights for {sourcesInsights} source{sourcesInsights !== 1 ? 's' : ''}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
+        {/* Notes badge */}
         {notesCount > 0 && (
           <>
-            {(sourcesInsights > 0 || sourcesFull > 0) && (
-              <span className="text-muted-foreground">•</span>
-            )}
+            {totalSources > 0 && <span className="text-muted-foreground">•</span>}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-primary border-primary/50 cursor-default">
+                <Badge
+                  variant="outline"
+                  className="text-xs flex items-center gap-1 px-1.5 py-0.5 text-primary border-primary/50 cursor-default"
+                >
                   <StickyNote className="h-3 w-3" />
                   <span>{notesCount}</span>
                 </Badge>
@@ -98,14 +117,16 @@ export function ContextIndicator({
         )}
       </div>
 
+      {/* Right: token / char counts */}
       {(tokenCount !== undefined || charCount !== undefined) && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
           {tokenCount !== undefined && tokenCount > 0 && (
             <span>{formatNumber(tokenCount)} tokens</span>
           )}
-          {tokenCount !== undefined && charCount !== undefined && tokenCount > 0 && charCount > 0 && (
-            <span>/</span>
-          )}
+          {tokenCount !== undefined &&
+            charCount !== undefined &&
+            tokenCount > 0 &&
+            charCount > 0 && <span>/</span>}
           {charCount !== undefined && charCount > 0 && (
             <span>{formatNumber(charCount)} chars</span>
           )}

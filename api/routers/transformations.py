@@ -34,6 +34,7 @@ async def get_transformations():
                 description=transformation.description,
                 prompt=transformation.prompt,
                 apply_default=transformation.apply_default,
+                model_id=transformation.model_id,
                 created=str(transformation.created),
                 updated=str(transformation.updated),
             )
@@ -56,6 +57,7 @@ async def create_transformation(transformation_data: TransformationCreate):
             description=transformation_data.description,
             prompt=transformation_data.prompt,
             apply_default=transformation_data.apply_default,
+            model_id=transformation_data.model_id,
         )
         await new_transformation.save()
 
@@ -66,6 +68,7 @@ async def create_transformation(transformation_data: TransformationCreate):
             description=new_transformation.description,
             prompt=new_transformation.prompt,
             apply_default=new_transformation.apply_default,
+            model_id=new_transformation.model_id,
             created=str(new_transformation.created),
             updated=str(new_transformation.updated),
         )
@@ -87,10 +90,14 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
         if not transformation:
             raise HTTPException(status_code=404, detail="Transformation not found")
 
-        # Validate model exists
-        model = await Model.get(execute_request.model_id)
-        if not model:
-            raise HTTPException(status_code=404, detail="Model not found")
+        # Use provided model_id, or fall back to transformation's model_id, or use default
+        effective_model_id = execute_request.model_id or transformation.model_id or None
+
+        # Validate model exists only if explicitly provided
+        if effective_model_id:
+            model = await Model.get(effective_model_id)
+            if not model:
+                raise HTTPException(status_code=404, detail="Model not found")
 
         # Execute the transformation
         result = await transformation_graph.ainvoke(
@@ -98,13 +105,13 @@ async def execute_transformation(execute_request: TransformationExecuteRequest):
                 input_text=execute_request.input_text,
                 transformation=transformation,
             ),
-            config=dict(configurable={"model_id": execute_request.model_id}),
+            config=dict(configurable={"model_id": effective_model_id}),
         )
 
         return TransformationExecuteResponse(
             output=result["output"],
             transformation_id=execute_request.transformation_id,
-            model_id=execute_request.model_id,
+            model_id=effective_model_id or "",
         )
 
     except HTTPException:
@@ -173,6 +180,7 @@ async def get_transformation(transformation_id: str):
             description=transformation.description,
             prompt=transformation.prompt,
             apply_default=transformation.apply_default,
+            model_id=transformation.model_id,
             created=str(transformation.created),
             updated=str(transformation.updated),
         )
@@ -208,6 +216,11 @@ async def update_transformation(
             transformation.prompt = transformation_update.prompt
         if transformation_update.apply_default is not None:
             transformation.apply_default = transformation_update.apply_default
+        # Handle model_id - allow clearing it by passing empty string or None
+        if hasattr(transformation_update, 'model_id') and transformation_update.model_id is not None:
+            transformation.model_id = transformation_update.model_id
+        elif hasattr(transformation_update, 'model_id') and transformation_update.model_id == '':
+            transformation.model_id = None
 
         await transformation.save()
 
@@ -218,6 +231,7 @@ async def update_transformation(
             description=transformation.description,
             prompt=transformation.prompt,
             apply_default=transformation.apply_default,
+            model_id=transformation.model_id,
             created=str(transformation.created),
             updated=str(transformation.updated),
         )

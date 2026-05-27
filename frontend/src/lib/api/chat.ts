@@ -70,18 +70,26 @@ export const chatApi = {
     const baseURL = apiUrl ? `${apiUrl}/api` : '/api'
     const url = `${baseURL}/chat/stream-execute`
 
-    // Build auth headers from persisted auth-storage (same as apiClient interceptor)
+    // Build auth headers — must match apiClient interceptor exactly.
+    // The backend PasswordAuthMiddleware validates the raw API password,
+    // NOT a JWT. The raw password is stored in sessionStorage as
+    // 'kavach_api_password' (memory-only, survives page reload within tab).
     const extraHeaders: Record<string, string> = {}
     if (typeof window !== 'undefined') {
       try {
+        // 1. Prefer raw API password from sessionStorage (same as apiClient)
+        const apiPassword = sessionStorage.getItem('kavach_api_password')
+        if (apiPassword) {
+          extraHeaders['Authorization'] = `Bearer ${apiPassword}`
+        }
+
+        // 2. Resolve user email for scoping (same fallback chain as apiClient)
         const authStorage = localStorage.getItem('auth-storage')
         if (authStorage) {
           const { state } = JSON.parse(authStorage)
-          if (state?.token) {
-            extraHeaders['Authorization'] = `Bearer ${state.token}`
-          }
-          if (state?.currentUserEmail) {
-            extraHeaders['X-User-Email'] = state.currentUserEmail
+          const userEmail = state?.currentUserEmail ?? null
+          if (userEmail) {
+            extraHeaders['X-User-Email'] = userEmail
           }
         }
       } catch { /* ignore */ }

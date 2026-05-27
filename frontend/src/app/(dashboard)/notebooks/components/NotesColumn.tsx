@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Plus, StickyNote, Bot, User, MoreVertical, Trash2 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { NoteEditorDialog } from './NoteEditorDialog'
 import { getDateLocale } from '@/lib/utils/date-locale'
@@ -47,29 +46,19 @@ export function NotesColumn({
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null)
 
   const deleteNote = useDeleteNote()
-
-  // Collapsible column state
   const { notesCollapsed, toggleNotes } = useNotebookColumnsStore()
   const collapseButton = useMemo(
     () => createCollapseButton(toggleNotes, t.common.notes),
     [toggleNotes, t.common.notes]
   )
 
-  const handleDeleteClick = (noteId: string) => {
-    setNoteToDelete(noteId)
-    setDeleteDialogOpen(true)
-  }
-
   const handleDeleteConfirm = async () => {
     if (!noteToDelete) return
-
     try {
       await deleteNote.mutateAsync(noteToDelete)
       setDeleteDialogOpen(false)
       setNoteToDelete(null)
-    } catch (error) {
-      console.error('Failed to delete note:', error)
-    }
+    } catch (error) { console.error(error) }
   }
 
   return (
@@ -80,19 +69,17 @@ export function NotesColumn({
         collapsedIcon={StickyNote}
         collapsedLabel={t.common.notes}
       >
-        <Card className="h-full flex flex-col flex-1 overflow-hidden">
-          <CardHeader className="pb-3 flex-shrink-0">
+        <Card className="h-full flex flex-col flex-1 overflow-hidden bg-white border-none rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+          <CardHeader className="pb-3 pt-6 px-6 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-lg">{t.common.notes}</CardTitle>
+              <CardTitle className="text-[20px] font-bold text-slate-900">{t.common.notes}</CardTitle>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
-                  onClick={() => {
-                    setEditingNote(null)
-                    setShowAddDialog(true)
-                  }}
+                  className="bg-[#6149f6] hover:bg-[#523cdb] text-white rounded-[12px] h-[40px] px-5 font-semibold shadow-[0_4px_12px_rgba(97,73,246,0.35)] transition-all"
+                  onClick={() => { setEditingNote(null); setShowAddDialog(true); }}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4 mr-1" />
                   {t.common.writeNote}
                 </Button>
                 {collapseButton}
@@ -100,93 +87,50 @@ export function NotesColumn({
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto min-h-0">
+          <CardContent className="flex-1 overflow-y-auto px-6 pb-6">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <LoadingSpinner />
-              </div>
+              <div className="flex items-center justify-center py-12"><LoadingSpinner /></div>
             ) : !notes || notes.length === 0 ? (
-              <EmptyState
-                icon={StickyNote}
-                title={t.notebooks.noNotesYet}
-                description={t.sources.createFirstNote}
-              />
+              <div className="h-full flex flex-col items-center justify-center pt-10">
+                <div className="w-16 h-16 bg-[#f1f3f6] rounded-2xl flex items-center justify-center mb-4">
+                  <StickyNote className="w-8 h-8 text-[#94a3b8]" />
+                </div>
+                <h3 className="text-[16px] font-bold text-slate-900 mb-1">{t.notebooks.noNotesYet}</h3>
+                <p className="text-[13px] text-slate-500 text-center max-w-[200px] leading-relaxed">
+                  {t.sources.createFirstNote}
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="p-3 border rounded-lg card-hover group relative cursor-pointer"
-                    onClick={() => setEditingNote(note)}
-                  >
+                  <div key={note.id} className="p-4 border border-slate-100 rounded-2xl hover:border-slate-200 transition-all cursor-pointer group relative" onClick={() => setEditingNote(note)}>
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        {note.note_type === 'ai' ? (
-                          <Bot className="h-4 w-4 text-primary" />
-                        ) : (
-                          <User className="h-4 w-4 text-muted-foreground" />
-                        )}
-                        <Badge variant="secondary" className="text-xs">
+                        {note.note_type === 'ai' ? <Bot className="h-4 w-4 text-primary" /> : <User className="h-4 w-4 text-slate-400" />}
+                        <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider px-2 py-0">
                           {note.note_type === 'ai' ? t.common.aiGenerated : t.common.human}
                         </Badge>
                       </div>
-
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(note.updated), { 
-                            addSuffix: true,
-                            locale: getDateLocale(language)
-                          })}
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          {formatDistanceToNow(new Date(note.updated), { addSuffix: true, locale: getDateLocale(language) })}
                         </span>
-
-                        {/* Context toggle - only show if handler provided */}
-                        {onContextModeChange && contextSelections?.[note.id] && (
-                          <div onClick={(event) => event.stopPropagation()}>
-                            <ContextToggle
-                              mode={contextSelections[note.id]}
-                              hasInsights={false}
-                              onChange={(mode) => onContextModeChange(note.id, mode)}
-                            />
-                          </div>
-                        )}
-
-                        {/* Ellipsis menu for delete action */}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 rounded-full" onClick={(e) => e.stopPropagation()}>
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteClick(note.id)
-                              }}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              {t.notebooks.deleteNote}
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setNoteToDelete(note.id); setDeleteDialogOpen(true); }} className="text-red-600">
+                              <Trash2 className="h-4 w-4 mr-2" /> {t.notebooks.deleteNote}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                     </div>
-
-                    {note.title && (
-                      <h4 className="text-sm font-medium mb-2 break-all">{note.title}</h4>
-                    )}
-
-                    {note.content && (
-                      <p className="text-sm text-muted-foreground line-clamp-3 break-all">
-                        {note.content}
-                      </p>
-                    )}
+                    {note.title && <h4 className="text-[14px] font-bold text-slate-900 mb-1">{note.title}</h4>}
+                    {note.content && <p className="text-[13px] text-slate-500 line-clamp-3 leading-relaxed">{note.content}</p>}
                   </div>
                 ))}
               </div>
@@ -194,31 +138,8 @@ export function NotesColumn({
           </CardContent>
         </Card>
       </CollapsibleColumn>
-
-      <NoteEditorDialog
-        open={showAddDialog || Boolean(editingNote)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setShowAddDialog(false)
-            setEditingNote(null)
-          } else {
-            setShowAddDialog(true)
-          }
-        }}
-        notebookId={notebookId}
-        note={editingNote ?? undefined}
-      />
-
-      <ConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title={t.notebooks.deleteNote}
-        description={t.notebooks.deleteNoteConfirm}
-        confirmText={t.common.delete}
-        onConfirm={handleDeleteConfirm}
-        isLoading={deleteNote.isPending}
-        confirmVariant="destructive"
-      />
+      <NoteEditorDialog open={showAddDialog || Boolean(editingNote)} onOpenChange={(open) => { if (!open) { setShowAddDialog(false); setEditingNote(null); } else setShowAddDialog(true); }} notebookId={notebookId} note={editingNote ?? undefined} />
+      <ConfirmDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} title={t.notebooks.deleteNote} description={t.notebooks.deleteNoteConfirm} confirmText={t.common.delete} onConfirm={handleDeleteConfirm} isLoading={deleteNote.isPending} confirmVariant="destructive" />
     </>
   )
 }
