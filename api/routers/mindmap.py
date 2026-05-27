@@ -1305,6 +1305,62 @@ def _build_fallback_mind_map(text: str, title: str = "Mind Map") -> dict:
     }
 
 
+def _mindmap_metrics(node: Dict[str, Any]) -> Dict[str, int]:
+    """
+    Compute simple structural metrics for a mind map tree.
+    Used to choose the richer result when multiple generation paths succeed.
+    """
+    if not isinstance(node, dict):
+        return {"leaf_count": 0, "max_depth": 0, "top_level": 0, "branch_nodes": 0}
+
+    leaf_count = 0
+    max_depth = 0
+    top_level = 0
+    branch_nodes = 0
+
+    stack: List[tuple[Dict[str, Any], int]] = [(node, 0)]
+    while stack:
+        current, depth = stack.pop()
+        max_depth = max(max_depth, depth)
+
+        children_raw = current.get("children") or []
+        children = [
+            child for child in children_raw
+            if isinstance(child, dict) and str(child.get("label", "")).strip()
+        ]
+
+        if depth == 0:
+            top_level = len(children)
+
+        if children:
+            branch_nodes += 1
+            for child in children:
+                stack.append((child, depth + 1))
+        else:
+            leaf_count += 1
+
+    return {
+        "leaf_count": leaf_count,
+        "max_depth": max_depth,
+        "top_level": top_level,
+        "branch_nodes": branch_nodes,
+    }
+
+
+def _mindmap_richness_score(node: Dict[str, Any]) -> int:
+    """
+    Weighted score for map richness/readability.
+    Higher is better: more meaningful leaves + adequate depth/branching.
+    """
+    m = _mindmap_metrics(node)
+    return (
+        m["leaf_count"] * 5
+        + m["max_depth"] * 4
+        + m["top_level"] * 2
+        + m["branch_nodes"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # FIXED: Mind Map builder constants & helpers
 # ---------------------------------------------------------------------------
