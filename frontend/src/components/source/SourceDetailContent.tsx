@@ -440,6 +440,7 @@ export function SourceDetailContent({
   const [loading, setLoading] = useState(true)
   const [loadingInsights, setLoadingInsights] = useState(false)
   const [creatingInsight, setCreatingInsight] = useState(false)
+  const [insightSyncUntil, setInsightSyncUntil] = useState<number | null>(null)
   const createInsightLockRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -566,6 +567,13 @@ export function SourceDetailContent({
     }
   }, [sourceId])
 
+  const getInsightsSignature = useCallback((items: SourceInsightResponse[]): string => {
+    return items
+      .map(item => `${item.id}:${item.updated}:${item.content.length}`)
+      .sort()
+      .join('||')
+  }, [])
+
   const fetchTransformations = useCallback(async () => {
     try {
       const data = await transformationsApi.list()
@@ -583,14 +591,19 @@ export function SourceDetailContent({
     }
   }, [fetchInsights, fetchSource, fetchTransformations, sourceId])
 
-  // Poll insights while generation is running (silent -> no spinner flicker)
+  // Poll insights while generation is running, and keep polling briefly after completion
+  // so newly persisted records appear without requiring a hard refresh.
   useEffect(() => {
-    if (!creatingInsight) return
+    const hasPostSyncWindow = insightSyncUntil !== null && Date.now() < insightSyncUntil
+    if (!creatingInsight && !hasPostSyncWindow) return
     const interval = setInterval(() => {
       void fetchInsights({ silent: true })
+      if (insightSyncUntil !== null && Date.now() >= insightSyncUntil) {
+        setInsightSyncUntil(null)
+      }
     }, 3000)
     return () => clearInterval(interval)
-  }, [creatingInsight, fetchInsights])
+  }, [creatingInsight, fetchInsights, insightSyncUntil])
 
   const createInsight = async () => {
     // Prevent rapid double-clicks / repeated submits before React state updates
@@ -603,7 +616,9 @@ export function SourceDetailContent({
     try {
       createInsightLockRef.current = true
       setCreatingInsight(true)
+      setInsightSyncUntil(Date.now() + 120000)
       const previousCount = insights.length
+      const previousSignature = getInsightsSignature(insights)
 
       const response = await insightsApi.create(sourceId, {
         transformation_id: selectedTransformation
@@ -628,7 +643,8 @@ export function SourceDetailContent({
         let updated = false
         for (let attempt = 0; attempt < 12; attempt++) {
           const latest = await fetchInsights({ silent: true })
-          if (latest.length > previousCount) {
+          const latestSignature = getInsightsSignature(latest)
+          if (latest.length > previousCount || latestSignature !== previousSignature) {
             updated = true
             break
           }
@@ -640,11 +656,14 @@ export function SourceDetailContent({
           await fetchInsights({ silent: true })
         }
 
+        // Keep a short post-completion sync window to catch eventual consistency delays.
+        setInsightSyncUntil(Date.now() + 45000)
         queryClient.invalidateQueries({ queryKey: ['sources'] })
         return
       } else {
         await new Promise(resolve => setTimeout(resolve, 2500))
         await fetchInsights({ silent: true })
+        setInsightSyncUntil(Date.now() + 45000)
         queryClient.invalidateQueries({ queryKey: ['sources'] })
       }
     } catch (err) {
