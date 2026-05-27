@@ -85,15 +85,62 @@ import { NotebookAssociations } from '@/components/source/NotebookAssociations'
 
 // Safe paginated content renderer — avoids browser crash on large documents
 const PAGE = 3000
-function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: string }) {
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function highlightPlainText(text: string, query: string): React.ReactNode {
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .map(term => term.trim())
+    .filter(term => term.length >= 2)
+    .slice(0, 8)
+
+  if (terms.length === 0) return text
+
+  const escaped = terms.map(escapeRegExp).sort((a, b) => b.length - a.length)
+  const splitRe = new RegExp(`(${escaped.join('|')})`, 'ig')
+  const testRe = new RegExp(`^(${escaped.join('|')})$`, 'i')
+
+  return text.split(splitRe).map((chunk, idx) => (
+    testRe.test(chunk)
+      ? <mark key={idx} data-search-hit="true" className="rounded bg-yellow-200 px-0.5 py-0 text-slate-900">{chunk}</mark>
+      : <span key={idx}>{chunk}</span>
+  ))
+}
+
+function SafeContent({
+  text,
+  noContentLabel,
+  highlightQuery,
+}: {
+  text: string
+  noContentLabel: string
+  highlightQuery?: string
+}) {
   const [visible, setVisible] = useState(PAGE)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const normalizedQuery = highlightQuery?.trim() || ''
+
+  useEffect(() => {
+    if (!normalizedQuery || !contentRef.current) return
+    const firstHit = contentRef.current.querySelector('[data-search-hit="true"]') as HTMLElement | null
+    if (firstHit) {
+      firstHit.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [normalizedQuery, visible, text])
+
   if (!text) return <p className="text-sm text-muted-foreground">{noContentLabel}</p>
   const slice = text.slice(0, visible)
   const hasMore = visible < text.length
   return (
-    <div className="space-y-2">
+    <div ref={contentRef} className="space-y-2">
       {slice.split(/\n{2,}/).filter(Boolean).map((para, i) => (
-        <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap break-words">{para}</p>
+        <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+          {normalizedQuery ? highlightPlainText(para, normalizedQuery) : para}
+        </p>
       ))}
       {hasMore && (
         <div className="pt-3 flex flex-col items-center gap-1">
@@ -308,6 +355,7 @@ interface SourceDetailContentProps {
   showChatButton?: boolean
   onChatClick?: () => void
   onClose?: () => void
+  highlightQuery?: string
 }
 
 export default function SystemPromptEditor() {
@@ -429,7 +477,8 @@ export function SourceDetailContent({
   sourceId,
   showChatButton = false,
   onChatClick,
-  onClose
+  onClose,
+  highlightQuery = '',
 }: SourceDetailContentProps) {
   const { t, language } = useTranslation()
   const queryClient = useQueryClient()
@@ -453,6 +502,10 @@ export function SourceDetailContent({
   const [isMarkdownView, setIsMarkdownView] = useState(false)
   const [showOriginalContent, setShowOriginalContent] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  useEffect(() => {
+    setSearchQuery(highlightQuery.trim())
+  }, [highlightQuery])
 
   const fetchSource = useCallback(async () => {
     try {
@@ -1025,10 +1078,11 @@ export function SourceDetailContent({
                         : source.translated_content
                     }
                     noContentLabel={t.sources.noContent}
+                    highlightQuery={searchQuery}
                   />
                 )}
                 {!isYouTubeUrl && !source.full_text && (
-                  <SafeContent text={''} noContentLabel={t.sources.noContent} />
+                  <SafeContent text={''} noContentLabel={t.sources.noContent} highlightQuery={searchQuery} />
                 )}
               </CardContent>
             </Card>

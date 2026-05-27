@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Settings2 } from 'lucide-react'
@@ -19,12 +19,14 @@ import { PageHeader } from '@/components/layout/PageHeader'
 export default function SourceDetailPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   // Reconstruct the full SurrealDB record ID from the short URL param.
   // The URL contains only the short ID (e.g. "abc123") to avoid colons in the
   // path which Next.js rejects. We prepend "source:" here so the API gets the
   // full record ID it expects.
   const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
   const sourceId = rawParam.includes(':') ? rawParam : (rawParam ? `source:${rawParam}` : '')
+  const highlightQuery = searchParams?.get('q') || ''
   const navigation = useNavigation()
 
   const [isConfigOpen, setIsConfigOpen] = useState(false)
@@ -185,6 +187,7 @@ export default function SourceDetailPage() {
                 sourceId={sourceId}
                 showChatButton={false}
                 onClose={handleBack}
+                highlightQuery={highlightQuery}
               />
             </div>
 

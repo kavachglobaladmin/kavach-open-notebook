@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { DefaultPromptEditor } from './components/DefaultPromptEditor'
 import { TransformationPlayground } from './components/TransformationPlayground'
 import { TransformationEditorDialog } from './components/TransformationEditorDialog'
-import { useTransformations } from '@/lib/hooks/use-transformations'
+import { useDeleteTransformation, useTransformations } from '@/lib/hooks/use-transformations'
 import { Transformation } from '@/lib/types/transformations'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { Plus, Copy, Pencil, Trash2, Play, ChevronDown } from 'lucide-react'
@@ -190,10 +191,13 @@ export default function TransformationsPage() {
   const [selectedTransformation, setSelectedTransformation] = useState<Transformation | undefined>()
   const [searchTerm, setSearchTerm] = useState('')
   const { data: transformations, isLoading } = useTransformations()
+  const deleteTransformation = useDeleteTransformation()
 
   // ── Editor dialog state ───────────────────────────────────────────────────
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingTransformation, setEditingTransformation] = useState<Transformation | undefined>()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [transformationToDelete, setTransformationToDelete] = useState<Transformation | undefined>()
 
   const handlePlayground = (transformation: Transformation) => {
     setSelectedTransformation(transformation)
@@ -211,7 +215,15 @@ export default function TransformationsPage() {
   }
 
   const handleDelete = (transformation: Transformation) => {
-    console.log('delete', transformation.id)
+    setTransformationToDelete(transformation)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!transformationToDelete?.id) return
+    await deleteTransformation.mutateAsync(transformationToDelete.id)
+    setDeleteDialogOpen(false)
+    setTransformationToDelete(undefined)
   }
 
   return (
@@ -415,6 +427,19 @@ export default function TransformationsPage() {
           if (!open) setEditingTransformation(undefined)
         }}
         transformation={editingTransformation}
+      />
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setTransformationToDelete(undefined)
+        }}
+        title={t.sources.delete}
+        description={t.transformations.deleteConfirm}
+        confirmText={t.common.delete}
+        confirmVariant="destructive"
+        onConfirm={handleDeleteConfirm}
+        isLoading={deleteTransformation.isPending}
       />
     </AppShell>
   )

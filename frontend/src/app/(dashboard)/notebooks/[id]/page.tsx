@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { NotebookHeader } from '../components/NotebookHeader'
@@ -30,6 +30,7 @@ export interface ContextSelections {
 export default function NotebookPage() {
   const { t } = useTranslation()
   const params = useParams()
+  const searchParams = useSearchParams()
 
   // Reconstruct the full SurrealDB record ID from the URL param.
   // The URL contains only the short ID (e.g. "2jvvymcm2ls9dqvpw2kx") to avoid
@@ -37,6 +38,7 @@ export default function NotebookPage() {
   // the API receives the full record ID it expects.
   const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
   const notebookId = rawParam.includes(':') ? rawParam : (rawParam ? `notebook:${rawParam}` : '')
+  const queryFromUrl = searchParams?.get('q')?.trim() || ''
 
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
   const {
@@ -60,6 +62,12 @@ export default function NotebookPage() {
 
   // Search term for PageHeader
   const [searchTerm, setSearchTerm] = useState('')
+
+  useEffect(() => {
+    if (queryFromUrl) {
+      setSearchTerm(queryFromUrl)
+    }
+  }, [queryFromUrl])
 
   // Context selection state
   const [contextSelections, setContextSelections] = useState<ContextSelections>({
@@ -190,6 +198,7 @@ export default function NotebookPage() {
                     isLoading={sourcesLoading}
                     notebookId={notebookId}
                     notebookName={notebook?.name}
+                    searchTerm={searchTerm}
                     onRefresh={refetchSources}
                     contextSelections={contextSelections.sources}
                     onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
@@ -203,6 +212,7 @@ export default function NotebookPage() {
                     notes={notes}
                     isLoading={notesLoading}
                     notebookId={notebookId}
+                    searchTerm={searchTerm}
                     contextSelections={contextSelections.notes}
                     onContextModeChange={(noteId, mode) => handleContextModeChange(noteId, mode, 'note')}
                   />
@@ -235,6 +245,7 @@ export default function NotebookPage() {
                 isLoading={sourcesLoading}
                 notebookId={notebookId}
                 notebookName={notebook?.name}
+                searchTerm={searchTerm}
                 onRefresh={refetchSources}
                 contextSelections={contextSelections.sources}
                 onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
@@ -253,6 +264,7 @@ export default function NotebookPage() {
                 notes={notes}
                 isLoading={notesLoading}
                 notebookId={notebookId}
+                searchTerm={searchTerm}
                 contextSelections={contextSelections.notes}
                 onContextModeChange={(noteId, mode) => handleContextModeChange(noteId, mode, 'note')}
               />

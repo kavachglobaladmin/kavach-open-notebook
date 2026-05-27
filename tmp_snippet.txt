@@ -1,0 +1,30 @@
+const PAGE = 3000
+function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: string }) {
+  const [visible, setVisible] = useState(PAGE)
+  if (!text) return <p className="text-sm text-muted-foreground">{noContentLabel}</p>
+  const slice = text.slice(0, visible)
+  const hasMore = visible < text.length
+  return (
+    <div className="space-y-2">
+      {slice.split(/\n{2,}/).filter(Boolean).map((para, i) => (
+        <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap break-words">{para}</p>
+      ))}
+      {hasMore && (
+        <div className="pt-3 flex flex-col items-center gap-1">
+          <span className="text-xs text-muted-foreground">
+            {visible.toLocaleString()} / {text.length.toLocaleString()} chars
+          </span>
+          <button
+            onClick={() => setVisible(v => v + PAGE)}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            Load more
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Smart Document Renderer ───────────────────────────────────────────────
+

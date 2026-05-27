@@ -57,6 +57,7 @@ interface SourceCardProps {
   selectable?: boolean
   selected?: boolean
   onSelectChange?: (selected: boolean) => void
+  highlightQuery?: string
 }
 
 const SOURCE_TYPE_ICONS = {
@@ -135,6 +136,7 @@ export function SourceCard({
   selectable = false,
   selected = false,
   onSelectChange,
+  highlightQuery = '',
 }: SourceCardProps) {
   const { t } = useTranslation()
   const statusConfigMap = getStatusConfig(t)
@@ -246,7 +248,20 @@ export function SourceCard({
   const sourceType = getSourceType(source)
   const SourceTypeIcon = SOURCE_TYPE_ICONS[sourceType]
   
-   const title = source.title || t.sources.untitledSource
+  const title = source.title || t.sources.untitledSource
+
+  const renderHighlightedTitle = (value: string): React.ReactNode => {
+    const query = highlightQuery.trim()
+    if (!query) return value
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const splitRe = new RegExp(`(${escaped})`, 'ig')
+    const testRe = new RegExp(`^(${escaped})$`, 'i')
+    return value.split(splitRe).map((chunk, idx) => (
+      testRe.test(chunk)
+        ? <mark key={idx} className="rounded bg-yellow-200 px-0.5 py-0 text-slate-900">{chunk}</mark>
+        : <span key={idx}>{chunk}</span>
+    ))
+  }
 
   const handleRetry = () => {
     if (onRetry) {
@@ -336,7 +351,7 @@ export function SourceCard({
                 className="text-sm font-medium leading-tight line-clamp-2 break-all"
                 title={title}
               >
-                {title}
+                {renderHighlightedTitle(title)}
               </h4>
             </div>
 
