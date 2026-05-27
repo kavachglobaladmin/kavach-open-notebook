@@ -38,15 +38,16 @@ function resolveFromLocalStorage(email: string): string {
 
 async function fetchProfileName(): Promise<string | null> {
   const maxRetries = 3
-  let lastError: any = null
+  let lastError: unknown = null
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const res = await apiClient.get<{ email: string; name: string }>('/users/profile')
       return res.data?.name?.trim() || null
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error
-      if (error?.response?.status === 404 || error?.response?.status === 401) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 401) {
         return null
       }
       if (attempt < maxRetries - 1) {
@@ -75,6 +76,42 @@ type GlobalSearchResult = {
   subtitle?: string
   type: 'notebook' | 'source' | 'content'
   href: string
+}
+
+type RankedGlobalSearchResult = GlobalSearchResult & { rank: number }
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function renderHighlighted(text: string, query: string) {
+  const q = query.trim()
+  if (!q) return text
+
+  const parts = q.split(/\s+/).filter(Boolean).slice(0, 6)
+  const needles = parts
+    .map(p => p.trim())
+    .filter(p => p.length >= 2)
+    .map(escapeRegExp)
+
+  if (needles.length === 0) return text
+
+  const splitRe = new RegExp(`(${needles.join('|')})`, 'ig')
+  const testRe = new RegExp(`^(${needles.join('|')})$`, 'i')
+  const chunks = text.split(splitRe)
+  return chunks.map((chunk, idx) => {
+    if (testRe.test(chunk)) {
+      return (
+        <mark
+          key={idx}
+          className="bg-violet-100 text-violet-900 rounded px-1 py-0.5"
+        >
+          {chunk}
+        </mark>
+      )
+    }
+    return <span key={idx}>{chunk}</span>
+  })
 }
 
 function normalizeText(value: string): string {
@@ -108,7 +145,15 @@ function cleanResultTitle(rawTitle: string, fallback: string): string {
     .trim()
 
   if (!compact) return fallback
-  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact
+  // Remove repeated comma-separated chunks: "A.pdf, A.pdf" -> "A.pdf"
+  const dedupedParts: string[] = []
+  for (const part of compact.split(',').map(p => p.trim()).filter(Boolean)) {
+    if (!dedupedParts.some(existing => existing.toLowerCase() === part.toLowerCase())) {
+      dedupedParts.push(part)
+    }
+  }
+  const merged = dedupedParts.join(', ')
+  return merged.length > 120 ? `${merged.slice(0, 117)}...` : merged
 }
 
 function extractFileName(path?: string): string {
@@ -116,6 +161,153 @@ function extractFileName(path?: string): string {
   const normalized = path.replace(/\\/g, '/')
   const parts = normalized.split('/')
   return parts[parts.length - 1] || path
+}
+
+function toShortId(rawId?: string): string {
+  if (!rawId) return ''
+  return rawId.includes(':') ? rawId.split(':').slice(1).join(':') : rawId
+}
+
+function inferSemanticHref(
+  result: Record<string, unknown>,
+  normalizedSearch: string
+): string {
+  const type = String(result.type ?? result.source_type ?? '').toLowerCase()
+  const idCandidates = [
+    String(result.parent_id ?? ''),
+    String(result.id ?? ''),
+    String(result.source_id ?? ''),
+    String(result.notebook_id ?? ''),
+  ].filter(Boolean)
+
+  const sourceCandidate = idCandidates.find(id => id.toLowerCase().startsWith('source:'))
+  if (sourceCandidate) return `/sources/${toShortId(sourceCandidate)}`
+
+  const notebookCandidate = idCandidates.find(id => id.toLowerCase().startsWith('notebook:'))
+  if (notebookCandidate) return `/notebooks/${toShortId(notebookCandidate)}`
+
+  if (type.includes('source') || type.includes('document') || type.includes('file')) {
+    const fallback = idCandidates[0]
+    if (fallback) return `/sources/${toShortId(fallback)}`
+  }
+
+  if (type.includes('notebook') || type.includes('case')) {
+    const fallback = idCandidates[0]
+    if (fallback) return `/notebooks/${toShortId(fallback)}`
+  }
+
+  return `/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`
+}
+
+function buildNotebookMatches(
+  notebooks: NotebookResponse[],
+  query: string
+): RankedGlobalSearchResult[] {
+  return notebooks
+    .map(notebook => ({
+      notebook,
+      rank: scoreMatch(query, notebook.name),
+    }))
+    .filter(item => item.rank > 0)
+    .sort((a, b) => b.rank - a.rank)
+    .slice(0, 6)
+    .map(item => ({
+      id: item.notebook.id,
+      title: item.notebook.name,
+      subtitle: 'Case',
+      type: 'notebook' as const,
+      href: `/notebooks/${toShortId(item.notebook.id)}`,
+      rank: item.rank,
+    }))
+}
+
+function buildSourceMatches(
+  sources: SourceListResponse[],
+  query: string
+): RankedGlobalSearchResult[] {
+  return sources
+    .map(source => ({
+      source,
+      rank: Math.max(
+        scoreMatch(query, source.title || ''),
+        scoreMatch(query, extractFileName(source.asset?.file_path)),
+        scoreMatch(query, source.asset?.file_path || '')
+      ),
+    }))
+    .filter(item => item.rank > 0)
+    .sort((a, b) => b.rank - a.rank)
+    .slice(0, 6)
+    .map(item => ({
+      id: item.source.id,
+      title: item.source.title || extractFileName(item.source.asset?.file_path) || 'Untitled file',
+      subtitle: extractFileName(item.source.asset?.file_path)
+        ? `File: ${extractFileName(item.source.asset?.file_path)}`
+        : 'File',
+      type: 'source' as const,
+      href: `/sources/${toShortId(item.source.id)}`,
+      rank: item.rank,
+    }))
+}
+
+function buildSemanticMatches(
+  semanticResults: unknown[],
+  query: string
+): RankedGlobalSearchResult[] {
+  return semanticResults
+    .slice(0, 14)
+    .map(rawResult => {
+      const result = (rawResult && typeof rawResult === 'object'
+        ? rawResult
+        : {}) as Record<string, unknown>
+
+      const rawType = String(result.type ?? result.source_type ?? '')
+      const isSource = rawType.toLowerCase().includes('source')
+      const rawTitle = String(result.title ?? '')
+      const titleScore = scoreMatch(query, rawTitle)
+      const matchesArray = Array.isArray(result.matches)
+        ? result.matches.map(match => String(match ?? '')).filter(Boolean)
+        : []
+      const snippetScore = matchesArray.length > 0
+        ? Math.max(...matchesArray.map(match => scoreMatch(query, match)), 0)
+        : 0
+      const relevanceScore = Math.round(
+        Number(result.final_score ?? result.relevance ?? result.similarity ?? result.score ?? 0) * 10
+      )
+      const snippet = matchesArray.length > 0
+        ? cleanResultTitle(matchesArray[0], '')
+        : ''
+      const displayTitle = cleanResultTitle(
+        rawTitle,
+        isSource ? `File match: ${query}` : `Content match: ${query}`
+      )
+      return {
+        id: String(result.id ?? `${displayTitle}-${snippet}`),
+        title: displayTitle,
+        subtitle: snippet || (isSource ? 'Content match in file' : 'Content match in knowledge base'),
+        type: 'content' as const,
+        href: inferSemanticHref(result, query),
+        rank: Math.max(40, titleScore, snippetScore, relevanceScore),
+      }
+    })
+}
+
+function mergeRankedResults(
+  all: RankedGlobalSearchResult[],
+  limit = 12
+): GlobalSearchResult[] {
+  const deduped = new Map<string, RankedGlobalSearchResult>()
+  all.forEach(item => {
+    const key = `${item.type}:${item.href}`.toLowerCase()
+    const existing = deduped.get(key)
+    if (!existing || item.rank > existing.rank) {
+      deduped.set(key, item)
+    }
+  })
+
+  return Array.from(deduped.values())
+    .sort((a, b) => b.rank - a.rank)
+    .slice(0, limit)
+    .map(({ rank, ...result }) => result)
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -134,6 +326,8 @@ export function PageHeader({
   const { toggleCollapse, isCollapsed } = useSidebarStore()
   const searchWrapperRef = useRef<HTMLDivElement | null>(null)
   const searchRequestIdRef = useRef(0)
+  const notebooksCacheRef = useRef<NotebookResponse[]>([])
+  const sourcesCacheRef = useRef<SourceListResponse[]>([])
 
   // User Profile State
   const [displayName, setDisplayName] = useState('')
@@ -143,6 +337,7 @@ export function PageHeader({
   const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([])
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false)
   const [showGlobalResults, setShowGlobalResults] = useState(false)
+  const [activeGlobalIndex, setActiveGlobalIndex] = useState(-1)
 
   // New Notebook Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -194,10 +389,26 @@ export function PageHeader({
   const normalizedSearch = useMemo(() => searchValue.trim(), [searchValue])
 
   useEffect(() => {
+    // Warm caches once so first keystroke can show fast local matches.
+    void Promise.allSettled([
+      notebooksApi.list({ archived: false, order_by: 'updated' }),
+      sourcesApi.list({ limit: 200, sort_by: 'updated', sort_order: 'desc' }),
+    ]).then(([notebooksRes, sourcesRes]) => {
+      if (notebooksRes.status === 'fulfilled') {
+        notebooksCacheRef.current = notebooksRes.value
+      }
+      if (sourcesRes.status === 'fulfilled') {
+        sourcesCacheRef.current = sourcesRes.value
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     if (!normalizedSearch || hideSearch) {
       searchRequestIdRef.current += 1
       setGlobalResults([])
       setIsSearchingGlobal(false)
+      setActiveGlobalIndex(-1)
       return
     }
 
@@ -205,115 +416,74 @@ export function PageHeader({
     const requestId = searchRequestIdRef.current
     setIsSearchingGlobal(true)
 
+    // Instant local/cached matches for responsive typing UX.
+    const instantLocal = mergeRankedResults([
+      ...buildNotebookMatches(notebooksCacheRef.current, normalizedSearch),
+      ...buildSourceMatches(sourcesCacheRef.current, normalizedSearch),
+    ])
+    if (instantLocal.length > 0) {
+      setGlobalResults(instantLocal)
+      setActiveGlobalIndex(0)
+    }
+
     const timeout = setTimeout(async () => {
       try {
-        const [notebooksRes, sourcesRes, semanticTextRes, semanticVectorRes] = await Promise.allSettled([
-          notebooksApi.list({ archived: false, order_by: 'updated' }),
-          sourcesApi.list({ limit: 200, sort_by: 'updated', sort_order: 'desc' }),
-          searchApi.search({
-            query: normalizedSearch,
-            type: 'text',
-            limit: 12,
-            search_sources: true,
-            search_notes: true,
-            minimum_score: 0.0,
-          }),
-          searchApi.search({
+        const notebooksPromise = notebooksApi.list({ archived: false, order_by: 'updated' })
+        const sourcesPromise = sourcesApi.list({ limit: 200, sort_by: 'updated', sort_order: 'desc' })
+        const textPromise = searchApi.search({
+          query: normalizedSearch,
+          type: 'text',
+          limit: 12,
+          search_sources: true,
+          search_notes: true,
+          minimum_score: 0.0,
+        })
+        const shouldRunVector = normalizedSearch.length >= 3
+        const vectorPromise = shouldRunVector
+          ? searchApi.search({
             query: normalizedSearch,
             type: 'vector',
             limit: 12,
             search_sources: true,
             search_notes: true,
             minimum_score: 0.0,
-          }),
+          })
+          : Promise.resolve({ results: [] as unknown[] })
+
+        const [notebooksRes, sourcesRes] = await Promise.allSettled([notebooksPromise, sourcesPromise])
+        if (requestId !== searchRequestIdRef.current) return
+
+        const notebooks = notebooksRes.status === 'fulfilled' ? notebooksRes.value : notebooksCacheRef.current
+        const sources = sourcesRes.status === 'fulfilled' ? sourcesRes.value : sourcesCacheRef.current
+        if (notebooksRes.status === 'fulfilled') {
+          notebooksCacheRef.current = notebooksRes.value
+        }
+        if (sourcesRes.status === 'fulfilled') {
+          sourcesCacheRef.current = sourcesRes.value
+        }
+
+        const localMerged = mergeRankedResults([
+          ...buildNotebookMatches(notebooks, normalizedSearch),
+          ...buildSourceMatches(sources, normalizedSearch),
+        ])
+        if (requestId !== searchRequestIdRef.current) return
+        if (localMerged.length > 0) {
+          setGlobalResults(localMerged)
+          setActiveGlobalIndex(0)
+        }
+
+        const [textRes, vectorRes] = await Promise.allSettled([textPromise, vectorPromise])
+        if (requestId !== searchRequestIdRef.current) return
+
+        const semanticText = textRes.status === 'fulfilled' ? textRes.value.results : []
+        const semanticVector = vectorRes.status === 'fulfilled' ? vectorRes.value.results : []
+        const semanticMerged = mergeRankedResults([
+          ...buildNotebookMatches(notebooks, normalizedSearch),
+          ...buildSourceMatches(sources, normalizedSearch),
+          ...buildSemanticMatches([...semanticText, ...semanticVector], normalizedSearch),
         ])
 
-        const notebooks = notebooksRes.status === 'fulfilled' ? (notebooksRes.value as NotebookResponse[]) : []
-        const sources = sourcesRes.status === 'fulfilled' ? (sourcesRes.value as SourceListResponse[]) : []
-        const semanticText = semanticTextRes.status === 'fulfilled' ? semanticTextRes.value.results : []
-        const semanticVector = semanticVectorRes.status === 'fulfilled' ? semanticVectorRes.value.results : []
-        const semanticResults = [...semanticText, ...semanticVector]
-
-        const notebookMatches: Array<GlobalSearchResult & { rank: number }> = notebooks
-          .map(notebook => ({
-            notebook,
-            rank: scoreMatch(normalizedSearch, notebook.name),
-          }))
-          .filter(item => item.rank > 0)
-          .sort((a, b) => b.rank - a.rank)
-          .slice(0, 6)
-          .map(notebook => ({
-            id: notebook.notebook.id,
-            title: notebook.notebook.name,
-            subtitle: 'Case',
-            type: 'notebook',
-            href: `/notebooks/${notebook.notebook.id.includes(':') ? notebook.notebook.id.split(':')[1] : notebook.notebook.id}`,
-            rank: notebook.rank,
-          }))
-
-        const sourceMatches: Array<GlobalSearchResult & { rank: number }> = sources
-          .map(source => ({
-            source,
-            rank: Math.max(
-              scoreMatch(normalizedSearch, source.title || ''),
-              scoreMatch(normalizedSearch, extractFileName(source.asset?.file_path)),
-              scoreMatch(normalizedSearch, source.asset?.file_path || '')
-            ),
-          }))
-          .filter(item => item.rank > 0)
-          .sort((a, b) => b.rank - a.rank)
-          .slice(0, 6)
-          .map(source => ({
-            id: source.source.id,
-            title: source.source.title || extractFileName(source.source.asset?.file_path) || 'Untitled file',
-            subtitle: extractFileName(source.source.asset?.file_path)
-              ? `File: ${extractFileName(source.source.asset?.file_path)}`
-              : 'File',
-            type: 'source',
-            href: `/sources/${source.source.id.includes(':') ? source.source.id.split(':')[1] : source.source.id}`,
-            rank: source.rank,
-          }))
-
-        const semanticMatches: Array<GlobalSearchResult & { rank: number }> = semanticResults
-          .slice(0, 14)
-          .map(result => {
-            const rawId = result.parent_id || result.id
-            const shortId = rawId.includes(':') ? rawId.split(':')[1] : rawId
-            const isSource = (result.type || result.source_type || '').toLowerCase().includes('source')
-            const titleScore = scoreMatch(normalizedSearch, result.title || '')
-            const snippetScore = Array.isArray(result.matches)
-              ? Math.max(...result.matches.map((match: string) => scoreMatch(normalizedSearch, match)), 0)
-              : 0
-            const relevanceScore = Math.round((result.final_score || result.relevance || result.similarity || result.score || 0) * 10)
-            const snippet = Array.isArray(result.matches) && result.matches.length > 0
-              ? cleanResultTitle(result.matches[0], '')
-              : ''
-            const displayTitle = cleanResultTitle(
-              result.title || '',
-              isSource ? `File match: ${normalizedSearch}` : `Content match: ${normalizedSearch}`
-            )
-            return {
-              id: result.id,
-              title: displayTitle,
-              subtitle: snippet || (isSource ? 'Content match in file' : 'Content match in knowledge base'),
-              type: 'content',
-              href: isSource ? `/sources/${shortId}` : '/search',
-              rank: Math.max(40, titleScore, snippetScore, relevanceScore),
-            }
-          })
-
-        const deduped = new Map<string, GlobalSearchResult & { rank: number }>()
-        ;[...notebookMatches, ...sourceMatches, ...semanticMatches].forEach(item => {
-          const key = `${item.type}:${item.href}:${item.title}`
-          if (!deduped.has(key)) deduped.set(key, item)
-        })
-
-        const sorted = Array.from(deduped.values())
-          .sort((a, b) => b.rank - a.rank)
-          .slice(0, 12)
-          .map(({ rank, ...result }) => result)
-
-        if (sorted.length === 0 && normalizedSearch.length >= 2 && sources.length > 0) {
+        if (semanticMerged.length === 0 && normalizedSearch.length >= 3 && sources.length > 0) {
           const deepCandidates = sources.slice(0, 30)
           const deepResultsRaw = await Promise.allSettled(
             deepCandidates.map(source => sourcesApi.get(source.id))
@@ -343,26 +513,30 @@ export function PageHeader({
           if (deepMatches.length > 0) {
             if (requestId !== searchRequestIdRef.current) return
             setGlobalResults(deepMatches)
+            setActiveGlobalIndex(0)
             return
           }
         }
 
         if (requestId !== searchRequestIdRef.current) return
-        setGlobalResults(sorted)
+        setGlobalResults(semanticMerged)
+        setActiveGlobalIndex(semanticMerged.length > 0 ? 0 : -1)
       } catch {
         if (requestId !== searchRequestIdRef.current) return
         setGlobalResults([])
+        setActiveGlobalIndex(-1)
       } finally {
         if (requestId !== searchRequestIdRef.current) return
         setIsSearchingGlobal(false)
       }
-    }, 300)
+    }, 120)
 
     return () => clearTimeout(timeout)
   }, [normalizedSearch, hideSearch])
 
   const handleGlobalResultClick = (result: GlobalSearchResult) => {
     setShowGlobalResults(false)
+    setActiveGlobalIndex(-1)
     if (result.href === '/search') {
       router.push(`/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`)
       return
@@ -370,18 +544,29 @@ export function PageHeader({
     router.push(result.href)
   }
 
-  const handleCreateNew = () => {
+  const handleCreateNew = async () => {
     if (onNew) {
       // Delegate to the parent page's handler
       onNew()
       return
     }
-    // Internal modal fallback (used when no onNew prop is provided)
-    console.log("Creating:", { notebookName, notebookDesc, storageLimit })
-    setIsModalOpen(false)
-    setNotebookName('')
-    setNotebookDesc('')
-    setStorageLimit(5)
+    // Internal modal: create notebook via API
+    if (!notebookName.trim()) return
+    try {
+      const newNotebook = await notebooksApi.create({
+        name: notebookName.trim(),
+        description: notebookDesc.trim() || undefined,
+      })
+      setIsModalOpen(false)
+      setNotebookName('')
+      setNotebookDesc('')
+      setStorageLimit(5)
+      // Navigate to the new notebook
+      const shortId = newNotebook.id.includes(':') ? newNotebook.id.split(':')[1] : newNotebook.id
+      router.push(`/notebooks/${shortId}`)
+    } catch (err) {
+      console.error('Failed to create notebook:', err)
+    }
   }
 
   return (
@@ -402,16 +587,46 @@ export function PageHeader({
         )}
 
         {!hideSearch && (
-          <div ref={searchWrapperRef} className="relative w-full max-w-[480px] hidden sm:block">
+          <div ref={searchWrapperRef} className="relative w-full max-w-[480px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
             <Input
               value={searchValue}
               onChange={e => {
                 onSearchChange(e.target.value)
                 setShowGlobalResults(true)
+                setActiveGlobalIndex(0)
               }}
               onFocus={() => {
                 if (normalizedSearch) setShowGlobalResults(true)
+              }}
+              onKeyDown={e => {
+                if (!showGlobalResults || !normalizedSearch) return
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setActiveGlobalIndex(prev => Math.min(prev + 1, globalResults.length - 1))
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setActiveGlobalIndex(prev => Math.max(prev - 1, 0))
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setShowGlobalResults(false)
+                  setActiveGlobalIndex(-1)
+                  return
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  const selected = globalResults[activeGlobalIndex] ?? globalResults[0]
+                  if (selected) {
+                    handleGlobalResultClick(selected)
+                  } else {
+                    setShowGlobalResults(false)
+                    router.push(`/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`)
+                  }
+                }
               }}
               placeholder={searchPlaceholder}
               autoComplete="off"
@@ -419,21 +634,41 @@ export function PageHeader({
             />
 
             {showGlobalResults && normalizedSearch && (
-              <div className="absolute left-0 right-0 top-[52px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-0 right-0 top-[52px] rounded-xl border border-slate-200 bg-white shadow-xl z-[200] overflow-hidden">
                 {isSearchingGlobal ? (
                   <div className="px-4 py-3 text-sm text-slate-500">Searching across cases, files, and content...</div>
                 ) : globalResults.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-slate-500">No results found</div>
+                  <div>
+                    <div className="px-4 py-3 text-sm text-slate-500">No direct matches found</div>
+                    <button
+                      onClick={() => {
+                        setShowGlobalResults(false)
+                        router.push(`/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`)
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm font-semibold text-[#7C3AED] hover:bg-violet-50 border-t border-slate-100"
+                    >
+                      {`Search everywhere for "${normalizedSearch}"`}
+                    </button>
+                  </div>
                 ) : (
                   <div className="max-h-[360px] overflow-y-auto">
-                    {globalResults.map(result => (
+                    {globalResults.map((result, idx) => (
                       <button
                         key={`${result.type}-${result.id}-${result.href}`}
                         onClick={() => handleGlobalResultClick(result)}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                        className={cn(
+                          "w-full text-left px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors",
+                          idx === activeGlobalIndex ? "bg-violet-50" : "hover:bg-slate-50"
+                        )}
                       >
-                        <div className="text-sm font-semibold text-slate-800 truncate">{result.title}</div>
-                        <div className="text-xs text-slate-500">{result.subtitle}</div>
+                        <div className="text-sm font-semibold text-slate-800 truncate">
+                          {renderHighlighted(result.title, normalizedSearch)}
+                        </div>
+                        {result.subtitle && (
+                          <div className="text-xs text-slate-500 line-clamp-2">
+                            {renderHighlighted(result.subtitle, normalizedSearch)}
+                          </div>
+                        )}
                       </button>
                     ))}
                     <button
@@ -474,7 +709,7 @@ export function PageHeader({
 
       {/* ── Create New Notebook Modal Overlay ──────────────────────────────── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 transition-all">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 transition-all">
           <div className="bg-white w-full max-w-[480px] rounded-xl shadow-2xl relative p-6 md:p-7 animate-in fade-in zoom-in-95 duration-200">
             <button
               onClick={() => setIsModalOpen(false)}

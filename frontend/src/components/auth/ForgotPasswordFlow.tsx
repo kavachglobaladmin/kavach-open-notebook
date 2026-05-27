@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle, CheckCircle2, Eye, EyeOff, BookOpen } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { getApiUrl } from '@/lib/config'
+import { getApiErrorMessage } from '@/lib/utils/error-handler'
+import { toast } from '@/lib/notifications/toast'
+import apiClient from '@/lib/api/client'
+import { useTranslation } from '@/lib/hooks/use-translation'
 import Image from 'next/image'
 import forgotIllust from '@/assets/Wavy_Gen-01_Single-071.jpg'
 
@@ -39,51 +42,21 @@ function isPasswordValid(pw: string): boolean {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiSendOTP(email: string): Promise<void> {
-  const base = await getApiUrl()
-  const res = await fetch(`${base}/api/otp/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Failed to send OTP.')
-  }
+  await apiClient.post('/otp/send', { email })
 }
 
 async function apiVerifyOTP(email: string, otp: string): Promise<void> {
-  const base = await getApiUrl()
-  const res = await fetch(`${base}/api/otp/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, otp }),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Invalid or expired OTP.')
-  }
+  await apiClient.post('/otp/verify', { email, otp })
 }
 
 async function apiClearOTP(email: string): Promise<void> {
-  const base = await getApiUrl()
-  await fetch(`${base}/api/otp/clear`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  }).catch(() => {/* non-critical */})
+  await apiClient.delete('/otp/clear', { data: { email } }).catch(() => {
+    // non-critical cleanup
+  })
 }
 
 async function apiResetPassword(email: string, newPassword: string): Promise<void> {
-  const base = await getApiUrl()
-  const res = await fetch(`${base}/api/users/reset-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, new_password: newPassword }),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Failed to update password in database.')
-  }
+  await apiClient.post('/users/reset-password', { email, new_password: newPassword })
 }
 
 // ── Session storage key for passing email between steps ──────────────────────
@@ -134,6 +107,7 @@ function Logo() {
 // ── Main component ────────────────────────────────────────────────────────────
 export function ForgotPasswordFlow({ initialStep }: Props) {
   const router = useRouter()
+  const { t } = useTranslation()
 
   // Restore email from sessionStorage when landing on otp/reset-password directly
   const [email, setEmail] = useState(() => {
@@ -149,6 +123,10 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
+  const [emailTouched, setEmailTouched] = useState(false)
+  const [otpTouched, setOtpTouched] = useState(false)
+  const [newPasswordTouched, setNewPasswordTouched] = useState(false)
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [timeLeft, setTimeLeft] = useState(60)
   const [canResend, setCanResend] = useState(false)
@@ -206,6 +184,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
   // ── Step handlers ─────────────────────────────────────────────────────────
   const handleSendOTP = async () => {
     setError('')
+    setEmailTouched(true)
     if (!email.trim()) { setError('Email is required.'); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email.'); return }
     if (!emailExists(email)) { setError('No account found with this email.'); return }
@@ -214,32 +193,44 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
       await apiSendOTP(email.trim().toLowerCase())
       // Persist email for subsequent steps
       sessionStorage.setItem(EMAIL_KEY, email.trim().toLowerCase())
+      toast.success('OTP sent successfully')
       router.push('/otp')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send OTP.')
+      const detail = err instanceof Error ? err.message : 'Failed to send OTP.'
+      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.genericError')
+      setError(message)
+      toast.error(message)
     } finally { setLoading(false) }
   }
 
   const handleVerifyOTP = async () => {
     setError('')
     const otp = otpDigits.join('')
+    setOtpTouched(true)
     if (otp.length !== 6) { setError('Please enter all 6 digits.'); return }
     setLoading(true)
     try {
       await apiVerifyOTP(email.trim().toLowerCase(), otp)
+      toast.success('OTP verified successfully')
       router.push('/reset-password')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid or expired OTP.')
+      const detail = err instanceof Error ? err.message : 'Invalid or expired OTP.'
+      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.unauthorized')
+      setError(message)
+      toast.error(message)
     } finally { setLoading(false) }
   }
 
   const handleResetPassword = async () => {
     setError('')
+    setNewPasswordTouched(true)
+    setConfirmPasswordTouched(true)
     if (!newPassword.trim()) { setError('New password is required.'); return }
     if (!isPasswordValid(newPassword)) {
       setError('Password must be 8+ chars with uppercase, lowercase, and special character.')
       return
     }
+    if (!confirmPassword.trim()) { setError('Confirm password is required.'); return }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
     setLoading(true)
     try {
@@ -255,8 +246,12 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
       await apiClearOTP(userEmail)
       sessionStorage.removeItem(EMAIL_KEY)
       setSuccess(true)
+      toast.success('Password updated successfully')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update password.')
+      const detail = err instanceof Error ? err.message : 'Failed to update password.'
+      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.genericError')
+      setError(message)
+      toast.error(message)
     } finally { setLoading(false) }
   }
 
@@ -266,8 +261,12 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
       await apiSendOTP(email.trim().toLowerCase())
       setOtpDigits(['', '', '', '', '', '']); setTimeLeft(60); setCanResend(false)
       setTimeout(() => otpRefs.current[0]?.focus(), 50)
+      toast.success('OTP resent successfully')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend OTP.')
+      const detail = err instanceof Error ? err.message : 'Failed to resend OTP.'
+      const message = getApiErrorMessage(detail, key => t(key), 'apiErrors.genericError')
+      setError(message)
+      toast.error(message)
     } finally { setLoading(false) }
   }
 
@@ -278,7 +277,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
       style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}
     >
       {/* Card */}
-      <div className="flex flex-col md:flex-row w-full max-w-[1100px] min-h-[520px] bg-white rounded-[32px] shadow-2xl overflow-hidden border border-white/80">
+      <div className="flex flex-col md:flex-row w-full max-w-[1100px] min-h-[520px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[32px] shadow-2xl overflow-y-auto border border-white/80">
 
         {/* Left: illustration */}
         <IllustrationPanel />
@@ -334,10 +333,17 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                       placeholder="Enter Your Registered Email"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
+                      onBlur={() => setEmailTouched(true)}
                       onKeyDown={e => e.key === 'Enter' && handleSendOTP()}
                       disabled={loading}
                       className="w-full px-5 py-3.5 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-violet-50 transition-all text-[15px]"
                     />
+                    {emailTouched && !email.trim() && (
+                      <p className="text-[12px] text-red-500 font-semibold pl-1">Email is required.</p>
+                    )}
+                    {emailTouched && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
+                      <p className="text-[12px] text-red-500 font-semibold pl-1">Enter a valid email.</p>
+                    )}
                   </div>
                 )}
 
@@ -356,6 +362,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                           onChange={e => handleOtpChange(i, e.target.value)}
                           onKeyDown={e => handleOtpKeyDown(i, e)}
                           onPaste={i === 0 ? handleOtpPaste : undefined}
+                          onBlur={() => setOtpTouched(true)}
                           disabled={loading}
                           className={[
                             'w-11 h-13 sm:w-13 sm:h-14 text-center text-xl font-black rounded-xl border-2 transition-all focus:outline-none bg-white',
@@ -367,6 +374,9 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                         />
                       ))}
                     </div>
+                    {otpTouched && otpDigits.join('').length !== 6 && (
+                      <p className="text-[12px] text-red-500 font-semibold text-center">Please enter all 6 digits.</p>
+                    )}
                     <div className="flex items-center justify-between text-xs px-1">
                       <span className={timeLeft > 0 ? 'text-slate-400 font-medium' : 'text-red-500 font-bold'}>
                         {timeLeft > 0 ? `Resend in ${timeLeft}s` : 'Code expired'}
@@ -394,6 +404,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                           placeholder="Enter New Password"
                           value={newPassword}
                           onChange={e => setNewPassword(e.target.value)}
+                          onBlur={() => setNewPasswordTouched(true)}
                           disabled={loading}
                           className="w-full px-5 py-3.5 pr-12 rounded-xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-violet-50 transition-all text-[15px]"
                         />
@@ -401,6 +412,9 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                           {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                         </button>
                       </div>
+                      {newPasswordTouched && !newPassword.trim() && (
+                        <p className="text-[12px] text-red-500 font-semibold pl-1">New password is required.</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-bold text-slate-700 ml-1">Confirm Password</label>
@@ -410,6 +424,7 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                           placeholder="Re-enter New Password"
                           value={confirmPassword}
                           onChange={e => setConfirmPassword(e.target.value)}
+                          onBlur={() => setConfirmPasswordTouched(true)}
                           disabled={loading}
                           className="w-full px-5 py-3.5 pr-12 rounded-xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-violet-50 transition-all text-[15px]"
                         />
@@ -417,6 +432,9 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
                           {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                         </button>
                       </div>
+                      {confirmPasswordTouched && !confirmPassword.trim() && (
+                        <p className="text-[12px] text-red-500 font-semibold pl-1">Confirm password is required.</p>
+                      )}
                     </div>
                   </>
                 )}

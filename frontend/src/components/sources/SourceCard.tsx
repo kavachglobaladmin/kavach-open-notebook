@@ -26,10 +26,10 @@ import {
   Unlink,
   GitBranch,
   Newspaper,
-  Lightbulb,
   Network,
   BarChart2,
   PhoneCall,
+  Lightbulb,
 } from 'lucide-react'
 import { useSourceStatus } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -356,16 +356,14 @@ export function SourceCard({
                 {sourceType === 'link' ? t.sources.addUrl : sourceType === 'upload' ? t.sources.uploadFile : t.sources.enterText}
               </Badge>
 
-              {isCompleted && (
-                <Badge
-                  variant={source.insights_count > 0 ? 'default' : 'outline'}
-                  className="text-xs flex items-center gap-1"
-                  title={`${source.insights_count} insight${source.insights_count !== 1 ? 's' : ''}`}
-                >
-                  <Lightbulb className="h-3 w-3 shrink-0" />
-                  <span>{source.insights_count} {source.insights_count === 1 ? 'Insight' : 'Insights'}</span>
+              {/* Insight count badge — shown when source has insights */}
+              {hasInsights && isCompleted && (
+                <Badge variant="outline" className="text-xs flex items-center gap-1 text-amber-600 border-amber-300 bg-amber-50">
+                  <Lightbulb className="h-3 w-3" />
+                  {source.insights_count} {source.insights_count === 1 ? t.common.insight : t.common.insights}
                 </Badge>
               )}
+
               {source.topics && source.topics.length > 0 && isCompleted && (
                 <>
                   {source.topics.slice(0, 2).map((topic, index) => (

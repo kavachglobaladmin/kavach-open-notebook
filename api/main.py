@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.auth import PasswordAuthMiddleware
+from api.auth import JWTAuthMiddleware
 from open_notebook.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -176,10 +176,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add password authentication middleware first
-# Exclude /api/auth/status and /api/config from authentication
+# Add JWT authentication middleware first.
+# Public paths listed below bypass token validation entirely.
 app.add_middleware(
-    PasswordAuthMiddleware,
+    JWTAuthMiddleware,
     excluded_paths=[
         "/",
         "/health",
@@ -192,41 +192,60 @@ app.add_middleware(
         "/api/otp/send",
         "/api/otp/verify",
         "/api/otp/clear",
+        "/api/users/reset-password",
         "/api/users/register",
         "/api/users/login",
     ],
 )
 
 # Add CORS middleware last (so it processes first)
+# Only allow requests from the frontend (port 3000) and the API itself (port 5055)
+# on the known host IP. All other origins are blocked.
+ALLOWED_ORIGINS = [
+    "http://192.168.11.136:3000",   # Next.js frontend
+    "http://192.168.11.136:5055",   # FastAPI (self / Swagger UI / direct calls)
+    "http://192.168.11.182:3000",   # Next.js frontend (alternate LAN IP)
+    "http://192.168.11.182:5055",   # FastAPI (alternate LAN IP)
+    "http://localhost:3000",         # local dev frontend
+    "http://localhost:5055",         # local dev API
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Custom exception handler to ensure CORS headers are included in error responses
-# This helps when errors occur before the CORS middleware can process them
+def _resolve_cors_origin(request: Request) -> str:
+    """
+    Return the request origin only when it is in ALLOWED_ORIGINS.
+    Falls back to the first allowed origin so the header is always valid
+    (browsers will block the response anyway if the origin doesn't match).
+    """
+    origin = request.headers.get("origin", "")
+    if origin in ALLOWED_ORIGINS:
+        return origin
+    # Fallback — never echo back an arbitrary origin
+    return ALLOWED_ORIGINS[0]
+
+
+# Custom exception handler to ensure CORS headers are included in error responses.
+# This is particularly important for 413 (Payload Too Large) errors during file uploads.
+# Note: If a reverse proxy (nginx, traefik) returns 413 before the request reaches
+# FastAPI, this handler won't be called. Configure your reverse proxy to add CORS
+# headers to error responses in that case.
 @app.exception_handler(StarletteHTTPException)
 async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """
-    Custom exception handler that ensures CORS headers are included in error responses.
-    This is particularly important for 413 (Payload Too Large) errors during file uploads.
-
-    Note: If a reverse proxy (nginx, traefik) returns 413 before the request reaches
-    FastAPI, this handler won't be called. In that case, configure your reverse proxy
-    to add CORS headers to error responses.
-    """
-    # Get the origin from the request
-    origin = request.headers.get("origin", "*")
-
+    origin = _resolve_cors_origin(request)
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
         headers={
-            **(exc.headers or {}), "Access-Control-Allow-Origin": origin,
+            **(exc.headers or {}),
+            "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Credentials": "true",
             "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*",
@@ -235,7 +254,7 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
 
 
 def _cors_headers(request: Request) -> dict[str, str]:
-    origin = request.headers.get("origin", "*")
+    origin = _resolve_cors_origin(request)
     return {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Credentials": "true",

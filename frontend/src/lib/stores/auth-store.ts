@@ -106,7 +106,7 @@ export const useAuthStore = create<AuthState>()(
 
           if (response.ok) {
             const data = await response.json()
-            const apiToken: string = data.api_token ?? ''
+            const apiToken: string = data.access_token ?? data.api_token ?? ''
             const verifiedEmail: string = data.email ?? email.trim().toLowerCase()
             const displayName: string = name ?? data.name ?? verifiedEmail.split('@')[0]
 

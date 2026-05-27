@@ -21,6 +21,41 @@ interface ParsedDoc {
   plainHtml: string
 }
 
+// ── Deduplicate repeated content blocks ───────────────────────────────────────
+function deduplicateContent(text: string): string {
+  if (!text) return text
+  const lines = text.split('\n')
+  const WINDOW = 5
+  const seen = new Set<string>()
+  const keep = new Array<boolean>(lines.length).fill(true)
+  const nonEmptyIdx: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) nonEmptyIdx.push(i)
+  }
+  for (let w = 0; w <= nonEmptyIdx.length - WINDOW; w++) {
+    const windowLines = nonEmptyIdx.slice(w, w + WINDOW)
+    const fingerprint = windowLines.map(i => lines[i].trim().toLowerCase().replace(/\s+/g, ' ')).join('|')
+    if (seen.has(fingerprint)) {
+      for (const idx of windowLines) keep[idx] = false
+    } else {
+      seen.add(fingerprint)
+    }
+  }
+  const result = lines.filter((_, i) => keep[i])
+  const rejoined = result.join('\n')
+  const paras = rejoined.split(/\n{2,}/)
+  const seenParas = new Set<string>()
+  const uniqueParas: string[] = []
+  for (const para of paras) {
+    const key = para.trim().replace(/\s+/g, ' ').toLowerCase()
+    if (!key) { uniqueParas.push(para); continue }
+    if (seenParas.has(key)) continue
+    seenParas.add(key)
+    uniqueParas.push(para)
+  }
+  return uniqueParas.join('\n\n')
+}
+
 // ── Detect & parse ────────────────────────────────────────────────────────────
 function parseDoc(text: string): ParsedDoc {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
@@ -274,7 +309,7 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [matchCount, setMatchCount] = useState(0)
   const [currentMatch, setCurrentMatch] = useState(0)
-  const matchEls = useRef<HTMLElement[]>([])
+  const matchEls = useRef<HTMLMapElement[]>([])
 
   // Re-render with highlights whenever query changes
   useEffect(() => {
@@ -299,7 +334,7 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
     while ((node = walker.nextNode())) textNodes.push(node as Text)
 
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-    const marks: HTMLElement[] = []
+    const marks: HTMLMapElement[] = []
 
     for (const tn of textNodes) {
       const val = tn.nodeValue ?? ''
@@ -311,7 +346,7 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
       let m: RegExpExecArray | null
       while ((m = re.exec(val)) !== null) {
         if (m.index > last) frag.appendChild(document.createTextNode(val.slice(last, m.index)))
-        const mark = document.createElement('mark')
+        const mark = document.createElement('mark') as HTMLMapElement
         mark.style.cssText = 'background:#fef08a;border-radius:2px;padding:0 1px;color:inherit'
         mark.textContent = m[0]
         frag.appendChild(mark)
@@ -355,11 +390,13 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
 export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialogProps) {
   const [query, setQuery]           = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const doc = useMemo(() => parseDoc(text), [text])
+  // Deduplicate repeated content blocks before parsing/rendering
+  const dedupedText = useMemo(() => deduplicateContent(text), [text])
+  const doc = useMemo(() => parseDoc(dedupedText), [dedupedText])
 
   const [plainMatchCount, setPlainMatchCount] = useState(0)
   const [plainCurrentMatch, setPlainCurrentMatch] = useState(0)
-  const plainMatchElsRef = useRef<HTMLElement[]>([])
+  const plainMatchElsRef = useRef<HTMLMapElement[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -385,7 +422,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
     while ((node = walker.nextNode())) textNodes.push(node as Text)
 
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-    const marks: HTMLElement[] = []
+    const marks: HTMLMapElement[] = []
 
     for (const tn of textNodes) {
       const val = tn.nodeValue ?? ''
@@ -398,7 +435,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
       let m: RegExpExecArray | null
       while ((m = re.exec(val)) !== null) {
         if (m.index > last) frag.appendChild(document.createTextNode(val.slice(last, m.index)))
-        const mark = document.createElement('mark')
+        const mark = document.createElement('mark') as HTMLMapElement
         mark.style.cssText = 'background:#fef08a;border-radius:2px;padding:0 1px;color:inherit'
         mark.textContent = m[0]
         frag.appendChild(mark)
@@ -432,7 +469,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
 
   const tableRef = useRef<HTMLDivElement>(null)
 
-  const scrollToMark = (mark: HTMLElement) => {
+  const scrollToMark = (mark: HTMLMapElement) => {
     const sc = scrollContainerRef.current
     if (!sc) { mark.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
     const markTop = mark.getBoundingClientRect().top
@@ -470,19 +507,19 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
 
   return (
     // Fixed the sidebar overlap by increasing the z-index to 99999 to guarantee top-layer rendering
-    <div className="fixed inset-0 z-[99999] flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+    <div className="fixed inset-0 z-[99999] flex flex-col bg-white overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 bg-slate-900 dark:bg-slate-950 border-b border-slate-800 shrink-0">
-        <div className="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center">
+      <div className="flex items-center gap-3 px-4 sm:px-6 py-4 bg-white border-b border-slate-200 shrink-0">
+        <div className="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
           <span className="text-white text-xs font-black">DR</span>
         </div>
         <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Document Reader</p>
-          <h2 className="text-sm font-bold text-white">Formatted View</h2>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Document Reader</p>
+          <h2 className="text-sm font-bold text-slate-900">Formatted View</h2>
         </div>
 
         {/* Search */}
-        <div className="ml-6 flex items-center gap-2 flex-1 max-w-md">
+        <div className="ml-3 sm:ml-6 flex items-center gap-2 flex-1 max-w-md">
           <input
             ref={inputRef}
             type="text"
@@ -490,26 +527,26 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') navigate(1) }}
-            className="flex-1 px-3 py-1.5 text-sm rounded-md bg-white/10 text-white placeholder:text-slate-400 outline-none border border-white/20 focus:border-blue-400"
+            className="flex-1 px-3 py-2 text-sm rounded-md bg-white text-slate-900 placeholder:text-slate-400 outline-none border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           />
           {/* Match count — plain text */}
           {!isTable && plainMatchCount > 0 && (
-            <span className="text-xs text-slate-300 whitespace-nowrap font-medium">
+            <span className="text-xs text-slate-600 whitespace-nowrap font-medium">
               {plainCurrentMatch} / {plainMatchCount}
             </span>
           )}
           {!isTable && query.trim() && plainMatchCount === 0 && (
-            <span className="text-xs text-red-400 whitespace-nowrap">No results</span>
+            <span className="text-xs text-red-500 whitespace-nowrap">No results</span>
           )}
           {/* Navigate buttons — always shown */}
           {!isTable && (
             <>
               <button onClick={() => navigate(-1)} disabled={plainMatchCount === 0}
-                className="h-7 w-7 rounded bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 disabled:opacity-30">
+                className="h-8 w-8 rounded border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-600 disabled:opacity-30">
                 <ChevronUp className="h-3.5 w-3.5" />
               </button>
               <button onClick={() => navigate(1)} disabled={plainMatchCount === 0}
-                className="h-7 w-7 rounded bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 disabled:opacity-30">
+                className="h-8 w-8 rounded border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-600 disabled:opacity-30">
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
             </>
@@ -517,30 +554,32 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
         </div>
 
         <button onClick={onClose}
-          className="ml-auto h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white">
+          className="ml-auto h-9 w-9 rounded-full border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-600">
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="overflow-auto bg-slate-50 dark:bg-[#0a0c10] flex-1">
+      <div ref={scrollContainerRef} className="overflow-auto bg-white flex-1">
         {isTable ? (
           <div className="p-4 w-full h-full">
             <VirtualTable ref={tableRef} headers={doc.headers} rows={doc.rows} query={query} />
           </div>
         ) : (
-          <div className="max-w-[1100px] mx-auto bg-white dark:bg-slate-900 min-h-full px-8 py-8 shadow-sm border-x border-slate-200 dark:border-slate-800">
+          <div className="w-full bg-white min-h-full px-4 sm:px-8 lg:px-12 py-8">
             <div
               ref={containerRef}
-              className="prose prose-sm prose-slate dark:prose-invert max-w-none
+              className="prose prose-sm prose-slate max-w-none
                 [&_h1]:text-base [&_h1]:font-black [&_h1]:mt-6 [&_h1]:mb-2
                 [&_h2]:text-[11px] [&_h2]:font-black [&_h2]:tracking-widest [&_h2]:uppercase [&_h2]:text-slate-400 [&_h2]:mt-7 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:pb-1
                 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-4 [&_h3]:mb-1
                 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-1.5
                 [&_ul]:space-y-1 [&_li]:text-sm [&_strong]:font-semibold
+                [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse
+                [&_td]:break-words [&_th]:break-words
                 [&_.kv-table]:w-full [&_.kv-table]:mb-4 [&_.kv-table]:border-collapse
                 [&_.kv-key]:text-xs [&_.kv-key]:font-semibold [&_.kv-key]:text-slate-500 [&_.kv-key]:uppercase [&_.kv-key]:tracking-wide [&_.kv-key]:py-1.5 [&_.kv-key]:pr-4 [&_.kv-key]:pl-2 [&_.kv-key]:w-48 [&_.kv-key]:border-b [&_.kv-key]:border-slate-100 [&_.kv-key]:align-top
-                [&_.kv-val]:text-sm [&_.kv-val]:text-slate-800 dark:[&_.kv-val]:text-slate-200 [&_.kv-val]:py-1.5 [&_.kv-val]:border-b [&_.kv-val]:border-slate-100 [&_.kv-val]:font-medium
+                [&_.kv-val]:text-sm [&_.kv-val]:text-slate-800 [&_.kv-val]:py-1.5 [&_.kv-val]:border-b [&_.kv-val]:border-slate-100 [&_.kv-val]:font-medium
                 [&_.txn]:font-mono [&_.txn]:text-xs [&_.txn]:text-slate-600 [&_.txn]:bg-slate-50 [&_.txn]:px-2 [&_.txn]:py-1 [&_.txn]:rounded [&_.txn]:mb-1"
               dangerouslySetInnerHTML={{ __html: doc.plainHtml }}
             />
@@ -549,9 +588,9 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-t border-slate-200 bg-white shrink-0">
         <span className="text-xs text-slate-500">
-          {(text.length / 1000).toFixed(1)}K characters · {doc.type.toUpperCase()}
+          {(dedupedText.length / 1000).toFixed(1)}K characters · {doc.type.toUpperCase()}
           {isTable && ` · ${doc.headers.length} columns`}
         </span>
         <Button size="sm" variant="outline" onClick={onClose} className="font-semibold px-6">

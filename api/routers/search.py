@@ -1,12 +1,14 @@
 import json
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
+from api.auth import get_current_user
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from open_notebook.ai.models import Model, model_manager
+from open_notebook.database.repository import repo_query
 from open_notebook.domain.notebook import text_search, vector_search
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.graphs.ask import graph as ask_graph
@@ -14,8 +16,114 @@ from open_notebook.graphs.ask import graph as ask_graph
 router = APIRouter()
 
 
+def _id_to_str(value: Any) -> str:
+    """Normalize SurrealDB IDs (RecordID/string/dict) to plain string."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        # Some adapters may return RecordID-like dicts with 'tb'/'id' keys
+        tb = value.get("tb")
+        rid = value.get("id")
+        if tb and rid:
+            return f"{tb}:{rid}"
+    return str(value)
+
+
+def _extract_parent_id(result: Dict[str, Any]) -> str:
+    parent_id = _id_to_str(result.get("parent_id"))
+    if parent_id:
+        return parent_id
+    return _id_to_str(result.get("id"))
+
+
+async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set[str]]:
+    """
+    Build allowed source and note IDs for the current user.
+
+    Source visibility is determined via notebook references.
+    Note visibility supports both note.owner and notebook artifact links.
+    """
+    notebook_ids = await repo_query(
+        "SELECT VALUE id FROM notebook WHERE owner = $owner",
+        {"owner": current_user},
+    )
+    if not notebook_ids:
+        # No owned notebooks => no visible sources/notes via notebook links.
+        direct_notes = await repo_query(
+            "SELECT VALUE id FROM note WHERE owner = $owner",
+            {"owner": current_user},
+        )
+        return set(), {_id_to_str(nid) for nid in direct_notes if _id_to_str(nid)}
+
+    source_ids = await repo_query(
+        """
+        SELECT VALUE in
+        FROM reference
+        WHERE out IN $notebook_ids
+        """,
+        {"notebook_ids": notebook_ids},
+    )
+
+    notebook_note_ids = await repo_query(
+        """
+        SELECT VALUE in
+        FROM artifact
+        WHERE out IN $notebook_ids
+        """,
+        {"notebook_ids": notebook_ids},
+    )
+    direct_note_ids = await repo_query(
+        "SELECT VALUE id FROM note WHERE owner = $owner",
+        {"owner": current_user},
+    )
+
+    allowed_sources = {_id_to_str(sid) for sid in source_ids if _id_to_str(sid)}
+    allowed_notes = {
+        _id_to_str(nid)
+        for nid in (notebook_note_ids + direct_note_ids)
+        if _id_to_str(nid)
+    }
+    return allowed_sources, allowed_notes
+
+
+async def _filter_results_by_owner(
+    results: List[Dict[str, Any]], current_user: Optional[str]
+) -> List[Dict[str, Any]]:
+    """
+    Restrict search results to records visible to current authenticated user.
+    """
+    if not current_user:
+        return results
+
+    allowed_sources, allowed_notes = await _get_accessible_ids_for_user(current_user)
+    if not allowed_sources and not allowed_notes:
+        return []
+
+    filtered: List[Dict[str, Any]] = []
+    for row in results:
+        parent_id = _extract_parent_id(row)
+        if not parent_id:
+            continue
+        lower = parent_id.lower()
+        if lower.startswith("source:"):
+            if parent_id in allowed_sources:
+                filtered.append(row)
+        elif lower.startswith("note:"):
+            if parent_id in allowed_notes:
+                filtered.append(row)
+        else:
+            # Unknown type in search results: keep conservative and hide.
+            continue
+    return filtered
+
+
 @router.post("/search", response_model=SearchResponse)
-async def search_knowledge_base(search_request: SearchRequest):
+async def search_knowledge_base(
+    search_request: SearchRequest,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     """Search the knowledge base using text or vector search."""
     try:
         if search_request.type == "vector":
@@ -42,9 +150,11 @@ async def search_knowledge_base(search_request: SearchRequest):
                 note=search_request.search_notes,
             )
 
+        scoped_results = await _filter_results_by_owner(results or [], current_user)
+
         return SearchResponse(
-            results=results or [],
-            total_count=len(results) if results else 0,
+            results=scoped_results,
+            total_count=len(scoped_results),
             search_type=search_request.type,
         )
 

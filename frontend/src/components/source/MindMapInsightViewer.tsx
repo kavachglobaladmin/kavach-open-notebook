@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import * as d3 from 'd3'
+import Image from 'next/image'
 import { mindmapApi, MindMapNode } from '@/lib/api/mindmap'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Button } from '@/components/ui/button'
@@ -173,25 +174,42 @@ function NodeSummaryPanel({ sourceId, nodeName, context, onClose }: {
   useEffect(() => { fetchSummary() }, [fetchSummary])
   
   return (
-    <div className="flex flex-col h-full border-l border-border/60 bg-white dark:bg-slate-900 z-10 relative">
-      <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-border/40 shrink-0 bg-slate-50 dark:bg-slate-800/50">
-        <div className="flex items-start gap-2 min-w-0">
-          <BookOpen className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
+    <div className="flex flex-col h-full border-l border-slate-200 bg-white z-10 relative">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-slate-100 shrink-0 bg-gradient-to-r from-indigo-50 to-slate-50">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+            <BookOpen className="h-4 w-4 text-indigo-600" />
+          </div>
           <div className="min-w-0">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Context Analysis</p>
-            <p className="text-sm font-semibold text-foreground truncate mt-0.5">{nodeName}</p>
+            <p className="text-[10px] text-indigo-500 uppercase tracking-widest font-bold mb-0.5">Context Analysis</p>
+            <p className="text-sm font-bold text-slate-800 leading-snug break-words">{nodeName}</p>
+            {context && (
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                in context of <span className="font-medium text-slate-500">{context}</span>
+              </p>
+            )}
           </div>
         </div>
-        <button onClick={onClose} className="shrink-0 rounded-full p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-muted-foreground hover:text-foreground">
+        <button
+          onClick={onClose}
+          className="shrink-0 rounded-full p-1.5 hover:bg-slate-200 transition-colors text-slate-400 hover:text-slate-700 mt-0.5"
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
-        {loading && <div className="flex flex-col items-center justify-center py-10 gap-3"><LoadingSpinner /></div>}
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 bg-white">
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-10 gap-3">
+            <LoadingSpinner />
+            <p className="text-xs text-slate-400 text-center">Analysing <span className="font-medium text-slate-600">{nodeName}</span>…</p>
+          </div>
+        )}
         {!loading && error && (
           <div className="flex flex-col items-center justify-center py-8 gap-2">
-            <AlertCircle className="h-6 w-6 text-destructive" />
-            <p className="text-xs text-destructive text-center">{error}</p>
+            <AlertCircle className="h-6 w-6 text-red-400" />
+            <p className="text-xs text-red-500 text-center">{error}</p>
             <Button variant="outline" size="sm" className="text-xs h-7 mt-1" onClick={fetchSummary}>
               <RefreshCw className="h-3 w-3 mr-1" /> Retry
             </Button>
@@ -251,7 +269,7 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
 
   const { nodes, links } = useMemo(() => {
     if (!rootNode) return { nodes: [], links: [] }
-    const treeLayout = d3.tree<MindMapNode>().nodeSize([45, 260])
+    const treeLayout = d3.tree<MindMapNode>().nodeSize([52, 300])
     treeLayout(rootNode)
     return {
       nodes: rootNode.descendants() as ExtendedHierarchyNode[],
@@ -336,9 +354,9 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
           {links.map((link, i) => {
             const targetNode = link.target as ExtendedHierarchyNode
             const sourceNode = link.source as ExtendedHierarchyNode
-            // Source nodes (parents) exit from their right edge (~160px from left);
+            // Source nodes (parents) exit from their right edge (~180px from left);
             // target nodes (children / leaves) enter at their left edge (x=0 offset).
-            const EST_BOX_W = 160
+            const EST_BOX_W = 180
             const pathD = linkGenerator({
               source: { x: sourceNode.x, y: sourceNode.y + EST_BOX_W },
               target: { x: targetNode.x, y: targetNode.y }
@@ -391,12 +409,12 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
                 key={node.id ?? `ni_${i}`}
                 transform={`translate(${node.y},${node.x})`}
               >
-                <foreignObject x={0} y={-16} width={280} height={32} className="overflow-visible">
+                <foreignObject x={0} y={-22} width={320} height={44} className="overflow-visible">
                   <div className="flex items-center h-full">
                     <div
                       onClick={() => onLabelClick(displayLabel, node.parent?.data?.label || '')}
                       style={{ filter: 'url(#mm-shadow)' }}
-                      className={`relative flex items-center gap-2 px-4 py-1.5 w-max max-w-[240px] rounded-[7px] cursor-pointer
+                      className={`relative flex items-center gap-2 px-3 py-1.5 w-max max-w-[290px] rounded-[7px] cursor-pointer
                         transition-all duration-200 ease-out
                         hover:brightness-125 hover:scale-[1.04] hover:-translate-y-px
                         ${nodeBg}
@@ -407,7 +425,7 @@ function MindMapGraph({ data, onLabelClick, selectedNode, scale, onScaleChange }
                         className="shrink-0 w-1.5 h-1.5 rounded-full"
                         style={{ background: accentColor, opacity: 0.85 }}
                       />
-                      <span className="text-[#E2E8F0] text-[12.5px] font-medium leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                      <span className="text-[#E2E8F0] text-[12px] font-medium leading-snug break-words whitespace-normal">
                         {displayLabel}
                       </span>
 
@@ -482,10 +500,12 @@ function PhotosTab({ sourceId }: { sourceId: string }) {
             onClick={() => setSelectedImg(b64)}
             className="rounded-xl overflow-hidden border border-slate-200 hover:border-violet-400 transition-all shadow-sm hover:shadow-md"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={`data:image/png;base64,${b64}`}
               alt={`Image ${i + 1}`}
+              width={1200}
+              height={800}
+              unoptimized
               className="w-full h-40 object-contain bg-slate-50"
             />
           </button>
@@ -497,17 +517,19 @@ function PhotosTab({ sourceId }: { sourceId: string }) {
           onClick={() => setSelectedImg(null)}
         >
           <div className="relative max-w-3xl max-h-[90vh] p-2" onClick={e => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={`data:image/png;base64,${selectedImg}`}
               alt="Full size"
+              width={1800}
+              height={1200}
+              unoptimized
               className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain"
             />
             <button
               onClick={() => setSelectedImg(null)}
               className="absolute top-3 right-3 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/80 text-lg"
             >
-              ×
+              x
             </button>
           </div>
         </div>
@@ -626,25 +648,29 @@ export function MindMapInsightViewer({ content, sourceId, title }: { content: st
       {/* ── Tab content ── */}
       {activeTab === 'graph' ? (
         <div className="flex-1 flex overflow-hidden relative">
-          <div className={`relative flex-1 transition-all duration-500 ${selected ? 'mr-[320px]' : ''}`}>
-            <MindMapGraph
-              data={mindMap}
-              onLabelClick={handleClick}
-              selectedNode={selected?.nodeName ?? null}
-              scale={scale}
-              onScaleChange={setScale}
-            />
-            <ZoomControls
-              scale={scale}
-              onZoomIn={() => setScale(s => Math.min(s + 0.1, 3))}
-              onZoomOut={() => setScale(s => Math.max(s - 0.1, 0.1))}
-              onReset={() => setScale(0.8)}
-              onFullscreen={() => setFullscreen(true)}
-            />
+          {/* Left: mind map — 50% when panel open, full width otherwise */}
+          <div className={`relative flex flex-col transition-all duration-300 ${selected ? 'w-1/2' : 'w-full'}`}>
+            <div className="flex-1 relative overflow-hidden">
+              <MindMapGraph
+                data={mindMap}
+                onLabelClick={handleClick}
+                selectedNode={selected?.nodeName ?? null}
+                scale={scale}
+                onScaleChange={setScale}
+              />
+              <ZoomControls
+                scale={scale}
+                onZoomIn={() => setScale(s => Math.min(s + 0.1, 3))}
+                onZoomOut={() => setScale(s => Math.max(s - 0.1, 0.1))}
+                onReset={() => setScale(0.8)}
+                onFullscreen={() => setFullscreen(true)}
+              />
+            </div>
           </div>
 
+          {/* Right: node summary panel — 50% when open */}
           {selected && (
-            <div className="absolute right-0 top-0 bottom-0 w-[320px] bg-white border-l border-slate-200 shadow-2xl z-20 animate-in slide-in-from-right duration-300">
+            <div className="w-1/2 flex flex-col min-h-0 overflow-hidden border-l border-slate-200 animate-in slide-in-from-right duration-300">
               <NodeSummaryPanel
                 sourceId={sourceId}
                 nodeName={selected.nodeName}
@@ -686,3 +712,4 @@ export function MindMapInsightViewer({ content, sourceId, title }: { content: st
     </div>
   )
 }
+

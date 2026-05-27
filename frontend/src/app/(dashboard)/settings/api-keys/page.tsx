@@ -117,7 +117,7 @@ const PROVIDER_DOCS: Record<string, string> = {
   elevenlabs: 'https://elevenlabs.io/app/settings/api-keys',
   azure: 'https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI',
   vertex: 'https://cloud.google.com/vertex-ai/docs/start/cloud-environment',
-  openai_compatible: 'https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/openai-compatible.md',
+  openai_compatible: 'https://github.com/kavachglobaladmin/kavach-open-notebook/blob/main/docs/5-CONFIGURATION/openai-compatible.md',
 }
 
 const TYPE_ICONS: Record<ModelType, React.ReactNode> = {
@@ -1350,7 +1350,7 @@ export default function ApiKeysPage() {
 
           <div className="border-t border-slate-100 pt-5">
             <a
-              href="https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
+              href="https://github.com/kavachglobaladmin/kavach-open-notebook/blob/main/docs/5-CONFIGURATION/ai-providers.md"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-semibold text-[#8B5CF6] hover:underline"

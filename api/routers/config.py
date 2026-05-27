@@ -11,7 +11,7 @@ from loguru import logger
 from open_notebook.database.repository import repo_query
 from open_notebook.utils.version_utils import (
     compare_versions,
-    get_version_from_github_async,
+    get_latest_release_version_from_github_async,
 )
 
 router = APIRouter()
@@ -24,8 +24,14 @@ _version_cache: dict = {
     "check_failed": False,
 }
 
-# Cache TTL in seconds (24 hours)
-VERSION_CACHE_TTL = 24 * 60 * 60
+# Cache TTL in seconds (24 hours by default)
+VERSION_CACHE_TTL = int(os.getenv("OPEN_NOTEBOOK_VERSION_CACHE_TTL", 24 * 60 * 60))
+
+# GitHub repository used for release/version checks
+VERSION_REPO_URL = os.getenv(
+    "OPEN_NOTEBOOK_VERSION_REPO",
+    "https://github.com/kavachglobaladmin/kavach-open-notebook",
+)
 
 
 def get_version() -> str:
@@ -42,7 +48,7 @@ def get_version() -> str:
 
 async def get_latest_version_cached(current_version: str) -> tuple[Optional[str], bool]:
     """
-    Check for the latest version from GitHub with caching.
+    Check for the latest version from GitHub Releases with caching.
 
     Returns:
         tuple: (latest_version, has_update)
@@ -59,19 +65,20 @@ async def get_latest_version_cached(current_version: str) -> tuple[Optional[str]
 
     # Cache expired or not yet set
     if _version_cache["timestamp"] > 0:
-        logger.info(f"Version cache expired (age: {cache_age:.0f}s), refreshing...")
+        logger.info(f"Version cache expired (age: {cache_age:.0f}s), refreshing.")
 
     # Perform version check with strict error handling
     try:
-        logger.info("Checking for latest version from GitHub...")
+        logger.info(f"Checking for latest GitHub release from: {VERSION_REPO_URL}")
 
-        # Fetch latest version from GitHub with 10-second timeout
-        latest_version = await get_version_from_github_async(
-            "https://github.com/lfnovo/open-notebook", "main"
+        # Fetch latest version from GitHub Releases with 10-second timeout
+        latest_version = await get_latest_release_version_from_github_async(
+            VERSION_REPO_URL
         )
 
         logger.info(
-            f"Latest version from GitHub: {latest_version}, Current version: {current_version}"
+            f"Latest release version from GitHub: {latest_version}, "
+            f"Current version: {current_version}"
         )
 
         # Compare versions
@@ -129,7 +136,8 @@ async def get_config(request: Request):
     Note: The frontend determines the API URL via its own runtime-config endpoint,
     so this endpoint no longer returns apiUrl.
 
-    Also checks for version updates from GitHub (with caching and error handling).
+    Also checks for version updates from GitHub Releases
+    with caching and error handling.
     """
     # Get current version
     current_version = get_version()

@@ -96,18 +96,71 @@ function extractSubSections(body: string): { title: string; lines: string[] }[] 
   return result
 }
 
-// Parse markdown table rows
-function parseMarkdownTable(body: string): { headers: string[]; rows: string[][] } {
-  const lines = body.split('\n').filter(l => l.includes('|'))
-  const headers: string[] = []
-  const rows: string[][] = []
-  for (const line of lines) {
-    const cells = line.split('|').map(c => clean(c)).filter(Boolean)
-    if (cells.every(c => /^[-:]+$/.test(c))) continue
-    if (headers.length === 0) { headers.push(...cells); continue }
-    rows.push(cells)
+interface MarkdownTable {
+  headers: string[]
+  rows: string[][]
+}
+
+function isMarkdownTableLine(line: string): boolean {
+  const trimmed = line.trim()
+  return /^\|.+\|$/.test(trimmed)
+}
+
+function parseMarkdownTableBlock(lines: string[]): MarkdownTable {
+  const parsedRows = lines
+    .map(line => line.trim())
+    .map(line => line.replace(/^\|/, '').replace(/\|$/, ''))
+    .map(line => line.split('|').map(cell => clean(cell)))
+
+  const contentRows = parsedRows.filter(cells => {
+    const joined = cells.join('').replace(/\s/g, '')
+    if (!joined) return false
+    return !cells.every(cell => /^:?-{3,}:?$/.test(cell))
+  })
+
+  if (contentRows.length < 2) {
+    return { headers: [], rows: [] }
   }
+
+  const headers = contentRows[0]
+  const rows = contentRows.slice(1).map((row) => {
+    if (row.length === headers.length) return row
+    if (row.length < headers.length) {
+      return [...row, ...Array(headers.length - row.length).fill('')]
+    }
+    return [...row.slice(0, headers.length - 1), row.slice(headers.length - 1).join(' | ')]
+  })
+
   return { headers, rows }
+}
+
+function parseMarkdownTables(body: string): MarkdownTable[] {
+  const lines = body.split('\n')
+  const blocks: string[][] = []
+  let current: string[] = []
+
+  for (const line of lines) {
+    if (isMarkdownTableLine(line)) {
+      current.push(line)
+      continue
+    }
+    if (current.length > 0) {
+      blocks.push(current)
+      current = []
+    }
+  }
+
+  if (current.length > 0) {
+    blocks.push(current)
+  }
+
+  return blocks
+    .map(parseMarkdownTableBlock)
+    .filter(table => table.headers.length >= 2 && table.rows.length > 0)
+}
+
+function parseMarkdownTable(body: string): MarkdownTable {
+  return parseMarkdownTables(body)[0] ?? { headers: [], rows: [] }
 }
 
 // Extract inline value after a label - handles bold labels and multi-word label variants
@@ -216,35 +269,39 @@ function BulletList({ items, color = 'text-muted-foreground' }: { items: string[
 // Render a generic section body - handles bullets, sub-sections, tables, plain text
 function GenericSectionBody({ body }: { body: string }) {
   const bullets = extractBullets(body)
-  const table = parseMarkdownTable(body)
+  const tables = parseMarkdownTables(body)
   const subSections = extractSubSections(body)
   const plainLines = body.split('\n')
-    .filter(l => l.trim() && !/^#{1,3}/.test(l.trim()) && !/^\|/.test(l.trim()) && !/^[-*•]/.test(l.trim()))
+    .filter(l => l.trim() && !/^#{1,3}/.test(l.trim()) && !isMarkdownTableLine(l) && !/^[-*•]/.test(l.trim()))
     .map(l => clean(l))
     .filter(l => l && !isInsuff(l))
 
   // Table rendering
-  if (table.headers.length >= 2 && table.rows.length > 0) {
+  if (tables.length > 0) {
     return (
-      <div className="overflow-x-auto -mx-4 -mb-4">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-muted/40 border-b">
-              {table.headers.map((h, i) => (
-                <th key={i} className="px-4 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row, i) => (
-              <tr key={i} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                {row.map((cell, j) => (
-                  <td key={j} className="px-4 py-2.5 text-xs">{cell}</td>
+      <div className="space-y-4">
+        {tables.map((table, tableIndex) => (
+          <div key={tableIndex} className="overflow-x-auto -mx-4">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/40 border-b">
+                  {table.headers.map((h, i) => (
+                    <th key={i} className="px-4 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, i) => (
+                  <tr key={i} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                    {row.map((cell, j) => (
+                      <td key={j} className="px-4 py-2.5 text-xs">{cell}</td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+        ))}
       </div>
     )
   }
@@ -465,7 +522,8 @@ export function InvestigativeProfileInsightViewer({ content }: InvestigativeProf
           // Special: case history table
           const isCase = /chronological|case history|criminal record/i.test(section.heading)
           const table = parseMarkdownTable(section.body)
-          const hasCaseTable = isCase && table.headers.length >= 2 && table.rows.length > 0
+          const caseRowCount = parseMarkdownTables(section.body).reduce((count, t) => count + t.rows.length, 0)
+          const hasCaseTable = isCase && (table.headers.length >= 2 && table.rows.length > 0)
 
           // Special: associates
           const isAssoc = /associate|network|organizational/i.test(section.heading)
@@ -473,7 +531,7 @@ export function InvestigativeProfileInsightViewer({ content }: InvestigativeProf
 
           // Badge for case count
           const badge = hasCaseTable
-            ? <Badge variant="destructive" className="text-[10px] font-bold">{table.rows.length} cases</Badge>
+            ? <Badge variant="destructive" className="text-[10px] font-bold">{caseRowCount} cases</Badge>
             : isAssoc && bullets.length > 0
               ? <Badge variant="secondary" className="text-[10px] font-bold">{bullets.length}</Badge>
               : undefined

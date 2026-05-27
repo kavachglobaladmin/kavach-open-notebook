@@ -10,6 +10,59 @@ import requests  # type: ignore
 import tomli
 from packaging.version import parse as parse_version
 
+async def get_latest_release_version_from_github_async(repo_url: str) -> str:
+    """
+    Fetch the latest published GitHub Release version from a repository.
+
+    Example:
+        GitHub release tag: v1.0.0
+        Returned version: 1.0.0
+    """
+    import os
+    import httpx
+
+    parsed_url = urlparse(repo_url)
+    if "github.com" not in parsed_url.netloc:
+        raise ValueError("Not a GitHub URL")
+
+    path_parts = parsed_url.path.strip("/").split("/")
+    if len(path_parts) < 2:
+        raise ValueError("Invalid GitHub repository URL")
+
+    owner = path_parts[0]
+    repo = path_parts[1].removesuffix(".git")
+
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    github_token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+
+    async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+        response = await client.get(api_url)
+
+        if response.status_code == 404:
+            raise ValueError(f"No published GitHub release found for {owner}/{repo}")
+
+        response.raise_for_status()
+
+    release_data = response.json()
+    tag_name = release_data.get("tag_name")
+
+    if not tag_name:
+        raise KeyError("tag_name not found in GitHub release response")
+
+    tag_name = tag_name.strip()
+
+    if tag_name.startswith("v"):
+        tag_name = tag_name[1:]
+
+    return tag_name
 
 async def get_version_from_github_async(repo_url: str, branch: str = "main") -> str:
     """
