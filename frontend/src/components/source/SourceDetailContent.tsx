@@ -530,9 +530,12 @@ export function SourceDetailContent({
     [searchQuery]
   )
 
-  const fetchInsights = useCallback(async () => {
+  const fetchInsights = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
     try {
-      setLoadingInsights(true)
+      if (!silent) {
+        setLoadingInsights(true)
+      }
       const data = await insightsApi.listForSource(sourceId)
       // De-duplicate insights that may be returned twice (same type/content)
       // Keep the most recently updated one.
@@ -550,11 +553,16 @@ export function SourceDetailContent({
           byFingerprint.set(fingerprint, insight)
         }
       }
-      setInsights(Array.from(byFingerprint.values()))
+      const deduped = Array.from(byFingerprint.values())
+      setInsights(deduped)
+      return deduped
     } catch (err) {
       console.error('Failed to fetch insights:', err)
+      return []
     } finally {
-      setLoadingInsights(false)
+      if (!silent) {
+        setLoadingInsights(false)
+      }
     }
   }, [sourceId])
 
@@ -575,28 +583,14 @@ export function SourceDetailContent({
     }
   }, [fetchInsights, fetchSource, fetchTransformations, sourceId])
 
-  // Poll insights every 3 seconds while a generation is in progress
+  // Poll insights while generation is running (silent -> no spinner flicker)
   useEffect(() => {
     if (!creatingInsight) return
     const interval = setInterval(() => {
-      void fetchInsights()
+      void fetchInsights({ silent: true })
     }, 3000)
     return () => clearInterval(interval)
   }, [creatingInsight, fetchInsights])
-
-  // Background refresh: poll insights every 10 seconds so newly generated
-  // insights appear without a manual page refresh (e.g. generated from
-  // MindMap, BankAnalysis, or other insight viewers).
-  useEffect(() => {
-    if (!sourceId) return
-    const interval = setInterval(() => {
-      // Only poll silently when not already in a fast-poll (creatingInsight)
-      if (!creatingInsight) {
-        void fetchInsights()
-      }
-    }, 10000)
-    return () => clearInterval(interval)
-  }, [sourceId, creatingInsight, fetchInsights])
 
   const createInsight = async () => {
     // Prevent rapid double-clicks / repeated submits before React state updates
@@ -609,6 +603,8 @@ export function SourceDetailContent({
     try {
       createInsightLockRef.current = true
       setCreatingInsight(true)
+      const previousCount = insights.length
+
       const response = await insightsApi.create(sourceId, {
         transformation_id: selectedTransformation
       })
@@ -616,32 +612,40 @@ export function SourceDetailContent({
       setSelectedTransformation('')
 
       if (response.command_id) {
-        // Wait for run_transformation to complete (LLM processing)
-        // creatingInsight stays true → polling useEffect keeps fetching every 3s
-        insightsApi.waitForCommand(response.command_id, {
+        // Wait for transformation command to finish.
+        const success = await insightsApi.waitForCommand(response.command_id, {
           maxAttempts: 120,
           intervalMs: 2000
-        }).then(async (success) => {
-          console.log('[Insight] run_transformation completed, success=', success, 'waiting 4s for create_insight...')
-          // run_transformation done → create_insight + embed_insight fire async.
-          // Wait a moment for them to complete, then fetch once.
-          await new Promise(resolve => setTimeout(resolve, 4000))
-          console.log('[Insight] fetching insights now...')
-          void fetchInsights()
-          queryClient.invalidateQueries({ queryKey: ['sources'] })
-        }).catch(err => {
-          console.error('[Insight] Error waiting for insight command:', err)
-        }).finally(() => {
-          setCreatingInsight(false)
-          createInsightLockRef.current = false
         })
-        // Don't set creatingInsight=false here — let the .finally() above do it
+
+        if (!success) {
+          toast.error(t.common.error)
+          return
+        }
+
+        // run_transformation completion may be slightly earlier than insight record creation.
+        // Poll a few times silently until the new insight appears.
+        let updated = false
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const latest = await fetchInsights({ silent: true })
+          if (latest.length > previousCount) {
+            updated = true
+            break
+          }
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+
+        if (!updated) {
+          // Last fetch to sync even if count didn't increase (e.g., overwrite update).
+          await fetchInsights({ silent: true })
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['sources'] })
         return
       } else {
-        setTimeout(() => {
-          void fetchInsights()
-          queryClient.invalidateQueries({ queryKey: ['sources'] })
-        }, 5000)
+        await new Promise(resolve => setTimeout(resolve, 2500))
+        await fetchInsights({ silent: true })
+        queryClient.invalidateQueries({ queryKey: ['sources'] })
       }
     } catch (err) {
       console.error('Failed to create insight:', err)
