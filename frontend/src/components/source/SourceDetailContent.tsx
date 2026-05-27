@@ -85,11 +85,103 @@ import { NotebookAssociations } from '@/components/source/NotebookAssociations'
 
 // Safe paginated content renderer — avoids browser crash on large documents
 const PAGE = 3000
+
+/**
+ * Remove large repeated content blocks from extracted document text.
+ *
+ * Strategy: find the longest repeated substring at the block level.
+ * If the second half of the document is substantially identical to the first
+ * half (or any large contiguous block repeats), remove the duplicate.
+ *
+ * This handles the common case where a DOCX extraction duplicates the entire
+ * document body (e.g. the same interrogation report appearing twice).
+ */
+function deduplicateContent(text: string): string {
+  if (!text || text.length < 200) return text
+
+  const lines = text.split('\n')
+  const totalLines = lines.length
+
+  // Try to find a large repeated block: check if the second half of the
+  // document is a near-duplicate of the first half.
+  // We test several split points (50%, 40%, 60%) to find the best match.
+  const splitPoints = [
+    Math.floor(totalLines * 0.5),
+    Math.floor(totalLines * 0.4),
+    Math.floor(totalLines * 0.6),
+  ]
+
+  for (const splitAt of splitPoints) {
+    if (splitAt < 5) continue
+    const firstHalf = lines.slice(0, splitAt)
+    const secondHalf = lines.slice(splitAt)
+
+    // Normalize both halves for comparison
+    const normalize = (ls: string[]) =>
+      ls.map(l => l.trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean).join('|')
+
+    const firstNorm = normalize(firstHalf)
+    const secondNorm = normalize(secondHalf)
+
+    if (!firstNorm || !secondNorm) continue
+
+    // Check similarity: if second half starts with the same content as first half
+    // (allowing for some extra content at the end of the second half)
+    const minLen = Math.min(firstNorm.length, secondNorm.length)
+    const overlap = firstNorm.slice(0, minLen)
+    const secondStart = secondNorm.slice(0, minLen)
+
+    // If 85%+ of the content matches, it's a duplicate
+    let matchCount = 0
+    const step = Math.max(1, Math.floor(minLen / 200))
+    for (let i = 0; i < minLen; i += step) {
+      if (overlap[i] === secondStart[i]) matchCount++
+    }
+    const similarity = matchCount / Math.ceil(minLen / step)
+
+    if (similarity >= 0.85) {
+      // The second half is a duplicate — keep only the first half
+      // But if the second half has MORE content, keep the longer one
+      const firstContent = firstHalf.filter(l => l.trim()).length
+      const secondContent = secondHalf.filter(l => l.trim()).length
+      if (secondContent > firstContent * 1.3) {
+        // Second half has significantly more content — keep second half
+        return secondHalf.join('\n')
+      }
+      return firstHalf.join('\n')
+    }
+  }
+
+  // Fallback: deduplicate identical consecutive line-groups (smaller scale)
+  // Remove any sequence of 3+ lines that appears more than once
+  const BLOCK = 3
+  const seenBlocks = new Set<string>()
+  const keep = new Array<boolean>(totalLines).fill(true)
+  const nonEmptyIdx: number[] = []
+  for (let i = 0; i < totalLines; i++) {
+    if (lines[i].trim()) nonEmptyIdx.push(i)
+  }
+
+  for (let w = 0; w <= nonEmptyIdx.length - BLOCK; w++) {
+    const windowIdx = nonEmptyIdx.slice(w, w + BLOCK)
+    const fp = windowIdx.map(i => lines[i].trim().toLowerCase().replace(/\s+/g, ' ')).join('|||')
+    if (seenBlocks.has(fp)) {
+      for (const idx of windowIdx) keep[idx] = false
+    } else {
+      seenBlocks.add(fp)
+    }
+  }
+
+  return lines.filter((_, i) => keep[i]).join('\n')
+}
+
 function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: string }) {
   const [visible, setVisible] = useState(PAGE)
   if (!text) return <p className="text-sm text-muted-foreground">{noContentLabel}</p>
-  const slice = text.slice(0, visible)
-  const hasMore = visible < text.length
+  // Deduplicate repeated content blocks before rendering
+  const dedupedText = deduplicateContent(text)
+  const slice = dedupedText.slice(0, visible)
+  const hasMore = visible < dedupedText.length
   return (
     <div className="space-y-2">
       {slice.split(/\n{2,}/).filter(Boolean).map((para, i) => (
@@ -98,7 +190,7 @@ function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: s
       {hasMore && (
         <div className="pt-3 flex flex-col items-center gap-1">
           <span className="text-xs text-muted-foreground">
-            {visible.toLocaleString()} / {text.length.toLocaleString()} chars
+            {visible.toLocaleString()} / {dedupedText.length.toLocaleString()} chars
           </span>
           <button
             onClick={() => setVisible(v => v + PAGE)}

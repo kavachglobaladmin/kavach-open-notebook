@@ -544,18 +544,29 @@ export function PageHeader({
     router.push(result.href)
   }
 
-  const handleCreateNew = () => {
+  const handleCreateNew = async () => {
     if (onNew) {
       // Delegate to the parent page's handler
       onNew()
       return
     }
-    // Internal modal fallback (used when no onNew prop is provided)
-    console.log("Creating:", { notebookName, notebookDesc, storageLimit })
-    setIsModalOpen(false)
-    setNotebookName('')
-    setNotebookDesc('')
-    setStorageLimit(5)
+    // Internal modal: create notebook via API
+    if (!notebookName.trim()) return
+    try {
+      const newNotebook = await notebooksApi.create({
+        name: notebookName.trim(),
+        description: notebookDesc.trim() || undefined,
+      })
+      setIsModalOpen(false)
+      setNotebookName('')
+      setNotebookDesc('')
+      setStorageLimit(5)
+      // Navigate to the new notebook
+      const shortId = newNotebook.id.includes(':') ? newNotebook.id.split(':')[1] : newNotebook.id
+      router.push(`/notebooks/${shortId}`)
+    } catch (err) {
+      console.error('Failed to create notebook:', err)
+    }
   }
 
   return (
@@ -576,7 +587,7 @@ export function PageHeader({
         )}
 
         {!hideSearch && (
-          <div ref={searchWrapperRef} className="relative w-full max-w-[480px] hidden sm:block">
+          <div ref={searchWrapperRef} className="relative w-full max-w-[480px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
             <Input
               value={searchValue}
@@ -623,7 +634,7 @@ export function PageHeader({
             />
 
             {showGlobalResults && normalizedSearch && (
-              <div className="absolute left-0 right-0 top-[52px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-0 right-0 top-[52px] rounded-xl border border-slate-200 bg-white shadow-xl z-[200] overflow-hidden">
                 {isSearchingGlobal ? (
                   <div className="px-4 py-3 text-sm text-slate-500">Searching across cases, files, and content...</div>
                 ) : globalResults.length === 0 ? (
@@ -698,7 +709,7 @@ export function PageHeader({
 
       {/* ── Create New Notebook Modal Overlay ──────────────────────────────── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 transition-all">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 transition-all">
           <div className="bg-white w-full max-w-[480px] rounded-xl shadow-2xl relative p-6 md:p-7 animate-in fade-in zoom-in-95 duration-200">
             <button
               onClick={() => setIsModalOpen(false)}

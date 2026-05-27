@@ -120,7 +120,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Dynamic width based on content type */}
-      <DialogContent className={`flex flex-col max-h-[98vh] ${
+      <DialogContent className={`flex flex-col max-h-[98vh] overflow-hidden rounded-2xl shadow-2xl border-0 ${
         isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : 
         isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : 
         isInfographic ? 'sm:max-w-[95vw] w-[95vw] h-[95vh]' : 
@@ -129,31 +129,24 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
         'sm:max-w-3xl'
       }`}>
 
-        <DialogHeader className="shrink-0">
+        <DialogHeader className="shrink-0 px-6 pt-5 pb-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
           <DialogTitle className="flex items-center justify-between gap-2">
-            <span>{t.sources.sourceInsight}</span>
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <FileText className="h-4 w-4 text-indigo-600" />
+              </div>
+              <span className="text-[17px] font-bold text-slate-800">Insight</span>
+            </div>
             <div className="flex items-center gap-2">
               {sourceId && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleViewSource}
-                  className="gap-1"
+                  className="gap-1.5 h-8 text-xs font-semibold border-slate-200 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
                 >
                   <FileText className="h-3 w-3" />
                   {t.sources.viewSource}
-                </Button>
-              )}
-              {isMindMap && sourceId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRegenerate}
-                  disabled={isRegenerating}
-                  className="gap-1"
-                >
-                  <RefreshCw className={`h-3 w-3 ${isRegenerating ? 'animate-spin' : ''}`} />
-                  {isRegenerating ? 'Regenerating...' : 'Regenerate'}
                 </Button>
               )}
             </div>

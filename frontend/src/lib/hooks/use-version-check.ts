@@ -28,7 +28,7 @@ export function useVersionCheck() {
 
         addNotification({
           title: t.advanced.updateAvailable.replace('{version}', config.latestVersion),
-          message: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/lfnovo/open-notebook`,
+          message: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/kavachglobaladmin/kavach-open-notebook`,
           type: 'info',
         })
         sessionStorage.setItem(dismissKey, 'true')

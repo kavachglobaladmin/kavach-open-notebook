@@ -258,6 +258,10 @@ export default function DashboardPage() {
                       animate="animate"
                       whileHover="hover"
                       variants={listItemVariants}
+                      onClick={() => {
+                        const shortId = item.id.includes(':') ? item.id.split(':')[1] : item.id
+                        router.push(`/sources/${shortId}`)
+                      }}
                       className="flex items-center gap-3 sm:gap-5 p-3 sm:p-4 rounded-[16px] sm:rounded-[20px] cursor-pointer group transition-all"
                     >
                       <motion.div variants={iconVariants} className={`w-11 h-11 rounded-[14px] flex items-center justify-center shadow-sm ${item.iconBg}`}>

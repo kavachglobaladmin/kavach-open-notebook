@@ -11,7 +11,7 @@ from loguru import logger
 from open_notebook.database.repository import repo_query
 from open_notebook.utils.version_utils import (
     compare_versions,
-    get_version_from_github_async,
+    get_latest_release_version_from_github_async,
 )
 
 router = APIRouter()
@@ -65,9 +65,13 @@ async def get_latest_version_cached(current_version: str) -> tuple[Optional[str]
     try:
         logger.info("Checking for latest version from GitHub...")
 
+        version_repo = os.getenv(
+            "OPEN_NOTEBOOK_VERSION_REPO",
+            "https://github.com/kavachglobaladmin/kavach-open-notebook"
+        )
         # Fetch latest version from GitHub with 10-second timeout
-        latest_version = await get_version_from_github_async(
-            "https://github.com/lfnovo/open-notebook", "main"
+        latest_version = await get_latest_release_version_from_github_async(
+            version_repo
         )
 
         logger.info(
@@ -140,10 +144,43 @@ async def get_config(request: Request):
     has_update = False
 
     try:
-        latest_version, has_update = await get_latest_version_cached(current_version)
+        version_repo = os.getenv(
+            "OPEN_NOTEBOOK_VERSION_REPO",
+            "https://github.com/kavachglobaladmin/kavach-open-notebook",
+        )
+
+        logger.info(f"Checking for latest GitHub release from: {version_repo}")
+
+        latest_version = await get_latest_release_version_from_github_async(version_repo)
+
+        logger.info(
+            f"Latest release version from GitHub: {latest_version}, "
+            f"Current version: {current_version}"
+        )
+
+        # Compare versions
+        has_update = compare_versions(current_version, latest_version) < 0
+
+        # Cache the result
+        _version_cache["latest_version"] = latest_version
+        _version_cache["has_update"] = has_update
+        _version_cache["timestamp"] = time.time()
+        _version_cache["check_failed"] = False
+
+        logger.info(f"Version check complete. Update available: {has_update}")
+
+        return latest_version, has_update
+
     except Exception as e:
-        # Extra safety: ensure version check never breaks the config endpoint
-        logger.error(f"Unexpected error during version check: {e}")
+        logger.warning(f"Version check failed: {e}")
+
+        # Cache the failure to avoid repeated attempts
+        _version_cache["latest_version"] = None
+        _version_cache["has_update"] = False
+        _version_cache["timestamp"] = time.time()
+        _version_cache["check_failed"] = True
+
+        return None, False
 
     # Check database health
     db_health = await check_database_health()

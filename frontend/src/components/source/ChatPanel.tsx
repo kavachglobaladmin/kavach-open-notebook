@@ -60,6 +60,8 @@ interface ChatPanelProps {
   suggestedQuestions?: string[]
   // Source title for source chat context display
   sourceTitle?: string
+  // Source insights count for source chat context display
+  sourceInsightsCount?: number
 }
 
 export function ChatPanel({
@@ -84,7 +86,8 @@ export function ChatPanel({
   notebookContextStats,
   notebookId,
   suggestedQuestions = [],
-  sourceTitle
+  sourceTitle,
+  sourceInsightsCount
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -341,55 +344,35 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* ── Context bar — matches image: small muted text ── */}
-      {contextIndicators && (
-        <div className="border-t border-slate-100 px-5 py-2">
-          <div className="flex flex-wrap gap-2 text-xs">
-            {contextIndicators.sources?.length > 0 ? (
-              <Badge variant="outline" className="gap-1 text-[11px]">
-                <FileText className="h-3 w-3" />
-                {contextIndicators.sources.length} {t.navigation.sources}
-                {contextType === 'source' && sourceTitle && (
-                  <span className="ml-1 text-slate-500 font-normal truncate max-w-[140px]" title={sourceTitle}>
-                    · {sourceTitle}
-                  </span>
-                )}
-              </Badge>
-            ) : null}
-            {contextIndicators.insights?.length > 0 ? (
-              <Badge variant="outline" className="gap-1 text-[11px]">
-                <Lightbulb className="h-3 w-3" />
-                {contextIndicators.insights.length} {contextIndicators.insights.length === 1 ? t.common.insight : t.common.insights}
-              </Badge>
-            ) : null}
-            {contextIndicators.notes?.length > 0 ? (
-              <Badge variant="outline" className="gap-1 text-[11px]">
-                <StickyNote className="h-3 w-3" />
-                {contextIndicators.notes.length} {contextIndicators.notes.length === 1 ? t.common.note : t.common.notes}
-              </Badge>
-            ) : null}
-          </div>
-        </div>
+      {/* ── Context bar — source chat uses ContextIndicator same as notebook ── */}
+      {contextType === 'source' && (contextIndicators || sourceInsightsCount !== undefined) && (
+        <ContextIndicator
+          sourcesInsights={
+            // If contextIndicators has insights, use that count; otherwise use sourceInsightsCount
+            contextIndicators?.insights?.length
+              ? contextIndicators.insights.length
+              : (sourceInsightsCount ?? 0)
+          }
+          sourcesFull={
+            // Source chat always has 1 full source
+            contextIndicators?.sources?.length
+              ? contextIndicators.sources.length
+              : 1
+          }
+          notesCount={contextIndicators?.notes?.length ?? 0}
+        />
       )}
 
-      {/* ── Source context bar — always visible for source chat ── */}
-      {contextType === 'source' && !contextIndicators && (
-        <div className="border-t border-slate-100 px-5 py-2">
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge variant="outline" className="gap-1 text-[11px]">
-              <FileText className="h-3 w-3" />
-              1 {t.common.source}
-              {sourceTitle && (
-                <span className="ml-1 text-slate-500 font-normal truncate max-w-[140px]" title={sourceTitle}>
-                  · {sourceTitle}
-                </span>
-              )}
-            </Badge>
-          </div>
-        </div>
+      {/* ── Source context bar fallback — shown before first message when no contextIndicators ── */}
+      {contextType === 'source' && !contextIndicators && sourceInsightsCount === undefined && (
+        <ContextIndicator
+          sourcesInsights={0}
+          sourcesFull={1}
+          notesCount={0}
+        />
       )}
 
-      {/* Notebook context indicator */}
+      {/* Notebook context indicator — single row with source+insight counts + token/char stats */}
       {notebookContextStats && (
         <ContextIndicator
           sourcesInsights={notebookContextStats.sourcesInsights}
@@ -400,13 +383,12 @@ export function ChatPanel({
         />
       )}
 
-      {/* ── Input area — matches image ── */}
+      {/* ── Input area ── */}
       <ChatInputArea
         onSendMessage={handleSend}
         isStreaming={isStreaming}
         modelOverride={modelOverride}
         onModelChange={onModelChange}
-        connectedSourcesCount={connectedSourcesCount}
         chatInputId={chatInputId}
         keyHint={keyHint}
         t={t}
@@ -519,16 +501,14 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
   isStreaming,
   modelOverride,
   onModelChange,
-  connectedSourcesCount,
   chatInputId,
   keyHint,
-  t
+  t,
 }: {
   onSendMessage: (message: string) => void
   isStreaming: boolean
   modelOverride?: string
   onModelChange?: (model?: string) => void
-  connectedSourcesCount: number
   chatInputId: string
   keyHint: string
   t: ReturnType<typeof useTranslation>['t']
@@ -555,15 +535,9 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
 
   return (
     <div className="flex-shrink-0 border-t border-slate-100 bg-white">
-      {/* Model row — matches image */}
+      {/* Model row — model selector only */}
       {onModelChange && (
-        <div className="flex items-center justify-between px-5 pt-3 pb-1">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
-            <FileText className="h-3.5 w-3.5 text-slate-400" />
-            <span>
-              {connectedSourcesCount} {connectedSourcesCount === 1 ? t.common.source : t.navigation.sources}
-            </span>
-          </div>
+        <div className="flex items-center justify-end px-4 sm:px-5 pt-2.5 pb-1">
           <ModelSelector
             currentModel={modelOverride}
             onModelChange={onModelChange}
@@ -572,7 +546,7 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
         </div>
       )}
       {/* Input row */}
-      <div className="flex gap-2.5 items-end px-5 py-3">
+      <div className="flex gap-2 sm:gap-2.5 items-end px-4 sm:px-5 py-3">
         <Textarea
           id={chatInputId}
           name="chat-message"
@@ -586,8 +560,10 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
           rows={1}
         />
         <button
+          type="button"
           onClick={handleSend}
           disabled={!input.trim() || isStreaming}
+          aria-label="Send message"
           className="h-[42px] w-[42px] flex-shrink-0 rounded-[12px] bg-[#2563EB] hover:bg-[#1d4ed8] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
         >
           <Send className="h-4 w-4 text-white" />

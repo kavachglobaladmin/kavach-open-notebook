@@ -117,6 +117,7 @@ function ChatPanelColumn({ sourceId }: { sourceId: string }) {
           loadingSessions={chat.loadingSessions}
           suggestedQuestions={chat.suggestedQuestions}
           sourceTitle={sourceData?.title ?? undefined}
+          sourceInsightsCount={sourceData?.insights_count ?? undefined}
         />
       </div>
     </div>

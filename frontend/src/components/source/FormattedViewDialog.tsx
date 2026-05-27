@@ -21,6 +21,41 @@ interface ParsedDoc {
   plainHtml: string
 }
 
+// ── Deduplicate repeated content blocks ───────────────────────────────────────
+function deduplicateContent(text: string): string {
+  if (!text) return text
+  const lines = text.split('\n')
+  const WINDOW = 5
+  const seen = new Set<string>()
+  const keep = new Array<boolean>(lines.length).fill(true)
+  const nonEmptyIdx: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) nonEmptyIdx.push(i)
+  }
+  for (let w = 0; w <= nonEmptyIdx.length - WINDOW; w++) {
+    const windowLines = nonEmptyIdx.slice(w, w + WINDOW)
+    const fingerprint = windowLines.map(i => lines[i].trim().toLowerCase().replace(/\s+/g, ' ')).join('|')
+    if (seen.has(fingerprint)) {
+      for (const idx of windowLines) keep[idx] = false
+    } else {
+      seen.add(fingerprint)
+    }
+  }
+  const result = lines.filter((_, i) => keep[i])
+  const rejoined = result.join('\n')
+  const paras = rejoined.split(/\n{2,}/)
+  const seenParas = new Set<string>()
+  const uniqueParas: string[] = []
+  for (const para of paras) {
+    const key = para.trim().replace(/\s+/g, ' ').toLowerCase()
+    if (!key) { uniqueParas.push(para); continue }
+    if (seenParas.has(key)) continue
+    seenParas.add(key)
+    uniqueParas.push(para)
+  }
+  return uniqueParas.join('\n\n')
+}
+
 // ── Detect & parse ────────────────────────────────────────────────────────────
 function parseDoc(text: string): ParsedDoc {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
@@ -274,7 +309,7 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [matchCount, setMatchCount] = useState(0)
   const [currentMatch, setCurrentMatch] = useState(0)
-  const matchEls = useRef<HTMLMarkElement[]>([])
+  const matchEls = useRef<HTMLMapElement[]>([])
 
   // Re-render with highlights whenever query changes
   useEffect(() => {
@@ -299,7 +334,7 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
     while ((node = walker.nextNode())) textNodes.push(node as Text)
 
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-    const marks: HTMLMarkElement[] = []
+    const marks: HTMLMapElement[] = []
 
     for (const tn of textNodes) {
       const val = tn.nodeValue ?? ''
@@ -311,7 +346,7 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
       let m: RegExpExecArray | null
       while ((m = re.exec(val)) !== null) {
         if (m.index > last) frag.appendChild(document.createTextNode(val.slice(last, m.index)))
-        const mark = document.createElement('mark') as HTMLMarkElement
+        const mark = document.createElement('mark') as HTMLMapElement
         mark.style.cssText = 'background:#fef08a;border-radius:2px;padding:0 1px;color:inherit'
         mark.textContent = m[0]
         frag.appendChild(mark)
@@ -355,11 +390,13 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
 export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialogProps) {
   const [query, setQuery]           = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const doc = useMemo(() => parseDoc(text), [text])
+  // Deduplicate repeated content blocks before parsing/rendering
+  const dedupedText = useMemo(() => deduplicateContent(text), [text])
+  const doc = useMemo(() => parseDoc(dedupedText), [dedupedText])
 
   const [plainMatchCount, setPlainMatchCount] = useState(0)
   const [plainCurrentMatch, setPlainCurrentMatch] = useState(0)
-  const plainMatchElsRef = useRef<HTMLMarkElement[]>([])
+  const plainMatchElsRef = useRef<HTMLMapElement[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -385,7 +422,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
     while ((node = walker.nextNode())) textNodes.push(node as Text)
 
     const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-    const marks: HTMLMarkElement[] = []
+    const marks: HTMLMapElement[] = []
 
     for (const tn of textNodes) {
       const val = tn.nodeValue ?? ''
@@ -398,7 +435,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
       let m: RegExpExecArray | null
       while ((m = re.exec(val)) !== null) {
         if (m.index > last) frag.appendChild(document.createTextNode(val.slice(last, m.index)))
-        const mark = document.createElement('mark') as HTMLMarkElement
+        const mark = document.createElement('mark') as HTMLMapElement
         mark.style.cssText = 'background:#fef08a;border-radius:2px;padding:0 1px;color:inherit'
         mark.textContent = m[0]
         frag.appendChild(mark)
@@ -432,7 +469,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
 
   const tableRef = useRef<HTMLDivElement>(null)
 
-  const scrollToMark = (mark: HTMLMarkElement) => {
+  const scrollToMark = (mark: HTMLMapElement) => {
     const sc = scrollContainerRef.current
     if (!sc) { mark.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
     const markTop = mark.getBoundingClientRect().top
@@ -553,7 +590,7 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
       {/* Footer */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-t border-slate-200 bg-white shrink-0">
         <span className="text-xs text-slate-500">
-          {(text.length / 1000).toFixed(1)}K characters · {doc.type.toUpperCase()}
+          {(dedupedText.length / 1000).toFixed(1)}K characters · {doc.type.toUpperCase()}
           {isTable && ` · ${doc.headers.length} columns`}
         </span>
         <Button size="sm" variant="outline" onClick={onClose} className="font-semibold px-6">
