@@ -29,6 +29,7 @@ interface SourcesColumnProps {
   isLoading: boolean
   notebookId: string
   notebookName?: string
+  searchTerm?: string
   onRefresh?: () => void
   contextSelections?: Record<string, ContextMode>
   onContextModeChange?: (sourceId: string, mode: ContextMode) => void
@@ -41,6 +42,7 @@ export function SourcesColumn({
   sources,
   isLoading,
   notebookId,
+  searchTerm = '',
   onRefresh,
   contextSelections,
   onContextModeChange,
@@ -71,6 +73,7 @@ export function SourcesColumn({
   )
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase()
 
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current
@@ -112,6 +115,29 @@ export function SourcesColumn({
       ? (prev.includes(sourceId) ? prev : [...prev, sourceId]) 
       : prev.filter((id) => id !== sourceId))
   }
+
+  const filteredSources = useMemo(() => {
+    if (!sources) return []
+    if (!normalizedSearchTerm) return sources
+    return sources.filter((source) => {
+      const title = (source.title || '').toLowerCase()
+      const filePath = (source.asset?.file_path || '').toLowerCase()
+      const topics = (source.topics || []).join(' ').toLowerCase()
+      return (
+        title.includes(normalizedSearchTerm) ||
+        filePath.includes(normalizedSearchTerm) ||
+        topics.includes(normalizedSearchTerm)
+      )
+    })
+  }, [sources, normalizedSearchTerm])
+
+  useEffect(() => {
+    if (!normalizedSearchTerm || !scrollContainerRef.current) return
+    const firstHit = scrollContainerRef.current.querySelector('[data-source-search-hit="true"]') as HTMLElement | null
+    if (firstHit) {
+      firstHit.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [normalizedSearchTerm, filteredSources.length])
 
   return (
     <>
@@ -185,34 +211,38 @@ export function SourcesColumn({
           <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 pb-6">
             {isLoading ? (
               <div className="flex items-center justify-center py-12"><LoadingSpinner /></div>
-            ) : !sources || sources.length === 0 ? (
+            ) : !filteredSources || filteredSources.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center pt-10">
                 <div className="w-16 h-16 bg-[#f1f3f6] rounded-2xl flex items-center justify-center mb-4">
                   <FileText className="w-8 h-8 text-[#94a3b8]" />
                 </div>
-                <h3 className="text-[16px] font-bold text-slate-900 mb-1">{t.sources.noSourcesYet}</h3>
+                <h3 className="text-[16px] font-bold text-slate-900 mb-1">
+                  {normalizedSearchTerm ? 'No matching sources' : t.sources.noSourcesYet}
+                </h3>
                 <p className="text-[13px] text-slate-500 text-center max-w-[200px] leading-relaxed">
-                  {t.sources.createFirstSource}
+                  {normalizedSearchTerm ? `No source matched "${searchTerm}"` : t.sources.createFirstSource}
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {sources.map((source) => (
-                  <SourceCard
-                    key={source.id}
-                    source={source}
-                    onClick={() => openModal('source', source.id)}
-                    onDelete={(id) => { setSourceToDelete(id); setDeleteDialogOpen(true); }}
-                    onRetry={(id) => retrySource.mutateAsync({ sourceId: id, notebookId })}
-                    onRemoveFromNotebook={(id) => { setSourceToRemove(id); setRemoveDialogOpen(true); }}
-                    onRefresh={onRefresh}
-                    showRemoveFromNotebook={true}
-                    contextMode={contextSelections?.[source.id]}
-                    onContextModeChange={onContextModeChange ? (mode) => onContextModeChange(source.id, mode) : undefined}
-                    selectable={true}
-                    selected={selectedSourceIds.includes(source.id)}
-                    onSelectChange={(checked) => handleToggleSourceSelection(source.id, checked)}
-                  />
+                {filteredSources.map((source) => (
+                  <div key={source.id} data-source-search-hit={normalizedSearchTerm ? 'true' : undefined}>
+                    <SourceCard
+                      source={source}
+                      onClick={() => openModal('source', source.id)}
+                      onDelete={(id) => { setSourceToDelete(id); setDeleteDialogOpen(true); }}
+                      onRetry={(id) => retrySource.mutateAsync({ sourceId: id, notebookId })}
+                      onRemoveFromNotebook={(id) => { setSourceToRemove(id); setRemoveDialogOpen(true); }}
+                      onRefresh={onRefresh}
+                      showRemoveFromNotebook={true}
+                      contextMode={contextSelections?.[source.id]}
+                      onContextModeChange={onContextModeChange ? (mode) => onContextModeChange(source.id, mode) : undefined}
+                      selectable={true}
+                      selected={selectedSourceIds.includes(source.id)}
+                      onSelectChange={(checked) => handleToggleSourceSelection(source.id, checked)}
+                      highlightQuery={searchTerm}
+                    />
+                  </div>
                 ))}
                 {isFetchingNextPage && (
                   <div className="flex items-center justify-center py-4">

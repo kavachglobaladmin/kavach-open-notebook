@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Settings2 } from 'lucide-react'
@@ -19,12 +19,14 @@ import { PageHeader } from '@/components/layout/PageHeader'
 export default function SourceDetailPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   // Reconstruct the full SurrealDB record ID from the short URL param.
   // The URL contains only the short ID (e.g. "abc123") to avoid colons in the
   // path which Next.js rejects. We prepend "source:" here so the API gets the
   // full record ID it expects.
   const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
   const sourceId = rawParam.includes(':') ? rawParam : (rawParam ? `source:${rawParam}` : '')
+  const highlightQuery = searchParams?.get('q') || ''
   const navigation = useNavigation()
 
   const [isConfigOpen, setIsConfigOpen] = useState(false)
@@ -158,7 +160,7 @@ export default function SourceDetailPage() {
         </div>
 
         {/* 3. CONTENT AREA (no page-level scroll; cards manage their own scroll) */}
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden px-6 pt-4 pb-6">
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden px-3 sm:px-4 lg:px-6 pt-3 sm:pt-4 pb-4 sm:pb-6">
 
           {/* Back button row */}
           <div className="shrink-0 pb-3">
@@ -174,7 +176,7 @@ export default function SourceDetailPage() {
           </div>
 
           {/* Two-column content area */}
-          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-5 overflow-hidden lg:grid-rows-1 lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-4 sm:gap-5 overflow-hidden xl:grid-rows-1 xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
 
             {/* LEFT: Source detail card */}
             <div
@@ -185,6 +187,7 @@ export default function SourceDetailPage() {
                 sourceId={sourceId}
                 showChatButton={false}
                 onClose={handleBack}
+                highlightQuery={highlightQuery}
               />
             </div>
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { getConfig } from '@/lib/config'
 import { useTranslation } from '@/lib/hooks/use-translation'
-import { addNotification } from '@/components/layout/NotificationCenter'
+import { toast } from '@/lib/notifications/toast'
 
 /**
  * Hook to check for version updates and display notification.
@@ -26,11 +26,13 @@ export function useVersionCheck() {
         const dismissKey = `version_notification_dismissed_${config.latestVersion}`
         if (sessionStorage.getItem(dismissKey)) return
 
-        addNotification({
-          title: t.advanced.updateAvailable.replace('{version}', config.latestVersion),
-          message: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/kavachglobaladmin/kavach-open-notebook`,
-          type: 'info',
-        })
+        toast.info(
+          t.advanced.updateAvailable.replace('{version}', config.latestVersion),
+          {
+            description: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/lfnovo/open-notebook`,
+            showInNotificationCenter: false,
+          }
+        )
         sessionStorage.setItem(dismissKey, 'true')
       })
       .catch(() => {

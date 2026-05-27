@@ -117,10 +117,12 @@
 
   html {
     @apply antialiased;
+    overflow-x: hidden;
   }
 
   body {
     @apply bg-background text-foreground transition-colors;
+    overflow-x: hidden;
   }
 
   /* Ensure proper theme inheritance for popovers and dropdowns */
@@ -189,11 +191,4 @@
   .clickable-card * {
     cursor: pointer !important;
   }
-}
-
-
-@media (min-width: 20rem) {
-    .sm\:max-w-\[calc\(100\%-2rem\)\] {
-        max-width: calc(100% - 40rem);
-    }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { NoteResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +28,7 @@ interface NotesColumnProps {
   notes?: NoteResponse[]
   isLoading: boolean
   notebookId: string
+  searchTerm?: string
   contextSelections?: Record<string, ContextMode>
   onContextModeChange?: (noteId: string, mode: ContextMode) => void
 }
@@ -36,6 +37,7 @@ export function NotesColumn({
   notes,
   isLoading,
   notebookId,
+  searchTerm = '',
   contextSelections,
   onContextModeChange
 }: NotesColumnProps) {
@@ -44,6 +46,8 @@ export function NotesColumn({
   const [editingNote, setEditingNote] = useState<NoteResponse | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase()
 
   const deleteNote = useDeleteNote()
   const { notesCollapsed, toggleNotes } = useNotebookColumnsStore()
@@ -60,6 +64,36 @@ export function NotesColumn({
       setNoteToDelete(null)
     } catch (error) { console.error(error) }
   }
+
+  const filteredNotes = useMemo(() => {
+    if (!notes) return []
+    if (!normalizedSearchTerm) return notes
+    return notes.filter((note) => {
+      const title = (note.title || '').toLowerCase()
+      const content = (note.content || '').toLowerCase()
+      return title.includes(normalizedSearchTerm) || content.includes(normalizedSearchTerm)
+    })
+  }, [notes, normalizedSearchTerm])
+
+  const highlightText = (text: string): React.ReactNode => {
+    if (!normalizedSearchTerm) return text
+    const escaped = normalizedSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const splitRe = new RegExp(`(${escaped})`, 'ig')
+    const testRe = new RegExp(`^(${escaped})$`, 'i')
+    return text.split(splitRe).map((chunk, idx) => (
+      testRe.test(chunk)
+        ? <mark key={idx} className="rounded bg-yellow-200 px-0.5 py-0 text-slate-900">{chunk}</mark>
+        : <span key={idx}>{chunk}</span>
+    ))
+  }
+
+  useEffect(() => {
+    if (!normalizedSearchTerm || !scrollContainerRef.current) return
+    const firstHit = scrollContainerRef.current.querySelector('[data-note-search-hit="true"]') as HTMLElement | null
+    if (firstHit) {
+      firstHit.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [normalizedSearchTerm, filteredNotes.length])
 
   return (
     <>
@@ -87,23 +121,30 @@ export function NotesColumn({
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto px-6 pb-6">
+          <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 pb-6">
             {isLoading ? (
               <div className="flex items-center justify-center py-12"><LoadingSpinner /></div>
-            ) : !notes || notes.length === 0 ? (
+            ) : !filteredNotes || filteredNotes.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center pt-10">
                 <div className="w-16 h-16 bg-[#f1f3f6] rounded-2xl flex items-center justify-center mb-4">
                   <StickyNote className="w-8 h-8 text-[#94a3b8]" />
                 </div>
-                <h3 className="text-[16px] font-bold text-slate-900 mb-1">{t.notebooks.noNotesYet}</h3>
+                <h3 className="text-[16px] font-bold text-slate-900 mb-1">
+                  {normalizedSearchTerm ? 'No matching notes' : t.notebooks.noNotesYet}
+                </h3>
                 <p className="text-[13px] text-slate-500 text-center max-w-[200px] leading-relaxed">
-                  {t.sources.createFirstNote}
+                  {normalizedSearchTerm ? `No note matched "${searchTerm}"` : t.sources.createFirstNote}
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {notes.map((note) => (
-                  <div key={note.id} className="p-4 border border-slate-100 rounded-2xl hover:border-slate-200 transition-all cursor-pointer group relative" onClick={() => setEditingNote(note)}>
+                {filteredNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    data-note-search-hit={normalizedSearchTerm ? 'true' : undefined}
+                    className="p-4 border border-slate-100 rounded-2xl hover:border-slate-200 transition-all cursor-pointer group relative"
+                    onClick={() => setEditingNote(note)}
+                  >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         {note.note_type === 'ai' ? <Bot className="h-4 w-4 text-primary" /> : <User className="h-4 w-4 text-slate-400" />}
@@ -129,8 +170,16 @@ export function NotesColumn({
                         </DropdownMenu>
                       </div>
                     </div>
-                    {note.title && <h4 className="text-[14px] font-bold text-slate-900 mb-1">{note.title}</h4>}
-                    {note.content && <p className="text-[13px] text-slate-500 line-clamp-3 leading-relaxed">{note.content}</p>}
+                    {note.title && (
+                      <h4 className="text-[14px] font-bold text-slate-900 mb-1">
+                        {highlightText(note.title)}
+                      </h4>
+                    )}
+                    {note.content && (
+                      <p className="text-[13px] text-slate-500 line-clamp-3 leading-relaxed">
+                        {highlightText(note.content)}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

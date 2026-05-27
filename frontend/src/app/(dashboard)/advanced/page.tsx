@@ -1,16 +1,97 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { getConfig } from '@/lib/config'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Info, Database, AlertCircle, RefreshCw } from 'lucide-react'
+
+const KAVACH_REPO_URL = 'https://github.com/kavachglobaladmin/kavach-open-notebook'
+const KAVACH_RELEASES_URL = `${KAVACH_REPO_URL}/releases`
+
+type AppConfig = {
+  version: string
+  latestVersion?: string | null
+  hasUpdate?: boolean
+  dbStatus?: string
+}
+
+function getReleaseUrl(version?: string | null) {
+  if (!version?.trim()) {
+    return KAVACH_RELEASES_URL
+  }
+
+  const cleanVersion = version.trim()
+  const tag = cleanVersion.startsWith('v') ? cleanVersion : `v${cleanVersion}`
+
+  return `${KAVACH_RELEASES_URL}/tag/${tag}`
+}
 
 export default function AdvancedPage() {
   const { t } = useTranslation()
   const [searchTerm, setSearchTerm] = useState('')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [config, setConfig] = useState<AppConfig | null>(null)
+  const [isConfigLoading, setIsConfigLoading] = useState(true)
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const cfg = await getConfig()
+        setConfig(cfg)
+      } catch (error) {
+        console.error('Failed to load config:', error)
+      } finally {
+        setIsConfigLoading(false)
+      }
+    }
+
+    loadConfig()
+  }, [])
+
+  const currentVersion = isConfigLoading
+    ? 'Loading...'
+    : config?.version || 'Unknown'
+
+  const latestVersion = isConfigLoading
+    ? 'Loading...'
+    : config?.latestVersion || 'Unknown'
+
+  const latestReleaseUrl = getReleaseUrl(config?.latestVersion)
+
+  const statusCardClass = isConfigLoading
+    ? 'border-slate-200 bg-slate-50'
+    : config?.hasUpdate
+      ? 'border-amber-200 bg-amber-50'
+      : config?.latestVersion
+        ? 'border-emerald-200 bg-emerald-50'
+        : 'border-slate-200 bg-slate-50'
+
+  const statusDotClass = isConfigLoading
+    ? 'bg-slate-400 animate-pulse'
+    : config?.hasUpdate
+      ? 'bg-amber-500 animate-pulse'
+      : config?.latestVersion
+        ? 'bg-emerald-500'
+        : 'bg-slate-400'
+
+  const statusTextClass = isConfigLoading
+    ? 'text-slate-500'
+    : config?.hasUpdate
+      ? 'text-amber-600'
+      : config?.latestVersion
+        ? 'text-emerald-600'
+        : 'text-slate-500'
+
+  const statusText = isConfigLoading
+    ? 'Loading...'
+    : config?.hasUpdate
+      ? 'Update Available'
+      : config?.latestVersion
+        ? 'Up to Date'
+        : 'Version Check Failed'
 
   const faqs = [
     { 
@@ -68,17 +149,43 @@ export default function AdvancedPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="border border-slate-100 rounded-2xl p-6">
                   <p className="text-sm font-bold text-slate-500 mb-2">Current Version</p>
-                  <p className="text-3xl font-bold text-slate-900">1.8.1</p>
+                  <p className="text-3xl font-bold text-slate-900">{currentVersion}</p>
                 </div>
+
                 <div className="border border-slate-100 rounded-2xl p-6">
                   <p className="text-sm font-bold text-slate-500 mb-2">Latest Version</p>
-                  <p className="text-3xl font-bold text-slate-900">1.8.5</p>
+
+                  {config?.latestVersion ? (
+                    <a
+                      href={latestReleaseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-3xl font-bold text-slate-900 hover:text-[#8A2BE2] hover:underline"
+                    >
+                      {latestVersion}
+                    </a>
+                  ) : (
+                    <p className="text-3xl font-bold text-slate-900">{latestVersion}</p>
+                  )}
                 </div>
-                <div className="border border-amber-200 bg-amber-50 rounded-2xl p-6">
+
+                <div className={`border rounded-2xl p-6 ${statusCardClass}`}>
                   <p className="text-sm font-bold text-slate-600 mb-3">Status</p>
                   <div className="flex items-center gap-2.5">
-                    <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
-                    <p className="text-lg font-bold text-amber-600">Update Available</p>
+                    <div className={`w-3 h-3 rounded-full ${statusDotClass}`} />
+
+                    {config?.hasUpdate && config?.latestVersion ? (
+                      <a
+                        href={latestReleaseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`text-lg font-bold hover:underline ${statusTextClass}`}
+                      >
+                        {statusText}
+                      </a>
+                    ) : (
+                      <p className={`text-lg font-bold ${statusTextClass}`}>{statusText}</p>
+                    )}
                   </div>
                 </div>
               </div>

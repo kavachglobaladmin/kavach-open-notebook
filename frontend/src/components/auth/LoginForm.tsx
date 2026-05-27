@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
-import { getConfig, getApiUrl } from '@/lib/config'
+import { getApiUrl } from '@/lib/config'
 import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, BookOpen } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { toast } from '@/lib/notifications/toast'
@@ -66,6 +66,9 @@ function getEmailState(email: string): EmailState {
   if (!email) return 'empty'
   return EMAIL_REGEX.test(email.trim()) ? 'valid' : 'invalid'
 }
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
 
 interface PasswordCheck { label: string; pass: boolean }
 function getPasswordChecks(pw: string): PasswordCheck[] {
@@ -84,6 +87,60 @@ function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
 }
 const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
 const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#A855F7']
+
+function PasswordStrength({
+  password,
+  checks,
+  showChecklist = false,
+}: {
+  password: string
+  checks: PasswordCheck[]
+  showChecklist?: boolean
+}) {
+  if (!password) return null
+
+  const strengthLevel = getStrengthLevel(password)
+  const strengthLabel = STRENGTH_LABEL[strengthLevel]
+  const strengthColor = STRENGTH_COLOR[strengthLevel]
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {[1, 2, 3, 4].map((bar) => (
+            <span
+              key={bar}
+              className="h-1.5 w-8 rounded-full transition-colors"
+              style={{
+                backgroundColor: strengthLevel >= bar ? strengthColor : '#e2e8f0',
+              }}
+            />
+          ))}
+        </div>
+        <span className="text-[12px] font-semibold" style={{ color: strengthColor || '#64748b' }}>
+          {strengthLabel || 'Too weak'}
+        </span>
+      </div>
+
+      {showChecklist && (
+        <div className="space-y-1">
+          {checks.map((check) => (
+            <div key={check.label} className="flex items-center gap-1.5 text-[12px]">
+              {check.pass ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+              )}
+              <span className={check.pass ? 'text-emerald-600 font-medium' : 'text-slate-500'}>
+                {check.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Themed Panel ──────────────────────────────────────────────────────────────
 function ThemedPanel({
@@ -151,7 +208,6 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
 
   const [name, setName] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
-  const [agreed, setAgreed] = useState(false)
 
   const [localError, setLocalError] = useState('')
   const [localLoading, setLocalLoading] = useState(false)
@@ -160,7 +216,6 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   const { login, isLoading: authLoading } = useAuth()
   const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } = useAuthStore()
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [configInfo, setConfigInfo] = useState<{ version: string } | null>(null)
   const router = useRouter()
 
   const isLoading = authLoading || localLoading
@@ -175,7 +230,6 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
     : ''
   const nameError = nameTouched && name.trim().length < 2 ? 'Name must be at least 2 characters.' : ''
   const passwordChecks = getPasswordChecks(password)
-  const strengthLevel = getStrengthLevel(password)
   const passwordError =
     mode === 'signin'
       ? passwordTouched && !password.trim() ? 'Password is required.' : ''
@@ -186,10 +240,6 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
             ? 'Password does not meet requirements.'
             : '')
         : ''
-
-  useEffect(() => {
-    getConfig().then(cfg => setConfigInfo({ version: cfg.version })).catch(() => {})
-  }, [])
 
   useEffect(() => {
     if (!hasHydrated) return
@@ -232,7 +282,6 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
       setName(''); setNameTouched(false)
       setEmail(''); setEmailTouched(false)
       setPassword(''); setPasswordTouched(false)
-      setAgreed(false)
       setAnimating(false)
     }, 200)
   }
@@ -240,11 +289,14 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   const handleSignUp = async () => {
     setNameTouched(true); setEmailTouched(true); setPasswordTouched(true)
     if (name.trim().length < 2 || emailState !== 'valid' || !isPasswordValid(password)) {
-       setLocalError('Please correct the errors before continuing.')
-       return 
+      const message = 'Please correct the highlighted validation errors.'
+      setLocalError(message)
+      toast.warning(message)
+      return
     }
     setLocalLoading(true)
-    const result = await registerUserBackend(name.trim(), email.trim().toLowerCase(), password)
+    const normalizedEmail = normalizeEmail(email)
+    const result = await registerUserBackend(name.trim(), normalizedEmail, password)
     if (result.conflict) {
       const message = 'Email already exists.'
       setLocalError(message)
@@ -259,7 +311,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
       setLocalLoading(false)
       return
     }
-    saveUserLocally({ name: name.trim(), email: email.trim().toLowerCase(), password })
+    saveUserLocally({ name: name.trim(), email: normalizedEmail, password })
     toast.success('Account created successfully')
     setLocalLoading(false)
     switchMode('signin')
@@ -267,9 +319,16 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
 
   const handleSignIn = async () => {
     setEmailTouched(true); setPasswordTouched(true)
-    if (emailState !== 'valid' || !password.trim()) return
+    if (emailState !== 'valid' || !password.trim()) {
+      const message = emailState !== 'valid'
+        ? 'Enter a valid email address.'
+        : 'Password is required.'
+      setLocalError(message)
+      toast.warning(message)
+      return
+    }
     setLocalLoading(true)
-    const ok = await login(email.trim().toLowerCase(), password)
+    const ok = await login(normalizeEmail(email), password)
     if (!ok) {
       const authError = useAuthStore.getState().error
       const message = getApiErrorMessage(authError || 'Invalid credentials.', (key) => t(key), 'apiErrors.loginFailed')
@@ -373,6 +432,11 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
                 </button>
               </div>
               {passwordError && <p className="text-[12px] text-red-500 font-semibold pl-1">{passwordError}</p>}
+              <PasswordStrength
+                password={password}
+                checks={passwordChecks}
+                showChecklist
+              />
               {mode === 'signin' && (
                 <div className="flex justify-end pt-1">
                   <button type="button" onClick={() => router.push('/forgot')} className="text-[11px] sm:text-[12px] text-[#8B5CF6] font-bold uppercase">

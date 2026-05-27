@@ -29,11 +29,11 @@ export default function SettingsPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="max-w-7xl mx-auto p-8 space-y-8"
+            className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8"
           >
             {/* Header Section */}
             <div className="space-y-1">
-              <h1 className="text-4xl font-bold text-[#5D3FD3]">
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#5D3FD3]">
                 {t.navigation.settings || 'Settings'}
               </h1>
               <p className="text-slate-500 font-medium">

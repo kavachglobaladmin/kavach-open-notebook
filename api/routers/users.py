@@ -258,6 +258,19 @@ class UserUpsertRequest(BaseModel):
     name: str = Field(..., min_length=1)
     email: str = Field(..., min_length=3)
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("Name must be at least 2 characters.")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return _validate_email_format(v)
+
 
 @router.post("/users/upsert", response_model=UserResponse)
 async def upsert_user(data: UserUpsertRequest):
