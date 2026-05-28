@@ -175,7 +175,15 @@ function deduplicateContent(text: string): string {
   return lines.filter((_, i) => keep[i]).join('\n')
 }
 
-function SafeContent({ text, noContentLabel }: { text: string; noContentLabel: string }) {
+function SafeContent({
+  text,
+  noContentLabel,
+  highlightQuery = '',
+}: {
+  text: string
+  noContentLabel: string
+  highlightQuery?: string
+}) {
   const [visible, setVisible] = useState(PAGE)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const normalizedQuery = highlightQuery?.trim() || ''
