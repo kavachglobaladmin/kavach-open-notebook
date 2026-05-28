@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { FileText, RefreshCw } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useInsight } from '@/lib/hooks/use-insights'
@@ -16,7 +16,6 @@ import { InfographicInsightViewer, isInfographicInsight } from '@/components/sou
 import { TimelineAnalysisInsightViewer, isTimelineAnalysisInsight } from '@/components/source/TimelineAnalysisInsightViewer'
 import { InvestigativeProfileInsightViewer, isInvestigativeProfileInsight } from '@/components/source/InvestigativeProfileInsightViewer'
 import { DenseSummaryViewer, isDenseSummaryInsight } from '@/components/source/DenseSummaryViewer'
-import { toast } from '@/lib/notifications/toast'
 import { useSource } from '@/lib/hooks/use-sources'
 
 interface SourceInsightDialogProps {
@@ -37,7 +36,6 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   const { openModal } = useModalManager()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isRegenerating, setIsRegenerating] = useState(false)
   const [regeneratedContent, setRegeneratedContent] = useState<string | null>(null)
 
   // Ensure insight ID has 'source_insight:' prefix for API calls
@@ -90,29 +88,6 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
     }
   }
 
-  const handleRegenerate = async () => {
-    if (!sourceId) return
-    setIsRegenerating(true)
-    setRegeneratedContent(null)
-    try {
-      // Delete old mindmap insights then regenerate via the mindmap API
-      await fetch(`/api/sources/${encodeURIComponent(sourceId)}/insights/mindmap`, { method: 'DELETE' })
-      const res = await fetch(`/api/sources/${encodeURIComponent(sourceId)}/mindmap`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({}) 
-      })
-      if (!res.ok) throw new Error(`Regeneration failed: ${res.status}`)
-      const data = await res.json()
-      setRegeneratedContent(JSON.stringify(data.mind_map))
-      toast.success('Mind map regenerated successfully')
-    } catch (e) {
-      toast.error('Regeneration failed: ' + (e instanceof Error ? e.message : String(e)))
-    } finally {
-      setIsRegenerating(false)
-    }
-  }
-
   // Reset states when dialog closes
   useEffect(() => {
     if (!open) {
@@ -124,12 +99,12 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Dynamic width based on content type */}
-      <DialogContent className={`flex flex-col max-h-[98vh] overflow-hidden rounded-2xl shadow-2xl border-0 ${
-        isMindMap ? 'sm:max-w-[98vw] w-[98vw] h-[95vh]' : 
-        isBankAnalysis ? 'sm:max-w-5xl w-[90vw]' : 
-        isInfographic ? 'sm:max-w-[98vw] w-[98vw] h-[96vh]'  : 
-        isTimeline ? 'sm:max-w-5xl w-[90vw]' : 
-        isInvestigativeProfile ? 'sm:max-w-4xl w-[90vw]' : 
+      <DialogContent className={`flex flex-col max-h-[calc(100dvh-1rem)] overflow-hidden rounded-2xl shadow-2xl border-0 max-w-[calc(100vw-1rem)] w-[calc(100vw-1rem)] ${
+        isMindMap ? 'sm:max-w-[98vw] w-[calc(100vw-1rem)] h-[95dvh]' : 
+        isBankAnalysis ? 'sm:max-w-5xl w-[calc(100vw-1rem)]' : 
+        isInfographic ? 'sm:max-w-[98vw] w-[calc(100vw-1rem)] h-[96dvh]'  : 
+        isTimeline ? 'sm:max-w-5xl w-[calc(100vw-1rem)]' : 
+        isInvestigativeProfile ? 'sm:max-w-[98vw] w-[calc(100vw-1rem)] h-[96dvh]' : 
         'sm:max-w-3xl'
       }`}>
 
@@ -181,7 +156,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
             </div>
           </div>
         ) : (
-          <div className={`flex-1 min-h-0 ${isInfographic ? 'overflow-y-auto overflow-x-hidden' : 'overflow-y-auto'}`}>
+          <div className={`flex-1 min-h-0 ${isInfographic || isInvestigativeProfile ? 'overflow-y-auto overflow-x-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
                 <span className="text-sm text-muted-foreground">{t.common.loading}</span>

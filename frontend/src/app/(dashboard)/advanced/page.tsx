@@ -8,25 +8,11 @@ import { getConfig } from '@/lib/config'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Info, Database, AlertCircle, RefreshCw } from 'lucide-react'
 
-const KAVACH_REPO_URL = 'https://github.com/kavachglobaladmin/kavach-open-notebook'
-const KAVACH_RELEASES_URL = `${KAVACH_REPO_URL}/releases`
-
 type AppConfig = {
   version: string
   latestVersion?: string | null
   hasUpdate?: boolean
   dbStatus?: string
-}
-
-function getReleaseUrl(version?: string | null) {
-  if (!version?.trim()) {
-    return KAVACH_RELEASES_URL
-  }
-
-  const cleanVersion = version.trim()
-  const tag = cleanVersion.startsWith('v') ? cleanVersion : `v${cleanVersion}`
-
-  return `${KAVACH_RELEASES_URL}/tag/${tag}`
 }
 
 export default function AdvancedPage() {
@@ -35,6 +21,8 @@ export default function AdvancedPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [isConfigLoading, setIsConfigLoading] = useState(true)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -51,6 +39,30 @@ export default function AdvancedPage() {
     loadConfig()
   }, [])
 
+  const handleUpdate = async () => {
+    setIsUpdating(true)
+    setUpdateMessage(null)
+
+    try {
+      const response = await fetch('/api/update-app', {
+        method: 'POST',
+      })
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Update failed')
+      }
+
+      setUpdateMessage(data?.message || 'Update started successfully. Please restart the app if required.')
+    } catch (error) {
+      console.error('Failed to start update:', error)
+      setUpdateMessage('Failed to start update. Please check server logs.')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   const currentVersion = isConfigLoading
     ? 'Loading...'
     : config?.version || 'Unknown'
@@ -58,8 +70,6 @@ export default function AdvancedPage() {
   const latestVersion = isConfigLoading
     ? 'Loading...'
     : config?.latestVersion || 'Unknown'
-
-  const latestReleaseUrl = getReleaseUrl(config?.latestVersion)
 
   const statusCardClass = isConfigLoading
     ? 'border-slate-200 bg-slate-50'
@@ -122,7 +132,6 @@ export default function AdvancedPage() {
         />
 
         <div className="flex-1 overflow-y-auto relative z-10">
-          {/* Full width container using proper Tailwind responsive padding */}
           <div className="w-full px-4 sm:px-8 lg:px-12 py-8 lg:py-12 pb-24 space-y-8 text-left">
             
             <div className="space-y-2">
@@ -134,7 +143,6 @@ export default function AdvancedPage() {
               </p>
             </div>
 
-            {/* System Information Card */}
             <div className="w-full bg-white rounded-3xl shadow-sm border border-slate-200/60 p-6 sm:p-8 lg:p-10">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-indigo-500/30">
@@ -154,44 +162,37 @@ export default function AdvancedPage() {
 
                 <div className="border border-slate-100 rounded-2xl p-6">
                   <p className="text-sm font-bold text-slate-500 mb-2">Latest Version</p>
-
-                  {config?.latestVersion ? (
-                    <a
-                      href={latestReleaseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-3xl font-bold text-slate-900 hover:text-[#8A2BE2] hover:underline"
-                    >
-                      {latestVersion}
-                    </a>
-                  ) : (
-                    <p className="text-3xl font-bold text-slate-900">{latestVersion}</p>
-                  )}
+                  <p className="text-3xl font-bold text-slate-900">{latestVersion}</p>
                 </div>
 
                 <div className={`border rounded-2xl p-6 ${statusCardClass}`}>
                   <p className="text-sm font-bold text-slate-600 mb-3">Status</p>
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-3 h-3 rounded-full ${statusDotClass}`} />
 
-                    {config?.hasUpdate && config?.latestVersion ? (
-                      <a
-                        href={latestReleaseUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`text-lg font-bold hover:underline ${statusTextClass}`}
-                      >
-                        {statusText}
-                      </a>
-                    ) : (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-3 h-3 rounded-full ${statusDotClass}`} />
                       <p className={`text-lg font-bold ${statusTextClass}`}>{statusText}</p>
+                    </div>
+
+                    {config?.hasUpdate && (
+                      <button
+                        type="button"
+                        onClick={handleUpdate}
+                        disabled={isUpdating}
+                        className="w-fit px-5 py-2.5 rounded-xl bg-[#8A2BE2] text-white text-sm font-bold hover:bg-purple-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isUpdating ? 'Updating...' : 'Update Now'}
+                      </button>
+                    )}
+
+                    {updateMessage && (
+                      <p className="text-xs text-slate-600">{updateMessage}</p>
                     )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Rebuild Embeddings Card */}
             <div className="w-full bg-white rounded-3xl shadow-sm border border-slate-200/60 p-6 sm:p-8 lg:p-10">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-[#8A2BE2] flex items-center justify-center text-white shrink-0 shadow-lg shadow-purple-500/30">
@@ -251,7 +252,6 @@ export default function AdvancedPage() {
               </button>
             </div>
 
-            {/* Responsive FAQ Section */}
             <div className="space-y-5 pt-4">
               <h3 className="text-lg font-bold text-slate-800 px-1">Frequently Asked Questions</h3>
               <div className="space-y-4">

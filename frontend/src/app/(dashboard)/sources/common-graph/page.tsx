@@ -221,8 +221,8 @@ function NetworkGraphViewer({ graph, sourceCount }: { graph: GraphData; sourceCo
   const activityNodes = graph.nodes.filter((n) => n.type === 'activity')
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div ref={containerRef} className="flex-1 min-h-[520px] rounded-xl overflow-hidden border" style={{ background: '#0f172a' }}>
+    <div className="flex flex-col gap-3 h-full min-w-0">
+      <div ref={containerRef} className="flex-1 min-h-[360px] sm:min-h-[520px] rounded-xl overflow-hidden border" style={{ background: '#0f172a' }}>
         <ForceGraph2D
           ref={graphRef}
           width={dimensions.width}
@@ -246,14 +246,14 @@ function NetworkGraphViewer({ graph, sourceCount }: { graph: GraphData; sourceCo
           cooldownTicks={120}
         />
       </div>
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-3 min-w-0">
           <span className="flex items-center gap-1.5"><span className="inline-block h-4 w-10 rounded-full" style={{ background: NODE_COLORS.source }} />Source ({sourceCount})</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-4 w-10 rounded-full" style={{ background: NODE_COLORS.person }} />Person ({personNodes.length})</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-4 w-10 rounded-full" style={{ background: NODE_COLORS.activity }} />Activity ({activityNodes.length})</span>
           <span className="flex items-center gap-1.5 text-red-400">— — connection</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           {selectedNode && <span className="font-semibold">{selectedNode.label} <span className="text-muted-foreground font-normal">({selectedNode.type})</span></span>}
           <Button size="sm" variant="outline" className="h-7" onClick={() => graphRef.current?.zoomToFit(400, 40)}>Fit</Button>
         </div>
@@ -326,15 +326,15 @@ export default function CommonGraphPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col h-full w-full">
+      <div className="flex flex-col h-full w-full min-w-0 overflow-x-hidden">
         <PageHeader
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           searchPlaceholder="Search sources..."
           hideNew
         />
-        <div className="flex-1 px-6 py-6">
-        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-1 min-w-0 px-4 py-4 sm:px-6 sm:py-6">
+        <div className="mb-6 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold">Create common graph</h1>
             <p className="mt-1 text-muted-foreground max-w-2xl">AI extracts persons, activities, and connections across selected sources and builds a network graph.</p>
@@ -342,16 +342,16 @@ export default function CommonGraphPage() {
           <Button variant="outline" onClick={() => router.push('/sources')}>Back to sources</Button>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.75fr_1fr]">
-          <div className="flex flex-col gap-6">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[1.75fr_1fr]">
+          <div className="flex min-w-0 flex-col gap-6">
             <Card>
               <CardHeader><CardTitle className="text-lg">Selected sources</CardTitle></CardHeader>
               <CardContent>
                 {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : error ? <p className="text-sm text-red-500">{error}</p> : (
                   <div className="space-y-3">
                     {sources.map((source) => (
-                      <div key={source.id} className="rounded-xl border p-4 bg-background flex items-center justify-between gap-4">
-                        <div>
+                    <div key={source.id} className="flex items-center justify-between gap-4 rounded-xl border bg-background p-4 min-w-0">
+                        <div className="min-w-0">
                           <p className="font-semibold">{source.title || 'Untitled source'}</p>
                           <p className="text-sm text-muted-foreground truncate">{source.asset?.url || source.asset?.file_path || 'Source content'}</p>
                         </div>
@@ -382,7 +382,7 @@ export default function CommonGraphPage() {
             </Card>
           </div>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader><CardTitle className="text-lg">Graph status</CardTitle></CardHeader>
             <CardContent>
               <p className="mb-4 text-sm text-muted-foreground">{sources.length > 0 ? `${sources.length} selected source${sources.length === 1 ? '' : 's'}` : 'Select at least two sources.'}</p>
@@ -402,7 +402,7 @@ export default function CommonGraphPage() {
         </div>
 
         <Dialog open={graphOpen} onOpenChange={setGraphOpen}>
-          <DialogContent className="w-[min(95vw,1300px)] max-h-[95vh] overflow-hidden flex flex-col">
+          <DialogContent className="flex max-h-[95dvh] w-[min(95vw,1300px)] flex-col overflow-hidden max-sm:w-[calc(100vw-1rem)] max-sm:max-w-[calc(100vw-1rem)]">
             <DialogHeader>
               <DialogTitle>Network graph visualization</DialogTitle>
             </DialogHeader>

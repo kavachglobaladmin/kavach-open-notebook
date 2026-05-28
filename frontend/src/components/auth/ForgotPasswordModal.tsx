@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { AlertCircle, CheckCircle2, XCircle, Eye, EyeOff, BookOpen } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Eye, EyeOff, BookOpen } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { getApiUrl } from '@/lib/config'
 import Image from 'next/image'
@@ -47,11 +47,6 @@ function getPasswordChecks(pw: string): PasswordCheck[] {
 function isPasswordValid(pw: string): boolean {
   return getPasswordChecks(pw).every(c => c.pass)
 }
-function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
-  return getPasswordChecks(pw).filter(c => c.pass).length as 0 | 1 | 2 | 3 | 4
-}
-const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
-const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82F6', '#8B5CF6']
 
 // ── API helpers ─────────────────────────────────────
 async function apiSendOTP(email: string): Promise<void> {
@@ -101,7 +96,7 @@ type Step = 'email' | 'otp' | 'newPassword'
 // ── Left illustration panel — Updated for full-height coverage ────────────────
 function IllustrationPanel() {
   return (
-    <div className="hidden md:flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 bg-[#02041A]">
+    <div className="auth-illustration-panel hidden md:flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 bg-[#02041A]">
       {/* Background Illustration Container - Set to cover full height */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <Image
@@ -128,7 +123,6 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [newPasswordTouched, setNewPasswordTouched] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [timeLeft, setTimeLeft] = useState(60)
@@ -154,7 +148,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
     if (!open) {
       setStep('email'); setEmail(''); setOtpDigits(['', '', '', '', '', '']);
       setNewPassword(''); setConfirmPassword(''); setError('');
-      setLoading(false); setSuccess(false); setNewPasswordTouched(false);
+      setLoading(false); setSuccess(false);
     }
   }, [open])
 
@@ -247,10 +241,10 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
   }
 
   return (
-    <div className="flex flex-col md:flex-row w-full h-full overflow-y-auto md:overflow-hidden">
+    <div className="auth-split-layout flex flex-col md:flex-row w-full h-full overflow-y-auto md:overflow-hidden">
       <IllustrationPanel />
 
-      <div className="flex flex-col justify-center bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12 relative w-full md:w-1/2">
+      <div className="auth-form-panel flex flex-col justify-center bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12 relative w-full md:w-1/2">
         {success ? (
           <div className="flex flex-col items-center text-center gap-6">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-purple-50 flex items-center justify-center border-4 border-white shadow-xl shadow-purple-100">
@@ -360,7 +354,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         type={showNewPassword ? 'text' : 'password'}
                         placeholder="Enter New Password"
                         value={newPassword}
-                        onChange={e => { setNewPassword(e.target.value); setNewPasswordTouched(true) }}
+                        onChange={e => setNewPassword(e.target.value)}
                         disabled={loading}
                         className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 transition-all text-[14px] sm:text-[15px]"
                       />

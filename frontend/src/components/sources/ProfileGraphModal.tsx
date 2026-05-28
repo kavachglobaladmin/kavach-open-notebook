@@ -374,21 +374,21 @@ export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, s
             </div>
           ) : data ? (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              <div className="mx-6 mt-3 flex-shrink-0 overflow-x-auto">
-                <TabsList className="inline-flex w-max bg-white border h-10">
-                  <TabsTrigger value="personal" className="flex items-center gap-1.5 whitespace-nowrap px-3">
+              <div className="mx-4 mt-3 flex-shrink-0 md:mx-6">
+                <TabsList className="flex h-auto w-full flex-wrap justify-start gap-2 bg-white border p-1 md:h-10">
+                  <TabsTrigger value="personal" className="flex min-w-[150px] flex-1 items-center gap-1.5 whitespace-nowrap px-3 py-2 md:flex-none md:py-0">
                     <UserCheck className="h-4 w-4 flex-shrink-0" /> Personal Details
                   </TabsTrigger>
-                  <TabsTrigger value="family" className="flex items-center gap-1.5 whitespace-nowrap px-3" disabled={data.family.length === 0}>
+                  <TabsTrigger value="family" className="flex min-w-[150px] flex-1 items-center gap-1.5 whitespace-nowrap px-3 py-2 md:flex-none md:py-0" disabled={data.family.length === 0}>
                     <Users className="h-4 w-4 flex-shrink-0" /> Family ({data.family.length})
                   </TabsTrigger>
-                  <TabsTrigger value="associates" className="flex items-center gap-1.5 whitespace-nowrap px-3" disabled={data.associates.length === 0}>
+                  <TabsTrigger value="associates" className="flex min-w-[190px] flex-1 items-center gap-1.5 whitespace-nowrap px-3 py-2 md:flex-none md:py-0" disabled={data.associates.length === 0}>
                     <User className="h-4 w-4 flex-shrink-0" /> Friends & Associates ({data.associates.length})
                   </TabsTrigger>
-                  <TabsTrigger value="wordcloud" className="flex items-center gap-1.5 whitespace-nowrap px-3">
+                  <TabsTrigger value="wordcloud" className="flex min-w-[140px] flex-1 items-center gap-1.5 whitespace-nowrap px-3 py-2 md:flex-none md:py-0">
                     <Cloud className="h-4 w-4 flex-shrink-0" /> Word Cloud
                   </TabsTrigger>
-                  <TabsTrigger value="partiv" className="flex items-center gap-1.5 whitespace-nowrap px-3">
+                  <TabsTrigger value="partiv" className="flex min-w-[130px] flex-1 items-center gap-1.5 whitespace-nowrap px-3 py-2 md:flex-none md:py-0">
                     <BookOpen className="h-4 w-4 flex-shrink-0" /> Part IV
                   </TabsTrigger>
                 </TabsList>
@@ -398,11 +398,11 @@ export function ProfileGraphModal({ open, onOpenChange, sourceId, sourceTitle, s
                 <PersonalMindMap data={data.personal} mainPerson={data.main_person} sourceId={sourceId} sourceImageUrl={sourceImageUrl} />
               </TabsContent>
 
-              <TabsContent value="family" className="flex-1 min-h-0 p-4 overflow-hidden">
+              <TabsContent value="family" className="flex-1 min-h-0 overflow-hidden">
                 <FamilyGraph data={data.family} mainPerson={data.main_person} />
               </TabsContent>
 
-              <TabsContent value="associates" className="flex-1 min-h-0 p-4 overflow-hidden">
+              <TabsContent value="associates" className="flex-1 min-h-0 overflow-hidden">
                 {data.associates.length > 0
                   ? <FriendsAssociates data={data.associates} mainPerson={data.main_person} />
                   : <div className="flex h-40 items-center justify-center text-slate-400 text-sm">No friends or associates found.</div>}

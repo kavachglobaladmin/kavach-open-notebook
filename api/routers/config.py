@@ -166,3 +166,58 @@ async def get_config(request: Request):
         "hasUpdate": has_update,
         "dbStatus": db_status,
     }
+
+@router.post("/update-app")
+async def update_app():
+    """
+    Trigger application update from the server.
+
+    The frontend Update button calls this endpoint:
+        POST /api/update-app
+
+    By default, this runs:
+        scripts/update-app.sh
+
+    You can override it using:
+        OPEN_NOTEBOOK_UPDATE_COMMAND
+    """
+    import asyncio
+    import os
+
+    update_command = os.getenv(
+        "OPEN_NOTEBOOK_UPDATE_COMMAND",
+        "scripts/update-app.sh",
+    )
+
+    try:
+        process = await asyncio.create_subprocess_shell(
+            update_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        stdout, stderr = await process.communicate()
+
+        stdout_text = stdout.decode(errors="replace")
+        stderr_text = stderr.decode(errors="replace")
+
+        if process.returncode != 0:
+            return {
+                "success": False,
+                "message": "Update failed.",
+                "error": stderr_text,
+                "output": stdout_text,
+            }
+
+        return {
+            "success": True,
+            "message": "Update completed successfully. Please restart or refresh the app if required.",
+            "output": stdout_text,
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": "Update failed.",
+            "error": str(e),
+        }

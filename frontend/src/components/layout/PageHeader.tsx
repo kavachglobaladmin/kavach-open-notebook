@@ -1006,10 +1006,10 @@ export function PageHeader({
   }
 
   return (
-    <header data-kavach-global-search-ignore="true" className="h-[88px] flex items-center justify-between px-4 md:px-8 bg-[#FDFDFD] shrink-0 border-b border-[#E2E8F0] relative z-40 overflow-visible">
+    <header data-kavach-global-search-ignore="true" className="min-h-[88px] h-auto flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 bg-[#FDFDFD] shrink-0 border-b border-[#E2E8F0] relative z-40 overflow-visible">
 
       {/* â”€â”€ Left: Toggle & Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="flex items-center gap-4 md:gap-6 flex-1">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:gap-6">
         {/* Hamburger Menu Toggle */}
         {isCollapsed && (
           <Button
@@ -1023,7 +1023,7 @@ export function PageHeader({
         )}
 
         {!hideSearch && (
-          <div ref={searchWrapperRef} data-kavach-global-search-ignore="true" className="relative w-full max-w-[480px] hidden sm:block">
+          <div ref={searchWrapperRef} data-kavach-global-search-ignore="true" className="relative hidden w-full max-w-[480px] min-w-0 sm:block">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
             <Input
               value={searchValue}
@@ -1135,7 +1135,7 @@ export function PageHeader({
       </div>
 
       {/* â”€â”€ Right: Bell + New â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="flex items-center gap-3 md:gap-5 shrink-0 ml-4">
+      <div className="ml-0 flex flex-wrap items-center gap-2 md:gap-3 lg:gap-5 shrink-0">
 
         {/* Original Notification Center Restored */}
         <NotificationCenter />
@@ -1144,7 +1144,7 @@ export function PageHeader({
         {!hideNew && (
           <Button
             onClick={() => onNew ? onNew() : setIsModalOpen(true)}
-            className="bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:from-[#6D28D9] hover:to-[#7C3AED] text-white px-5 md:px-7 rounded-[14px] h-[46px] font-bold text-[14px] tracking-wide gap-2.5 shadow-[0_8px_20px_-6px_rgba(124,58,237,0.5)] transition-all"
+            className="bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:from-[#6D28D9] hover:to-[#7C3AED] text-white px-5 md:px-7 rounded-[14px] h-[46px] w-full sm:w-auto font-bold text-[14px] tracking-wide gap-2.5 shadow-[0_8px_20px_-6px_rgba(124,58,237,0.5)] transition-all"
           >
             <Plus className="h-5 w-5" strokeWidth={2.5} />
             <span className="hidden md:inline">{newLabel}</span>

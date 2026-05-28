@@ -83,7 +83,7 @@ interface Props {
 // ── Left illustration panel ───────────────────────────────────────────────────
 function IllustrationPanel() {
   return (
-    <div className="hidden md:flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 bg-[#02041A]">
+    <div className="auth-illustration-panel hidden md:flex flex-col relative overflow-hidden w-1/2 flex-shrink-0 bg-[#02041A]">
       <div className="absolute inset-0 z-0 overflow-hidden">
         <Image
           src={forgotIllust}
@@ -322,17 +322,17 @@ export function ForgotPasswordFlow({ initialStep }: Props) {
   // ── Page wrapper — full screen with lavender background ──────────────────
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 lg:p-8"
+      className="auth-shell min-h-screen w-full flex items-center justify-center p-4 sm:p-6 lg:p-8"
       style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}
     >
       {/* Card */}
-      <div className="flex flex-col md:flex-row w-full max-w-[1100px] min-h-[520px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[32px] shadow-2xl overflow-y-auto border border-white/80">
+      <div className="auth-card auth-split-layout flex flex-col md:flex-row w-full max-w-[1100px] min-h-[520px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[32px] shadow-2xl overflow-y-auto border border-white/80">
 
         {/* Left: illustration */}
         <IllustrationPanel />
 
         {/* Right: form */}
-        <div className="flex flex-col justify-center bg-white px-8 sm:px-14 lg:px-16 py-10 sm:py-12 w-full md:w-1/2">
+        <div className="auth-form-panel flex flex-col justify-center bg-white px-8 sm:px-14 lg:px-16 py-10 sm:py-12 w-full md:w-1/2">
 
           {success ? (
             /* ── Success state ── */

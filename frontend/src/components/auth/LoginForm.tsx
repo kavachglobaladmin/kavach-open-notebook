@@ -151,7 +151,7 @@ function ThemedPanel({
   onSwitch: () => void
 }) {
   return (
-    <div className="hidden md:flex flex-col relative overflow-hidden md:w-1/2  flex-shrink-0 p-8 lg:p-10 text-white bg-[#02041A]">
+    <div className="auth-illustration-panel hidden md:flex flex-col relative overflow-hidden md:w-1/2 flex-shrink-0 p-8 lg:p-10 text-white bg-[#02041A]">
       <style>{`
         @keyframes btnFadeIn {
           from { opacity: 0; transform: translateY(20px); }
@@ -350,13 +350,13 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#EBEFFE] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
-      <div className="flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-y-auto border border-white z-10">
+    <div className="auth-shell min-h-screen w-full flex items-center justify-center bg-[#EBEFFE] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
+      <div className="auth-card auth-split-layout flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-y-auto border border-white z-10">
 
         {mode === 'signin' && <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />}
 
         <div
-          className={`flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-1/2 ${mode === 'signup' ? 'order-2 md:order-1' : ''}`}
+          className={`auth-form-panel flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-1/2 ${mode === 'signup' ? 'order-2 md:order-1' : ''}`}
           style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}
         >
           <div className="flex justify-center mb-6">

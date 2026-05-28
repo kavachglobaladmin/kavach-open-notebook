@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { 
   User, Briefcase, ZoomIn, ZoomOut, Maximize, 
   MousePointer2, MapPin, GraduationCap, 
-  HelpCircle, Users, Globe, Network, Map
+  HelpCircle, Users, Globe, Network
 } from 'lucide-react'
 
 export interface Associate {
@@ -130,9 +130,10 @@ export function FriendsAssociates({ data = defaultData, mainPerson = "Central Ta
   // Generic Card Renderer (Increased padding and margins)
   const renderCard = (person: Associate, index: number, colorTheme: 'red' | 'amber') => {
     const details = person.details ? person.details.split('|').map(s => s.trim()).filter(Boolean) : []
+    const borderClass = colorTheme === 'red' ? 'border-[#db303c]/20' : 'border-[#eab308]/20'
 
     return (
-      <div key={index} className={`relative bg-white border border-${colorTheme}-200 rounded-lg p-4 mb-3 shadow-sm flex gap-4 w-full hover:shadow-md transition-shadow`}>
+      <div key={index} className={`relative bg-white border ${borderClass} rounded-lg p-4 mb-3 shadow-sm flex gap-4 w-full hover:shadow-md transition-shadow`}>
         <div className={`mt-1 flex flex-col items-center justify-start`}>
           <User className={`w-8 h-8 ${colorTheme === 'red' ? 'text-[#e63946] fill-[#e63946]' : 'text-[#e9c46a] fill-[#e9c46a]'}`} />
         </div>
@@ -198,7 +199,7 @@ export function FriendsAssociates({ data = defaultData, mainPerson = "Central Ta
   return (
     <div 
       ref={containerRef}
-      className={`relative w-full h-[850px] overflow-hidden select-none bg-[#f8fafc] font-sans rounded-3xl border border-slate-200 shadow-inner ${isDraggingCanvas ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`relative w-full h-full min-h-0 overflow-hidden select-none bg-[#f8fafc] font-sans rounded-3xl border border-slate-200 shadow-inner ${isDraggingCanvas ? 'cursor-grabbing' : 'cursor-grab'}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={() => setIsDraggingCanvas(false)}
@@ -252,7 +253,7 @@ export function FriendsAssociates({ data = defaultData, mainPerson = "Central Ta
             <Users className="w-16 h-16 mb-2 text-white" />
             <h2 className="font-black text-[20px] leading-tight tracking-wide mb-2">ASSOCIATES<br/>OVERVIEW</h2>
             <p className="text-[11px] text-gray-300 font-medium leading-snug px-2">
-              Network of associates organized by relationship, role, location & occupation
+              {mainPerson}
             </p>
           </div>
 
@@ -293,7 +294,7 @@ export function FriendsAssociates({ data = defaultData, mainPerson = "Central Ta
                    <div className="flex gap-4">
                       <MapPin className="w-7 h-7 text-[#0070c0] fill-[#0070c0]/10 shrink-0 mt-1" />
                       <div>
-                         <h4 className="font-bold text-[15px] text-gray-900">{location}</h4>
+                         <h4 className="font-bold text-[15px] text-gray-900">{location} ({names.length})</h4>
                          <ul className="text-[13px] text-gray-600 mt-2 list-disc pl-3 space-y-1.5">
                            {location === "Jhajjar, Haryana" && (
                              <>
