@@ -1390,7 +1390,7 @@ async def get_sources(
     request: Request,
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
     limit: int = Query(
-        50, ge=1, le=100, description="Number of sources to return (1-100)"
+        50, ge=1, le=500, description="Number of sources to return (1-500)"
     ),
     offset: int = Query(0, ge=0, description="Number of sources to skip"),
     sort_by: str = Query(

@@ -6,11 +6,13 @@ import traceback
 from urllib.parse import unquote
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 
-from open_notebook.domain.notebook import Source
+from api.auth import get_current_user
+from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.domain.notebook import Notebook, Source
 
 router = APIRouter()
 
@@ -104,6 +106,40 @@ async def _safe_produce(orchestrator, source_id: str):
         logger.warning(f"Kafka produce skipped for {source_id}: {e}")
 
 
+async def _assert_source_access(source_id: str, current_user: Optional[str]) -> None:
+    """
+    Enforce ownership scope for infographic generation.
+
+    A source is accessible when at least one linked notebook is:
+    - owned by current_user, or
+    - unowned (legacy data, visible to all).
+    """
+    if not current_user:
+        return
+
+    references = await repo_query(
+        "SELECT VALUE out FROM reference WHERE in = $source_id",
+        {"source_id": ensure_record_id(source_id)},
+    )
+
+    # Legacy/unlinked sources are treated as globally visible.
+    if not references:
+        return
+
+    current_user_lc = current_user.strip().lower()
+    for notebook_id in references:
+        try:
+            notebook = await Notebook.get(str(notebook_id))
+        except Exception:
+            continue
+
+        owner = notebook.owner.strip().lower() if notebook.owner else None
+        if owner is None or owner == current_user_lc:
+            return
+
+    raise HTTPException(status_code=403, detail="Access denied")
+
+
 async def start_kafka_consumer():
     """Start the KafkaInfographicOrchestrator consumer as a background task."""
     try:
@@ -146,14 +182,21 @@ class InfographicResponse(BaseModel):
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.post("/sources/{source_id:path}/infographic", response_model=InfographicResponse)
-async def generate_infographic(source_id: str, request: InfographicRequest):
+async def generate_infographic(
+    source_id: str,
+    request: InfographicRequest,
+    current_user: Optional[str] = Depends(get_current_user),
+):
     try:
         source_id = _decode_source_id(source_id)
         source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
-        if not source.full_text or not source.full_text.strip():
-            raise HTTPException(status_code=400, detail="Source has no text content")
+        await _assert_source_access(source_id, current_user)
+        has_text = bool(source.full_text and source.full_text.strip())
+        has_file = bool(source.asset and source.asset.file_path)
+        if not has_text and not has_file:
+            raise HTTPException(status_code=400, detail="Source has no usable text or file content")
 
         orchestrator = get_orchestrator()
 

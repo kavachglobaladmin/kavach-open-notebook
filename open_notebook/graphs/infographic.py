@@ -82,7 +82,8 @@ def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text:
     normalized["document_type"] = _infer_document_type(text, normalized)
 
     header = normalized.get("header") if isinstance(normalized.get("header"), dict) else {}
-    title = _clean_scalar(header.get("title")) or _clean_scalar(source_title) or "Document Analysis"
+    canonical_title = _clean_scalar(source_title)
+    title = canonical_title or _clean_scalar(header.get("title")) or "Document Analysis"
     subtitle = _clean_scalar(header.get("subtitle"))
 
     subject = _normalize_dict_values(normalized.get("subject", {}) if isinstance(normalized.get("subject"), dict) else {})
@@ -659,7 +660,12 @@ class InfographicPipeline:
 
         clean_text = await self.processor.clean_text(full_text)
         logger.info("Text cleaned. Calling LLM...")
-        data = await self.llm_service.extract_dossier_async(clean_text)
+        prompt_text = (
+            f"SOURCE_TITLE: {source.title or 'Unknown Source'}\n"
+            f"SOURCE_ID: {source_id}\n\n"
+            f"{clean_text}"
+        )
+        data = await self.llm_service.extract_dossier_async(prompt_text)
         logger.info("LLM completed.")
 
         data["source_id"] = source_id

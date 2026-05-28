@@ -181,22 +181,26 @@ function DataCard({
   accent,
   textColor,
   borderColor,
+  surfaceColor = '#ffffff',
+  headerSurfaceColor,
   children,
 }: {
   title: string
   accent: string
   textColor: string
   borderColor: string
+  surfaceColor?: string
+  headerSurfaceColor?: string
   children: React.ReactNode
 }) {
   return (
     <section
-      className="rounded-2xl border bg-white/95 shadow-sm"
-      style={{ borderColor }}
+      className="rounded-2xl border shadow-sm"
+      style={{ borderColor, backgroundColor: surfaceColor }}
     >
       <header
         className="flex items-center gap-2 border-b px-3 py-2"
-        style={{ borderColor }}
+        style={{ borderColor, backgroundColor: headerSurfaceColor ?? `${accent}12` }}
       >
         <span className="shrink-0">{getSectionIcon(title, 15, accent)}</span>
         <h3 className="text-sm font-semibold tracking-wide" style={{ color: accent }}>
@@ -322,6 +326,21 @@ function deriveBadgeValue(raw: string, fallbackCount: number): string {
   return `${Math.round(numeric)}+`
 }
 
+function compactText(value: string, maxChars = 220): string {
+  const normalized = clean(value)
+  if (!normalized) return '-'
+  if (normalized.length <= maxChars) return normalized
+  return `${normalized.slice(0, maxChars).trim()}...`
+}
+
+function normalizeHeadingFromStory(value: string, fallback: string): string {
+  const normalized = clean(value).replace(/[:\-]/g, ' ').trim()
+  if (!normalized) return fallback
+  const words = normalized.split(/\s+/).slice(0, 5)
+  const heading = words.join(' ')
+  return heading.length >= 10 ? heading : fallback
+}
+
 function CriminalPosterView({
   data,
   accent,
@@ -384,7 +403,9 @@ function CriminalPosterView({
     },
   ]
 
-  const mergedStories = storyItems.length > 0 ? storyItems : fallbackStories
+  const mergedStories = (storyItems.length > 0 ? storyItems : fallbackStories)
+    .filter(item => hasValue(item.title) || hasValue(item.description))
+    .slice(0, 10)
   const leftLead = mergedStories[0] ?? fallbackStories[0]
   const leftSupport = [
     mergedStories[1] ?? fallbackStories[1],
@@ -395,6 +416,7 @@ function CriminalPosterView({
     mergedStories[4] ?? fallbackStories[4],
     mergedStories[5] ?? fallbackStories[5],
   ]
+  const extraStories = mergedStories.slice(6)
 
   const rawStatValue = clean(data.stat?.value || '')
   const statValue = deriveBadgeValue(rawStatValue, cases.length)
@@ -420,6 +442,8 @@ function CriminalPosterView({
     ''
   )
   const knownAliases = knownAliasesCandidate || displayTitle || '-'
+  const evolutionHeading = normalizeHeadingFromStory(leftLead.title, 'Profile Evolution')
+  const operationHeading = normalizeHeadingFromStory(rightLead.title, 'Network Operations & Logistics')
 
   const MiniPin = ({ label, className }: { label: string; className: string }) => (
     <div className={`absolute flex flex-col items-center ${className}`}>
@@ -471,14 +495,14 @@ function CriminalPosterView({
             )}
           </div>
           <div className="min-w-0">
-            <h4 className={`${large ? 'text-[1.35rem]' : 'text-lg'} line-clamp-2 font-black leading-tight text-slate-950`} title={item.title}>
+            <h4 className={`${large ? 'text-[1.45rem]' : 'text-[1.08rem]'} line-clamp-2 font-black leading-tight text-slate-950`} title={item.title}>
               {item.title}
             </h4>
             {item.subtitle && (
-              <p className="mt-1 text-sm font-bold text-slate-600">{item.subtitle}</p>
+              <p className="mt-1 text-[13px] font-bold text-slate-600">{item.subtitle}</p>
             )}
-            <p className="mt-2 line-clamp-3 text-[13px] font-medium leading-relaxed text-slate-700" title={item.description}>
-              {item.description}
+            <p className="mt-2 line-clamp-4 text-[14px] font-medium leading-relaxed text-slate-700" title={item.description}>
+              {compactText(item.description, large ? 220 : 170)}
             </p>
           </div>
         </div>
@@ -487,9 +511,9 @@ function CriminalPosterView({
   }
 
   return (
-    <div className="w-full overflow-visible rounded-2xl border border-slate-200 bg-white p-2 sm:p-3 lg:p-4">
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 sm:p-3 lg:p-4">
       <div
-        className="mx-auto w-full max-w-none rounded-[18px] border border-slate-100 px-6 py-6 sm:px-8 lg:px-10"
+        className="mx-auto w-full max-w-none overflow-hidden rounded-[18px] border border-slate-100 px-5 py-5 sm:px-7 lg:px-9"
         style={{
           backgroundColor: '#ffffff',
           backgroundImage:
@@ -499,12 +523,12 @@ function CriminalPosterView({
         }}
       >
         <div className="mb-5">
-          <h2 className="max-w-none text-[2.15rem] font-black leading-[1.02] tracking-tight text-slate-950 sm:text-[2.85rem] xl:text-[4.1rem] 2xl:text-[4.7rem]">
+          <h2 className="max-w-none break-words text-[clamp(2rem,5.1vw,4.3rem)] font-black leading-[1.02] tracking-tight text-slate-950">
             {displayTitle}
           </h2>
           {hasValue(data.header?.subtitle) && (
-            <p className="mt-3 max-w-none text-base font-medium leading-relaxed text-slate-700 sm:text-lg xl:text-xl">
-              {clean(data.header?.subtitle)}
+            <p className="mt-3 max-w-none text-[15px] font-medium leading-relaxed text-slate-700 sm:text-[16px] lg:text-[17px]">
+              {compactText(clean(data.header?.subtitle), 360)}
             </p>
           )}
         </div>
@@ -520,8 +544,8 @@ function CriminalPosterView({
           </div>
 
           <section className="relative z-10 space-y-4">
-            <h3 className="text-[1.65rem] font-black leading-tight text-slate-950 sm:text-[2.05rem]">
-              Profile of a Gangster&apos;s Evolution
+            <h3 className="text-[1.5rem] font-black leading-tight text-slate-950 sm:text-[1.95rem]">
+              {evolutionHeading}
             </h3>
 
             <StoryCard item={leftLead} tone="rose" large />
@@ -534,11 +558,11 @@ function CriminalPosterView({
                   </div>
                 </div>
                 <div>
-                  <h4 className="text-[1.55rem] font-black leading-tight text-slate-950">
+                  <h4 className="text-[1.45rem] font-black leading-tight text-slate-950">
                     Active Criminal Involvements
                   </h4>
-                  <p className="mt-2 max-w-xl text-[13px] font-medium leading-relaxed text-slate-700">
-                    {statLabel}
+                  <p className="mt-2 max-w-xl text-[14px] font-medium leading-relaxed text-slate-700">
+                    {compactText(statLabel, 190)}
                   </p>
                 </div>
               </div>
@@ -550,8 +574,8 @@ function CriminalPosterView({
           </section>
 
           <section className="relative z-10 space-y-4">
-            <h3 className="text-[1.65rem] font-black leading-tight text-slate-950 sm:text-[2.05rem]">
-              Syndicate Operations &amp; Logistics
+            <h3 className="text-[1.5rem] font-black leading-tight text-slate-950 sm:text-[1.95rem]">
+              {operationHeading}
             </h3>
 
             <article className="rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
@@ -568,14 +592,14 @@ function CriminalPosterView({
                 </div>
 
                 <div className="flex flex-col justify-center">
-                  <h4 className="text-[1.45rem] font-black leading-tight text-slate-950">
+                  <h4 className="text-[1.4rem] font-black leading-tight text-slate-950">
                     {rightLead.title}
                   </h4>
                   {rightLead.subtitle && (
-                    <p className="mt-1 text-sm font-bold text-slate-600">{rightLead.subtitle}</p>
+                    <p className="mt-1 text-[13px] font-bold text-slate-600">{rightLead.subtitle}</p>
                   )}
-                  <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
-                    {rightLead.description}
+                  <p className="mt-2 text-[14px] font-medium leading-relaxed text-slate-700">
+                    {compactText(rightLead.description, 240)}
                   </p>
                 </div>
               </div>
@@ -605,13 +629,13 @@ function CriminalPosterView({
                         <td className="border-r border-t border-slate-200 px-3 py-2">
                           <div className="flex items-center gap-2 font-bold text-slate-900">
                             {getSemanticIcon('crime', 18, accent)}
-                            {row.crime}
+                            {compactText(row.crime, 88)}
                           </div>
                         </td>
                         <td className="border-r border-t border-slate-200 px-3 py-2">
                           <div className="flex items-center gap-2 font-semibold text-slate-700">
                             {getSemanticIcon('map', 18, accent)}
-                            {row.location}
+                            {compactText(row.location, 72)}
                           </div>
                         </td>
                         <td className="border-t border-slate-200 px-3 py-2">
@@ -619,7 +643,7 @@ function CriminalPosterView({
                             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200">
                               {getSemanticIcon('user', 15, '#111827')}
                             </span>
-                            {row.figure}
+                            {compactText(row.figure, 78)}
                           </div>
                         </td>
                       </tr>
@@ -630,6 +654,25 @@ function CriminalPosterView({
             </section>
           </section>
         </div>
+
+        {extraStories.length > 0 && (
+          <section className="mt-6 rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <h4 className="mb-3 text-[1.12rem] font-black text-slate-950">Additional Findings</h4>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {extraStories.map((item, index) => (
+                <article key={`extra-story-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5">{getSemanticIcon(item.iconKey, 14, accent)}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black leading-tight text-slate-900">{compactText(item.title, 70)}</p>
+                      <p className="mt-1 text-[13px] leading-relaxed text-slate-700">{compactText(item.description, 120)}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="mt-6 grid rounded-[22px] border border-slate-200 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] md:grid-cols-4">
           <div className="flex items-center gap-4 border-b border-slate-200 p-4 md:border-b-0 md:border-r">
@@ -669,14 +712,14 @@ function CriminalPosterView({
         {timeline.length > 0 && (
           <section className="mt-6 rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
             <h4 className="mb-4 text-[1.25rem] font-black text-slate-950">Timeline of Events</h4>
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {timeline.map((item, index) => (
                 <div key={`timeline-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <p className="text-xs font-black uppercase tracking-[0.12em]" style={{ color: accent }}>
                     {clean(item.date || `Event ${index + 1}`)}
                   </p>
                   <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
-                    {clean(item.event || '-')}
+                    {compactText(clean(item.event || '-'), 145)}
                   </p>
                 </div>
               ))}
@@ -697,6 +740,241 @@ function CriminalPosterView({
   )
 }
 
+type CdrPhase = {
+  label: string
+  title: string
+  summary: string
+  coords: string[]
+  circle: string
+}
+
+function extractCoordsFromText(value: string): string[] {
+  const matches = value.match(/\b\d{1,2}\.\d{2,6}\s*[/,]\s*\d{1,3}\.\d{2,6}\b/g) ?? []
+  return Array.from(new Set(matches.map(item => item.replace(/\s+/g, '')))).slice(0, 3)
+}
+
+function buildCdrPhases(data: InfographicResponse): CdrPhase[] {
+  const timeline = (data.timeline_events ?? []).filter(item => hasValue(item.date) || hasValue(item.event))
+  const fallbackText = [
+    ...(data.highlights ?? []).map(h => `${clean(h.title)} ${clean(h.description)}`),
+    ...(data.left_column ?? []).map(h => `${clean(h.title)} ${clean(h.description)}`),
+    ...(data.right_column ?? []).map(h => `${clean(h.title)} ${clean(h.description)}`),
+  ].filter(hasValue)
+
+  const sourceItems = timeline.length > 0
+    ? timeline.map(item => ({
+        date: clean(item.date || ''),
+        text: clean(item.event || ''),
+      }))
+    : fallbackText.map((text, index) => ({ date: `Phase ${index + 1}`, text }))
+
+  if (sourceItems.length === 0) {
+    return [
+      { label: 'Phase 1', title: 'Initial Signal Cluster', summary: 'No timeline events available.', coords: [], circle: 'Unknown' },
+    ]
+  }
+
+  const bucketCount = Math.min(4, Math.max(1, sourceItems.length))
+  const bucketSize = Math.ceil(sourceItems.length / bucketCount)
+
+  return Array.from({ length: bucketCount }).map((_, idx) => {
+    const start = idx * bucketSize
+    const bucket = sourceItems.slice(start, start + bucketSize)
+    const first = bucket[0]
+    const last = bucket[bucket.length - 1]
+    const combinedText = bucket.map(item => item.text).join(' ')
+    const coords = extractCoordsFromText(combinedText)
+
+    return {
+      label: first?.date && last?.date ? `${first.date} - ${last.date}` : `Phase ${idx + 1}`,
+      title: clean(first?.text || `Mobility phase ${idx + 1}`),
+      summary: clean(combinedText || first?.text || '-'),
+      coords,
+      circle: clean((data.key_locations?.[idx]?.area || data.key_locations?.[idx]?.cell_id || 'Telecom circle')),
+    }
+  })
+}
+
+function CdrVector({ kind }: { kind: 'base' | 'move' | 'hop' | 'return' }) {
+  if (kind === 'hop') {
+    return (
+      <svg viewBox="0 0 140 110" className="h-28 w-36" aria-hidden="true">
+        <rect x="6" y="18" width="128" height="80" rx="14" fill="#e0f2fe" stroke="#67e8f9" />
+        <path d="M16 70 H124" stroke="#0ea5e9" strokeWidth="3" />
+        <path d="M22 58 Q44 28 66 58 T110 58" fill="none" stroke="#f97316" strokeWidth="3" />
+        <circle cx="34" cy="70" r="7" fill="#22d3ee" />
+        <circle cx="70" cy="70" r="7" fill="#0ea5e9" />
+        <circle cx="106" cy="70" r="7" fill="#06b6d4" />
+      </svg>
+    )
+  }
+  if (kind === 'move') {
+    return (
+      <svg viewBox="0 0 140 110" className="h-28 w-36" aria-hidden="true">
+        <rect x="8" y="14" width="124" height="84" rx="14" fill="#ecfccb" stroke="#84cc16" />
+        <path d="M22 78 C40 28, 92 28, 116 74" fill="none" stroke="#0ea5e9" strokeWidth="4" />
+        <circle cx="22" cy="78" r="6" fill="#16a34a" />
+        <circle cx="116" cy="74" r="6" fill="#0284c7" />
+      </svg>
+    )
+  }
+  if (kind === 'return') {
+    return (
+      <svg viewBox="0 0 140 110" className="h-28 w-36" aria-hidden="true">
+        <rect x="8" y="14" width="124" height="84" rx="14" fill="#cffafe" stroke="#06b6d4" />
+        <path d="M24 72 C44 38, 92 38, 112 72" fill="none" stroke="#0ea5e9" strokeWidth="4" />
+        <path d="M104 64 L112 72 L104 80" fill="none" stroke="#0ea5e9" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="24" cy="72" r="6" fill="#0284c7" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 140 110" className="h-28 w-36" aria-hidden="true">
+      <rect x="8" y="14" width="124" height="84" rx="14" fill="#dbeafe" stroke="#60a5fa" />
+      <path d="M70 26 L84 52 H56 Z" fill="#0ea5e9" />
+      <rect x="64" y="52" width="12" height="28" rx="3" fill="#0ea5e9" />
+      <circle cx="70" cy="90" r="9" fill="#2563eb" />
+    </svg>
+  )
+}
+
+function CdrStoryboardView({ data }: { data: InfographicResponse }) {
+  const phases = buildCdrPhases(data)
+  const statValue = clean(data.stat?.value || `${phases.length}`)
+  const statLabel = clean(data.stat?.label || 'Call and SMS interactions')
+  const topContacts = (data.top_contacts ?? []).filter(item => hasValue(item.number))
+  const callSummaryPairs = toPairs((data.call_summary ?? {}) as Record<string, string>)
+  const highlights = (data.highlights ?? []).filter(item => hasValue(item.title) || hasValue(item.description))
+  const timeline = (data.timeline_events ?? []).filter(item => hasValue(item.date) || hasValue(item.event)).slice(0, 10)
+  const subtitle = clean(data.header?.subtitle || 'Device mobility analysis derived from call detail records.')
+  const displayTitle = clean(data.header?.title || 'Mobility & Location Analysis')
+
+  return (
+    <div className="w-full overflow-hidden rounded-2xl border border-cyan-900/40 bg-[#041329] p-4 sm:p-6">
+      <div className="rounded-2xl border border-cyan-900/50 bg-gradient-to-r from-[#021127] via-[#072246] to-[#0a2f59] p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-cyan-500 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">Mobile CDR Analysis</span>
+          <span className="text-xs uppercase tracking-[0.12em] text-cyan-200">{clean(data.document_type || 'mobile_cdr')}</span>
+        </div>
+        <h2 className="mt-3 break-words text-[clamp(1.8rem,4vw,3rem)] font-black text-cyan-50">{displayTitle}</h2>
+        <p className="mt-2 max-w-5xl text-[14px] leading-relaxed text-cyan-100/90 sm:text-[15px]">{compactText(subtitle, 340)}</p>
+        <div className="mt-4 inline-flex items-center gap-3 rounded-xl border border-cyan-600/50 bg-[#061b34] px-4 py-2">
+          <span>{getSemanticIcon('stat', 20, '#22d3ee')}</span>
+          <div>
+            <p className="text-xl font-black text-cyan-300">{statValue}</p>
+            <p className="text-xs text-cyan-100/80">{statLabel}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-4">
+        {phases.map((phase, idx) => (
+          <article key={`${phase.label}-${idx}`} className="rounded-2xl border border-cyan-800/50 bg-[#09203d] p-4 text-cyan-50 shadow-[0_8px_30px_rgba(2,6,23,0.35)]">
+            <p className="text-xs font-bold uppercase tracking-[0.1em] text-cyan-300">{phase.label}</p>
+            <h3 className="mt-2 line-clamp-2 text-[1.12rem] font-black leading-tight sm:text-xl">{compactText(phase.title, 68)}</h3>
+            <div className="mt-3 flex justify-center">
+              <CdrVector kind={idx === 0 ? 'base' : idx === phases.length - 1 ? 'return' : idx === 2 ? 'hop' : 'move'} />
+            </div>
+            <p className="mt-3 text-[13px] leading-relaxed text-cyan-100/90 sm:text-sm">{compactText(phase.summary, 170)}</p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.1em] text-cyan-300">Telecom Circle: {phase.circle}</p>
+            {phase.coords.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {phase.coords.map(coord => (
+                  <span key={coord} className="rounded-full bg-cyan-950/70 px-2 py-1 text-[11px] font-semibold text-cyan-200">{coord}</span>
+                ))}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+
+      {highlights.length > 0 && (
+        <section className="mt-5 rounded-2xl border border-cyan-800/50 bg-[#09203d] p-4">
+          <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-cyan-300">Key Findings</h4>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {highlights.slice(0, 4).map((item, index) => (
+              <article key={`cdr-highlight-${index}`} className="rounded-lg border border-cyan-700/40 bg-[#0b2749] px-3 py-2">
+                <p className="text-sm font-black text-cyan-100">{compactText(clean(item.title || `Finding ${index + 1}`), 65)}</p>
+                {hasValue(item.subtitle) && (
+                  <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.1em] text-cyan-300">{compactText(clean(item.subtitle), 52)}</p>
+                )}
+                <p className="mt-1 text-[13px] leading-relaxed text-cyan-100/90">{compactText(clean(item.description || '-'), 155)}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_1.8fr]">
+        <section className="rounded-2xl border border-cyan-800/50 bg-[#09203d] p-4">
+          <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-cyan-300">Top Contacts</h4>
+          <div className="mt-3 space-y-2">
+            {topContacts.slice(0, 6).map((contact, idx) => (
+              <div key={`${contact.number}-${idx}`} className="grid grid-cols-3 items-center rounded-lg border border-cyan-700/40 bg-[#0b2749] px-3 py-2 text-sm text-cyan-100">
+                <span className="font-semibold">{clean(contact.number || '-')}</span>
+                <span className="text-cyan-300">{clean(contact.type || '-')}</span>
+                <span className="text-right font-black text-cyan-200">{clean(contact.calls || '-')}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-cyan-800/50 bg-[#09203d] p-4">
+          <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-cyan-300">Call Summary</h4>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {callSummaryPairs.length > 0 ? callSummaryPairs.map(item => (
+              <div key={item.key} className="rounded-lg border border-cyan-700/40 bg-[#0b2749] px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-300">{item.key}</p>
+                <p className="mt-1 text-lg font-black text-cyan-100">{item.value}</p>
+              </div>
+            )) : (
+              <p className="text-sm text-cyan-100/80">No call summary data available.</p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <section className="mt-5 rounded-2xl border border-cyan-800/50 bg-[#09203d] p-4">
+        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-cyan-300">Mobility Matrix</h4>
+        <div className="mt-3 overflow-hidden rounded-lg border border-cyan-700/40">
+          <table className="min-w-full border-collapse text-[12px] text-cyan-100 sm:text-[13px]">
+            <thead className="bg-[#0b2749] text-cyan-200">
+              <tr>
+                <th className="border-r border-cyan-700/40 px-2 py-2 text-left font-black">Date Range</th>
+                <th className="border-r border-cyan-700/40 px-2 py-2 text-left font-black">Circle</th>
+                <th className="px-2 py-2 text-left font-black">Primary Coordinates</th>
+              </tr>
+            </thead>
+            <tbody>
+              {phases.map((phase, index) => (
+                <tr key={`cdr-phase-row-${index}`} className="odd:bg-[#0c2a4c] even:bg-[#09203d]">
+                  <td className="border-r border-t border-cyan-700/40 px-2 py-2 font-semibold">{compactText(phase.label, 46)}</td>
+                  <td className="border-r border-t border-cyan-700/40 px-2 py-2">{compactText(phase.circle || '-', 44)}</td>
+                  <td className="border-t border-cyan-700/40 px-2 py-2">{phase.coords.length ? phase.coords.join(' , ') : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {timeline.length > 0 && (
+        <section className="mt-5 rounded-2xl border border-cyan-800/50 bg-[#09203d] p-4">
+          <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-cyan-300">Event Timeline</h4>
+          <div className="mt-3 space-y-2">
+            {timeline.map((item, index) => (
+              <div key={`cdr-timeline-${index}`} className="grid gap-1 rounded-lg border border-cyan-700/40 bg-[#0b2749] px-3 py-2 sm:grid-cols-[180px_1fr] sm:items-start">
+                <p className="text-xs font-black uppercase tracking-[0.1em] text-cyan-300">{clean(item.date || '-')}</p>
+                <p className="text-[13px] leading-relaxed text-cyan-100">{compactText(clean(item.event || '-'), 240)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; sourceTitle?: string }) {
   const type = resolveType(data)
   const theme = resolveTheme(type)
@@ -704,6 +982,9 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
   const textColor = theme.textPrimary
   const mutedColor = theme.textMuted
   const borderColor = theme.cardBorder
+  const cardSurface = isLight ? '#ffffff' : theme.cardBg
+  const cardHeaderSurface = isLight ? '#ffffff' : 'rgba(2, 10, 24, 0.52)'
+  const rowSurface = isLight ? '#f8fafc' : 'rgba(9, 24, 44, 0.68)'
 
   const subjectPairs = toPairs(flattenSubject(data.subject))
   const personalPairs = toPairs(data.personal)
@@ -769,6 +1050,9 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
       />
     )
   }
+  if (type === 'cdr') {
+    return <CdrStoryboardView data={data} />
+  }
 
   return (
     <div
@@ -825,6 +1109,8 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
               accent={theme.accent}
               textColor={textColor}
               borderColor={borderColor}
+              surfaceColor={cardSurface}
+              headerSurfaceColor={cardHeaderSurface}
             >
               <div className="grid grid-cols-1 gap-2">
                 {block.pairs.map(item => (
@@ -833,7 +1119,7 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
                     className="grid gap-2 rounded-lg px-3 py-2"
                     style={{
                       gridTemplateColumns: 'minmax(130px, 0.8fr) 1.2fr',
-                      backgroundColor: isLight ? '#f8fafc' : 'rgba(15, 23, 42, 0.5)',
+                      backgroundColor: rowSurface,
                     }}
                   >
                     <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: theme.accent }}>
@@ -849,13 +1135,20 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
       )}
 
       {narrativeItems.length > 0 && (
-        <DataCard title="Narrative Analysis" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+        <DataCard
+          title="Narrative Analysis"
+          accent={theme.accent}
+          textColor={textColor}
+          borderColor={borderColor}
+          surfaceColor={cardSurface}
+          headerSurfaceColor={cardHeaderSurface}
+        >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {narrativeItems.map((item, index) => (
               <article
                 key={`${clean(item.title)}-${index}`}
                 className="rounded-xl border px-3 py-2"
-                style={{ borderColor, background: isLight ? '#f8fafc' : 'rgba(2, 6, 23, 0.48)' }}
+                style={{ borderColor, background: rowSurface }}
               >
                 <div className="mb-1 flex items-center gap-2">
                   <span>{getSemanticIcon(item.icon || item.title || 'info', 16, theme.accent)}</span>
@@ -872,13 +1165,20 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
 
       {highlights.length > 0 && (
         <div className="mt-5">
-          <DataCard title="Key Findings" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+          <DataCard
+            title="Key Findings"
+            accent={theme.accent}
+            textColor={textColor}
+            borderColor={borderColor}
+            surfaceColor={cardSurface}
+            headerSurfaceColor={cardHeaderSurface}
+          >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {highlights.map((item, index) => (
                 <div
                   key={`${clean(item.title)}-${index}`}
                   className="rounded-xl border p-3"
-                  style={{ borderColor, background: isLight ? '#f8fafc' : 'rgba(15, 23, 42, 0.5)' }}
+                  style={{ borderColor, background: rowSurface }}
                 >
                   <p className="text-sm font-semibold" style={{ color: theme.accent }}>
                     {clean(item.title || `Finding ${index + 1}`)}
@@ -901,10 +1201,17 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
       {(associates.length > 0 || topContacts.length > 0 || locations.length > 0) && (
         <div className="mt-5 grid grid-cols-1 gap-3 xl:grid-cols-3">
           {associates.length > 0 && (
-            <DataCard title="Associates" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+            <DataCard
+              title="Associates"
+              accent={theme.accent}
+              textColor={textColor}
+              borderColor={borderColor}
+              surfaceColor={cardSurface}
+              headerSurfaceColor={cardHeaderSurface}
+            >
               <div className="space-y-2">
                 {associates.map((item, index) => (
-                  <div key={`${clean(item.name)}-${index}`} className="rounded-lg border px-3 py-2" style={{ borderColor }}>
+                  <div key={`${clean(item.name)}-${index}`} className="rounded-lg border px-3 py-2" style={{ borderColor, background: rowSurface }}>
                     <div className="text-sm font-semibold">{clean(item.name || '-')}</div>
                     <div className="text-xs" style={{ color: mutedColor }}>
                       {clean(item.relation || '-')}
@@ -915,10 +1222,17 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
             </DataCard>
           )}
           {topContacts.length > 0 && (
-            <DataCard title="Top Contacts" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+            <DataCard
+              title="Top Contacts"
+              accent={theme.accent}
+              textColor={textColor}
+              borderColor={borderColor}
+              surfaceColor={cardSurface}
+              headerSurfaceColor={cardHeaderSurface}
+            >
               <div className="space-y-2">
                 {topContacts.map((item, index) => (
-                  <div key={`${clean(item.number)}-${index}`} className="grid grid-cols-3 gap-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor }}>
+                  <div key={`${clean(item.number)}-${index}`} className="grid grid-cols-3 gap-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor, background: rowSurface }}>
                     <span className="font-medium">{clean(item.number || '-')}</span>
                     <span style={{ color: mutedColor }}>{clean(item.type || '-')}</span>
                     <span className="text-right font-semibold" style={{ color: theme.accent }}>
@@ -930,10 +1244,17 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
             </DataCard>
           )}
           {locations.length > 0 && (
-            <DataCard title="Key Locations" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+            <DataCard
+              title="Key Locations"
+              accent={theme.accent}
+              textColor={textColor}
+              borderColor={borderColor}
+              surfaceColor={cardSurface}
+              headerSurfaceColor={cardHeaderSurface}
+            >
               <div className="space-y-2">
                 {locations.map((item, index) => (
-                  <div key={`${clean(item.area || item.cell_id)}-${index}`} className="rounded-lg border px-3 py-2" style={{ borderColor }}>
+                  <div key={`${clean(item.area || item.cell_id)}-${index}`} className="rounded-lg border px-3 py-2" style={{ borderColor, background: rowSurface }}>
                     <div className="text-sm font-medium">{clean(item.area || item.cell_id || '-')}</div>
                     <div className="mt-1 text-xs" style={{ color: mutedColor }}>
                       {clean(item.cell_id || '-')}
@@ -951,10 +1272,17 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
 
       {timeline.length > 0 && (
         <div className="mt-5">
-          <DataCard title={`Timeline (${timeline.length})`} accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+          <DataCard
+            title={`Timeline (${timeline.length})`}
+            accent={theme.accent}
+            textColor={textColor}
+            borderColor={borderColor}
+            surfaceColor={cardSurface}
+            headerSurfaceColor={cardHeaderSurface}
+          >
             <div className="space-y-2">
               {timeline.map((item, index) => (
-                <div key={`${clean(item.date)}-${index}`} className="grid gap-2 rounded-lg border px-3 py-2 sm:grid-cols-[150px_1fr]" style={{ borderColor }}>
+                <div key={`${clean(item.date)}-${index}`} className="grid gap-2 rounded-lg border px-3 py-2 sm:grid-cols-[150px_1fr]" style={{ borderColor, background: rowSurface }}>
                   <span className="text-xs font-semibold" style={{ color: theme.accent }}>
                     {clean(item.date || '-')}
                   </span>
@@ -968,7 +1296,14 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
 
       {transactions.length > 0 && (
         <div className="mt-5">
-          <DataCard title="Key Transactions" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+          <DataCard
+            title="Key Transactions"
+            accent={theme.accent}
+            textColor={textColor}
+            borderColor={borderColor}
+            surfaceColor={cardSurface}
+            headerSurfaceColor={cardHeaderSurface}
+          >
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-[13px]">
                 <thead>
@@ -1008,7 +1343,14 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
 
       {cases.length > 0 && (
         <div className="mt-5">
-          <DataCard title="Case Details" accent={theme.accent} textColor={textColor} borderColor={borderColor}>
+          <DataCard
+            title="Case Details"
+            accent={theme.accent}
+            textColor={textColor}
+            borderColor={borderColor}
+            surfaceColor={cardSurface}
+            headerSurfaceColor={cardHeaderSurface}
+          >
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-[13px]">
                 <thead>
