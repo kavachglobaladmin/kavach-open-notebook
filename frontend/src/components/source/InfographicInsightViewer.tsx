@@ -427,12 +427,7 @@ function CriminalPosterView({
   )
 
   const operationRows = inferOperationRows(data, mergedStories)
-
   const footprintLabels = inferLocationLabels(data, operationRows)
-
-  const ringStyle = {
-    background: `conic-gradient(${accent} 0 76%, #e5e7eb 76% 100%)`,
-  }
 
   const knownAliasesCandidate = clean(
     pickValueFromKeys(subjectMap, ['aliases', 'alias', 'known aliases']) ||
@@ -442,230 +437,258 @@ function CriminalPosterView({
     ''
   )
   const knownAliases = knownAliasesCandidate || displayTitle || '-'
-  const evolutionHeading = normalizeHeadingFromStory(leftLead.title, 'Profile Evolution')
-  const operationHeading = normalizeHeadingFromStory(rightLead.title, 'Network Operations & Logistics')
+  const evolutionHeading = normalizeHeadingFromStory(leftLead.title, 'Narrative Findings')
+  const operationHeading = normalizeHeadingFromStory(rightLead.title, 'Operational Pattern')
+
+  const professionalAccent = '#334155'
+  const editorialAccent = accent || '#4f46e5'
+  const softAccent = '#eef2ff'
+  const lineColor = '#d8dee8'
+
+  const locationSummary = clean(footprintLabels.find(label => label !== '-') || locations[0]?.area || locations[0]?.cell_id || 'Location intelligence pending')
 
   const MiniPin = ({ label, className }: { label: string; className: string }) => (
     <div className={`absolute flex flex-col items-center ${className}`}>
-      <div className="flex h-11 w-11 items-center justify-center rounded-full border-[3px] bg-white shadow-md" style={{ borderColor: accent }}>
-        {getSemanticIcon('map', 20, accent)}
+      <div className="flex h-9 w-9 items-center justify-center rounded-full border bg-white shadow-sm" style={{ borderColor: lineColor }}>
+        {getSemanticIcon('map', 16, editorialAccent)}
       </div>
-      <span className="mt-1 max-w-[78px] truncate rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+      <span className="mt-1 max-w-[76px] truncate rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-600">
         {label}
       </span>
     </div>
   )
 
-  const StoryCard = ({
-    item,
-    tone = 'rose',
-    large = false,
-  }: {
-    item: StoryItem
-    tone?: 'rose' | 'slate'
-    large?: boolean
-  }) => {
-    const color = tone === 'rose' ? '#9f1239' : '#475569'
-    const bg = tone === 'rose' ? '#fff1f2' : '#eef2ff'
-    const title = item.title.toLowerCase()
-    const vectorKind: 'evolution' | 'footprint' | 'command' | 'resources' | 'tactical' | null =
-      large && tone === 'rose'
-        ? 'evolution'
-        : title.includes('footprint') || title.includes('location')
-          ? 'footprint'
-          : title.includes('command') || title.includes('control') || title.includes('signal')
-            ? 'command'
-            : title.includes('resource') || title.includes('logistic') || title.includes('finance')
-              ? 'resources'
-              : title.includes('tactical') || title.includes('weapon') || title.includes('skill')
-                ? 'tactical'
-                : null
+  const SectionKicker = ({ children }: { children: React.ReactNode }) => (
+    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">{children}</p>
+  )
 
-    return (
-      <article className="group rounded-[22px] border border-slate-200 bg-white/95 p-3.5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-        <div className="flex items-start gap-4">
-          <div
-            className={`${large ? 'h-22 w-22' : 'h-14 w-14'} shrink-0 rounded-2xl flex items-center justify-center`}
-            style={{ backgroundColor: bg }}
-          >
-            {vectorKind ? (
-              <PosterVector kind={vectorKind} accent={color} />
-            ) : (
-              getSemanticIcon(item.iconKey, large ? 38 : 24, color)
-            )}
-          </div>
-          <div className="min-w-0">
-            <h4 className={`${large ? 'text-[1.45rem]' : 'text-[1.08rem]'} line-clamp-2 font-black leading-tight text-slate-950`} title={item.title}>
-              {item.title}
-            </h4>
-            {item.subtitle && (
-              <p className="mt-1 text-[13px] font-bold text-slate-600">{item.subtitle}</p>
-            )}
-            <p className="mt-2 line-clamp-4 text-[14px] font-medium leading-relaxed text-slate-700" title={item.description}>
-              {compactText(item.description, large ? 220 : 170)}
-            </p>
-          </div>
+  const StoryCard = ({ item, index, featured = false }: { item: StoryItem; index: number; featured?: boolean }) => (
+    <article className={`${featured ? 'md:col-span-2' : ''} rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]`}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+          {getSemanticIcon(item.iconKey, 19, editorialAccent)}
         </div>
-      </article>
-    )
-  }
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-50 px-1.5 text-[10px] font-black text-indigo-600">
+              {index + 1}
+            </span>
+            <SectionKicker>Evidence note</SectionKicker>
+          </div>
+          <h4 className="line-clamp-2 text-[15px] font-black leading-tight text-slate-950 sm:text-[16px]" title={item.title}>
+            {item.title}
+          </h4>
+          {item.subtitle && (
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{item.subtitle}</p>
+          )}
+          <p className="mt-2 line-clamp-4 text-[13px] font-medium leading-relaxed text-slate-600" title={item.description}>
+            {compactText(item.description, featured ? 230 : 160)}
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+
+  const MetricTile = ({ label, value, icon }: { label: string; value: string; icon: string }) => (
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.035)]">
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50">
+          {getSemanticIcon(icon, 18, professionalAccent)}
+        </span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+          <p className="mt-1 truncate text-[13px] font-black text-slate-950">{value}</p>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 sm:p-3 lg:p-4">
-      <div
-        className="mx-auto w-full max-w-none overflow-hidden rounded-[18px] border border-slate-100 px-5 py-5 sm:px-7 lg:px-9"
-        style={{
-          backgroundColor: '#ffffff',
-          backgroundImage:
-            'radial-gradient(#e8edf3 0.8px, transparent 0.8px), radial-gradient(#e8edf3 0.8px, #ffffff 0.8px)',
-          backgroundSize: '14px 14px',
-          backgroundPosition: '0 0, 7px 7px',
-        }}
-      >
-        <div className="mb-5">
-          <h2 className="max-w-none break-words text-[clamp(2rem,5.1vw,4.3rem)] font-black leading-[1.02] tracking-tight text-slate-950">
-            {displayTitle}
-          </h2>
-          {hasValue(data.header?.subtitle) && (
-            <p className="mt-3 max-w-none text-[15px] font-medium leading-relaxed text-slate-700 sm:text-[16px] lg:text-[17px]">
-              {compactText(clean(data.header?.subtitle), 360)}
-            </p>
-          )}
-        </div>
-
-        <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:gap-16">
-          <div className="pointer-events-none absolute left-1/2 top-[86px] hidden h-[560px] w-[250px] -translate-x-1/2 opacity-75 xl:block">
-            <svg viewBox="0 0 250 560" className="h-full w-full">
-              <path d="M22 28 H92 C128 28 128 72 128 110 V194 C128 232 96 238 70 238 H28" stroke={accent} strokeWidth="9" fill="none" strokeLinecap="round" />
-              <path d="M28 238 H102 C138 238 138 280 138 318 V390 C138 426 106 432 78 432 H32" stroke={accent} strokeWidth="9" fill="none" strokeLinecap="round" />
-              <path d="M228 28 H158 C122 28 122 72 122 110 V194 C122 232 154 238 180 238 H222" stroke="#475569" strokeWidth="9" fill="none" strokeLinecap="round" />
-              <path d="M222 238 H148 C112 238 112 280 112 318 V390 C112 426 144 432 172 432 H218" stroke="#475569" strokeWidth="9" fill="none" strokeLinecap="round" />
-            </svg>
-          </div>
-
-          <section className="relative z-10 space-y-4">
-            <h3 className="text-[1.5rem] font-black leading-tight text-slate-950 sm:text-[1.95rem]">
-              {evolutionHeading}
-            </h3>
-
-            <StoryCard item={leftLead} tone="rose" large />
-
-            <article className="rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="relative flex h-34 w-34 shrink-0 items-center justify-center rounded-full p-3" style={ringStyle}>
-                  <div className="flex h-full w-full items-center justify-center rounded-full bg-white shadow-inner">
-                    <span className="text-[2.4rem] font-black tracking-tight text-slate-950">{statValue}</span>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-[1.45rem] font-black leading-tight text-slate-950">
-                    Active Criminal Involvements
-                  </h4>
-                  <p className="mt-2 max-w-xl text-[14px] font-medium leading-relaxed text-slate-700">
-                    {compactText(statLabel, 190)}
-                  </p>
-                </div>
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="mx-auto w-full overflow-hidden rounded-[24px] border border-slate-200 bg-[#fbfaf7] shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+        <header className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7 lg:px-9">
+          <div className="grid gap-5 lg:grid-cols-[1.5fr_0.8fr] lg:items-end">
+            <div>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                  Intelligence Brief
+                </span>
+                <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  Visual Storyboard
+                </span>
               </div>
-            </article>
-
-            {leftSupport.map((item, index) => (
-              <StoryCard key={`left-support-${index}`} item={item} tone="rose" />
-            ))}
-          </section>
-
-          <section className="relative z-10 space-y-4">
-            <h3 className="text-[1.5rem] font-black leading-tight text-slate-950 sm:text-[1.95rem]">
-              {operationHeading}
-            </h3>
-
-            <article className="rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-              <div className="grid gap-4 lg:grid-cols-[250px_1fr] xl:grid-cols-[280px_1fr]">
-                <div className="relative h-[180px] rounded-2xl bg-slate-50">
-                  <svg viewBox="0 0 240 190" className="absolute inset-0 h-full w-full">
-                    <path d="M60 50 L130 35 L188 70 L122 128 L60 50" stroke="#94a3b8" strokeWidth="2" fill="none" />
-                    <path d="M130 35 L122 128 M188 70 L70 132" stroke="#94a3b8" strokeWidth="2" fill="none" />
-                  </svg>
-                  <MiniPin label={clean(footprintLabels[0] || 'Zone A')} className="left-6 top-5" />
-                  <MiniPin label={clean(footprintLabels[1] || 'Zone B')} className="left-[95px] top-0" />
-                  <MiniPin label={clean(footprintLabels[2] || 'Zone C')} className="right-5 top-7" />
-                  <MiniPin label={clean(footprintLabels[3] || 'Zone D')} className="left-[92px] bottom-2" />
-                </div>
-
-                <div className="flex flex-col justify-center">
-                  <h4 className="text-[1.4rem] font-black leading-tight text-slate-950">
-                    {rightLead.title}
-                  </h4>
-                  {rightLead.subtitle && (
-                    <p className="mt-1 text-[13px] font-bold text-slate-600">{rightLead.subtitle}</p>
-                  )}
-                  <p className="mt-2 text-[14px] font-medium leading-relaxed text-slate-700">
-                    {compactText(rightLead.description, 240)}
-                  </p>
-                </div>
-              </div>
-            </article>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <StoryCard item={rightSupport[0]} tone="slate" />
-              <StoryCard item={rightSupport[1]} tone="slate" />
+              <h2 className="max-w-5xl break-words text-[clamp(2.2rem,5vw,4.6rem)] font-black leading-[0.96] tracking-tight text-slate-950">
+                {displayTitle}
+              </h2>
+              {hasValue(data.header?.subtitle) && (
+                <p className="mt-4 max-w-4xl text-[14px] font-medium leading-relaxed text-slate-600 sm:text-[15px]">
+                  {compactText(clean(data.header?.subtitle), 360)}
+                </p>
+              )}
             </div>
 
-            <section className="rounded-[22px] border border-slate-200 bg-white/95 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-              <h4 className="mb-3 text-[1.25rem] font-black leading-tight text-slate-950">
-                Key Syndicate Operations
-              </h4>
-              <div className="overflow-hidden rounded-xl border border-slate-200">
-                <table className="min-w-full border-collapse text-[13px]">
-                  <thead>
-                    <tr className="bg-slate-700 text-white">
-                      <th className="border-r border-slate-500 px-3 py-2 text-left font-black">Crime Type</th>
-                      <th className="border-r border-slate-500 px-3 py-2 text-left font-black">Primary Location</th>
-                      <th className="px-3 py-2 text-left font-black">Key Associated Figure</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {operationRows.map((row, index) => (
-                      <tr key={`operation-${index}`} className="odd:bg-white even:bg-slate-50">
-                        <td className="border-r border-t border-slate-200 px-3 py-2">
-                          <div className="flex items-center gap-2 font-bold text-slate-900">
-                            {getSemanticIcon('crime', 18, accent)}
-                            {compactText(row.crime, 88)}
-                          </div>
-                        </td>
-                        <td className="border-r border-t border-slate-200 px-3 py-2">
-                          <div className="flex items-center gap-2 font-semibold text-slate-700">
-                            {getSemanticIcon('map', 18, accent)}
-                            {compactText(row.location, 72)}
-                          </div>
-                        </td>
-                        <td className="border-t border-slate-200 px-3 py-2">
-                          <div className="flex items-center gap-2 font-semibold text-slate-700">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200">
-                              {getSemanticIcon('user', 15, '#111827')}
-                            </span>
-                            {compactText(row.figure, 78)}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <SectionKicker>Primary signal</SectionKicker>
+              <div className="mt-3 flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white text-[1.65rem] font-black text-slate-950 shadow-sm">
+                  {statValue}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-[17px] font-black leading-tight text-slate-950">Active Intelligence Weight</h3>
+                  <p className="mt-2 text-[12px] font-medium leading-relaxed text-slate-600">{compactText(statLabel, 150)}</p>
+                </div>
               </div>
-            </section>
+            </aside>
+          </div>
+        </header>
+
+        <section className="grid gap-3 border-b border-slate-200 bg-[#fbfaf7] px-5 py-4 sm:grid-cols-2 sm:px-7 lg:grid-cols-4 lg:px-9">
+          <MetricTile label="Date of birth" value={clean(data.personal?.date_of_birth || pickValueFromKeys(subjectMap, ['date of birth', 'dob']) || timeline[0]?.date || '-')} icon="calendar" />
+          <MetricTile label="Known aliases" value={knownAliases} icon="id" />
+          <MetricTile label="Known expertise" value={clean(leftSupport[1]?.title || leftSupport[0]?.title || 'Operational coordination')} icon="target" />
+          <MetricTile label="Current status" value={clean(data.profile_summary?.status || pickValueFromKeys(subjectMap, ['status', 'current status']) || 'Active intelligence profile')} icon="shield" />
+        </section>
+
+        <main className="grid gap-0 lg:grid-cols-[1fr_310px]">
+          <section className="border-b border-slate-200 px-5 py-6 sm:px-7 lg:border-b-0 lg:border-r lg:px-9">
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <SectionKicker>Narrative flow</SectionKicker>
+                <h3 className="mt-2 text-[1.45rem] font-black leading-tight text-slate-950 sm:text-[1.8rem]">
+                  {evolutionHeading}
+                </h3>
+              </div>
+              <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-500 sm:inline-flex">
+                {mergedStories.length} evidence notes
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <StoryCard item={leftLead} index={0} featured />
+              {leftSupport.map((item, index) => (
+                <StoryCard key={`left-support-${index}`} item={item} index={index + 1} />
+              ))}
+              {rightSupport.map((item, index) => (
+                <StoryCard key={`right-support-${index}`} item={item} index={index + 3} />
+              ))}
+            </div>
           </section>
-        </div>
+
+          <aside className="bg-white px-5 py-6 sm:px-7 lg:px-5">
+            <div className="rounded-2xl border border-slate-200 bg-[#fbfaf7] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <SectionKicker>Operational map</SectionKicker>
+                  <h3 className="mt-2 text-[1.15rem] font-black leading-tight text-slate-950">{operationHeading}</h3>
+                </div>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+                  {getSemanticIcon('map', 18, editorialAccent)}
+                </span>
+              </div>
+
+              <div className="relative mt-4 h-[190px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <svg viewBox="0 0 280 190" className="absolute inset-0 h-full w-full">
+                  <path d="M46 130 C86 78, 140 74, 232 95" stroke="#cbd5e1" strokeWidth="2" fill="none" />
+                  <path d="M64 62 C118 24, 178 48, 240 83" stroke="#cbd5e1" strokeWidth="2" fill="none" />
+                  <path d="M142 50 L142 146" stroke="#e2e8f0" strokeWidth="2" fill="none" />
+                  <circle cx="142" cy="94" r="26" fill={softAccent} stroke="#c7d2fe" />
+                  <circle cx="142" cy="94" r="9" fill={editorialAccent} opacity="0.85" />
+                </svg>
+                <MiniPin label={clean(footprintLabels[0] || 'Zone A')} className="left-5 top-7" />
+                <MiniPin label={clean(footprintLabels[1] || 'Zone B')} className="left-[112px] top-4" />
+                <MiniPin label={clean(footprintLabels[2] || 'Zone C')} className="right-5 top-[62px]" />
+                <MiniPin label={clean(footprintLabels[3] || 'Zone D')} className="left-[120px] bottom-4" />
+              </div>
+
+              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                <SectionKicker>Main footprint</SectionKicker>
+                <h4 className="mt-2 text-[15px] font-black leading-tight text-slate-950">{rightLead.title}</h4>
+                {rightLead.subtitle && <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{rightLead.subtitle}</p>}
+                <p className="mt-2 text-[12px] font-medium leading-relaxed text-slate-600">{compactText(rightLead.description, 180)}</p>
+                <p className="mt-3 text-[11px] font-bold text-slate-500">Primary location: {locationSummary}</p>
+              </div>
+            </div>
+          </aside>
+        </main>
+
+        <section className="grid gap-4 border-t border-slate-200 bg-white px-5 py-6 sm:px-7 lg:grid-cols-[1fr_330px] lg:px-9">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.035)]">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <SectionKicker>Structured evidence</SectionKicker>
+                <h3 className="mt-1 text-[1.25rem] font-black leading-tight text-slate-950">Key Syndicate Operations</h3>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">{operationRows.length} rows</span>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <table className="min-w-full border-collapse text-[12px] sm:text-[13px]">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500">
+                    <th className="border-b border-slate-200 px-3 py-2 text-left font-black uppercase tracking-[0.12em]">Crime Type</th>
+                    <th className="border-b border-slate-200 px-3 py-2 text-left font-black uppercase tracking-[0.12em]">Primary Location</th>
+                    <th className="border-b border-slate-200 px-3 py-2 text-left font-black uppercase tracking-[0.12em]">Key Associated Figure</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {operationRows.map((row, index) => (
+                    <tr key={`operation-${index}`} className="odd:bg-white even:bg-slate-50/60">
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        <div className="flex items-center gap-2 font-bold text-slate-900">
+                          {getSemanticIcon('crime', 15, editorialAccent)}
+                          {compactText(row.crime, 88)}
+                        </div>
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        <div className="flex items-center gap-2 font-semibold text-slate-600">
+                          {getSemanticIcon('map', 15, editorialAccent)}
+                          {compactText(row.location, 72)}
+                        </div>
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        <div className="flex items-center gap-2 font-semibold text-slate-600">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100">
+                            {getSemanticIcon('user', 13, professionalAccent)}
+                          </span>
+                          {compactText(row.figure, 78)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <SectionKicker>Snapshot</SectionKicker>
+            <div className="mt-3 grid gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <p className="text-2xl font-black text-slate-950">{Math.max(associates.length, 1)}</p>
+                <p className="mt-1 text-[12px] font-bold text-slate-500">Associate links</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <p className="text-2xl font-black text-slate-950">{Math.max(locations.length, 1)}</p>
+                <p className="mt-1 text-[12px] font-bold text-slate-500">Location clusters</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <p className="text-2xl font-black text-slate-950">{Math.max(topContacts.length, 1)}</p>
+                <p className="mt-1 text-[12px] font-bold text-slate-500">Communication links</p>
+              </div>
+            </div>
+          </aside>
+        </section>
 
         {extraStories.length > 0 && (
-          <section className="mt-6 rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-            <h4 className="mb-3 text-[1.12rem] font-black text-slate-950">Additional Findings</h4>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="border-t border-slate-200 bg-[#fbfaf7] px-5 py-5 sm:px-7 lg:px-9">
+            <SectionKicker>Additional notes</SectionKicker>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {extraStories.map((item, index) => (
-                <article key={`extra-story-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <article key={`extra-story-${index}`} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                   <div className="flex items-start gap-2">
-                    <span className="mt-0.5">{getSemanticIcon(item.iconKey, 14, accent)}</span>
+                    <span className="mt-0.5">{getSemanticIcon(item.iconKey, 14, editorialAccent)}</span>
                     <div className="min-w-0">
                       <p className="text-sm font-black leading-tight text-slate-900">{compactText(item.title, 70)}</p>
-                      <p className="mt-1 text-[13px] leading-relaxed text-slate-700">{compactText(item.description, 120)}</p>
+                      <p className="mt-1 text-[12px] leading-relaxed text-slate-600">{compactText(item.description, 120)}</p>
                     </div>
                   </div>
                 </article>
@@ -674,52 +697,21 @@ function CriminalPosterView({
           </section>
         )}
 
-        <section className="mt-6 grid rounded-[22px] border border-slate-200 bg-white/95 shadow-[0_10px_30px_rgba(15,23,42,0.06)] md:grid-cols-4">
-          <div className="flex items-center gap-4 border-b border-slate-200 p-4 md:border-b-0 md:border-r">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-50">{getSemanticIcon('calendar', 26, accent)}</span>
-            <div>
-              <p className="text-sm font-black text-slate-950">Date of Birth</p>
-              <p className="mt-1 text-lg font-black text-slate-950">
-                {clean(data.personal?.date_of_birth || pickValueFromKeys(subjectMap, ['date of birth', 'dob']) || timeline[0]?.date || '-')}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 border-b border-slate-200 p-4 md:border-b-0 md:border-r">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-50">{getSemanticIcon('id', 26, '#111827')}</span>
-            <div>
-              <p className="text-sm font-black text-slate-950">Known Aliases</p>
-              <p className="mt-1 text-sm font-medium leading-relaxed text-slate-700">{knownAliases}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 border-b border-slate-200 p-4 md:border-b-0 md:border-r">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-50">{getSemanticIcon('target', 26, accent)}</span>
-            <div>
-              <p className="text-sm font-black text-slate-950">Known Expertise</p>
-              <p className="mt-1 text-sm font-medium leading-relaxed text-slate-700">{clean(leftSupport[1]?.title || leftSupport[0]?.title || 'Operational coordination')}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-50">{getSemanticIcon('shield', 26, '#111827')}</span>
-            <div>
-              <p className="text-sm font-black text-slate-950">Current Status</p>
-              <p className="mt-1 text-sm font-medium leading-relaxed text-slate-700">
-                {clean(data.profile_summary?.status || pickValueFromKeys(subjectMap, ['status', 'current status']) || 'Active intelligence profile')}
-              </p>
-            </div>
-          </div>
-        </section>
-
         {timeline.length > 0 && (
-          <section className="mt-6 rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-            <h4 className="mb-4 text-[1.25rem] font-black text-slate-950">Timeline of Events</h4>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <section className="border-t border-slate-200 bg-white px-5 py-5 sm:px-7 lg:px-9">
+            <SectionKicker>Chronology</SectionKicker>
+            <h3 className="mt-1 text-[1.2rem] font-black text-slate-950">Timeline of Events</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {timeline.map((item, index) => (
-                <div key={`timeline-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="text-xs font-black uppercase tracking-[0.12em]" style={{ color: accent }}>
+                <div key={`timeline-${index}`} className="relative rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <span className="absolute -top-2 left-4 flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[10px] font-black text-white">
+                    {index + 1}
+                  </span>
+                  <p className="mt-2 text-[11px] font-black uppercase tracking-[0.12em]" style={{ color: editorialAccent }}>
                     {clean(item.date || `Event ${index + 1}`)}
                   </p>
-                  <p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-700">
-                    {compactText(clean(item.event || '-'), 145)}
+                  <p className="mt-2 text-[12px] font-medium leading-relaxed text-slate-600">
+                    {compactText(clean(item.event || '-'), 155)}
                   </p>
                 </div>
               ))}
@@ -727,10 +719,10 @@ function CriminalPosterView({
           </section>
         )}
 
-        <div className="mt-5 flex items-center justify-between border-t border-slate-200 pt-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+        <footer className="flex items-center justify-between border-t border-slate-200 bg-[#fbfaf7] px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 sm:px-7 lg:px-9">
           <span>Criminal Intelligence Profile</span>
-          
-        </div>
+          <span>Professional Visual Brief</span>
+        </footer>
       </div>
 
       <div className="mt-3 text-right text-xs" style={{ color: mutedColor }}>

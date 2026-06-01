@@ -175,7 +175,7 @@ export function SourceInsightDialog({ open, onOpenChange, insight, onDelete }: S
               ) : isTimeline ? (
                 <TimelineAnalysisInsightViewer content={displayContent} />
               ) : isInvestigativeProfile ? (
-                <InvestigativeProfileInsightViewer content={displayContent} />
+                <InvestigativeProfileInsightViewer content={displayContent} sourceId={sourceId} />
               ) : isDenseSummary ? (
                 <DenseSummaryViewer content={displayContent} createdAt={displayInsight.created} />
               ) : (

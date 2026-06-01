@@ -16,6 +16,7 @@ export interface Notification {
   type: 'info' | 'success' | 'warning' | 'error'
   timestamp: Date
   read: boolean
+  showInNotificationCenter?: boolean
 }
 
 const NOTIFICATIONS_STORAGE_KEY = 'open_notebook_notifications_v1'
@@ -34,10 +35,13 @@ function loadNotificationsFromStorage(): Notification[] {
     const parsed = JSON.parse(raw) as StoredNotification[]
     if (!Array.isArray(parsed)) return []
 
-    return parsed.map(item => ({
-      ...item,
-      timestamp: new Date(item.timestamp),
-    }))
+    return parsed
+      .filter(item => item.showInNotificationCenter === true)
+      .map(item => ({
+        ...item,
+        timestamp: new Date(item.timestamp),
+        showInNotificationCenter: true,
+      }))
   } catch {
     return []
   }
@@ -47,10 +51,13 @@ function persistNotifications(nextNotifications: Notification[]) {
   if (typeof window === 'undefined') return
 
   try {
-    const serializable: StoredNotification[] = nextNotifications.map(item => ({
-      ...item,
-      timestamp: item.timestamp.toISOString(),
-    }))
+    const serializable: StoredNotification[] = nextNotifications
+      .filter(item => item.showInNotificationCenter === true)
+      .map(item => ({
+        ...item,
+        timestamp: item.timestamp.toISOString(),
+        showInNotificationCenter: true,
+      }))
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(serializable))
   } catch {
     // Ignore persistence failures gracefully
@@ -86,6 +93,7 @@ function showNotificationPopup(notification: Notification) {
 export function addNotification(notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) {
   const now = Date.now()
   const DUPLICATE_WINDOW_MS = 8000
+  const showInNotificationCenter = notification.showInNotificationCenter ?? true
   const isDuplicate = notifications.some(
     existing =>
       existing.title === notification.title &&
@@ -103,13 +111,16 @@ export function addNotification(notification: Omit<Notification, 'id' | 'timesta
     id: `notif-${now}-${Math.random()}`,
     timestamp: new Date(now),
     read: false,
+    showInNotificationCenter,
   }
-  notifications.unshift(newNotification)
-  // Keep only last 50 notifications
-  if (notifications.length > 50) {
-    notifications = notifications.slice(0, 50)
+  if (showInNotificationCenter) {
+    notifications.unshift(newNotification)
+    // Keep only last 50 notifications
+    if (notifications.length > 50) {
+      notifications = notifications.slice(0, 50)
+    }
+    persistNotifications(notifications)
   }
-  persistNotifications(notifications)
   if (typeof window !== 'undefined') {
     showNotificationPopup(newNotification)
   }
@@ -155,7 +166,8 @@ export function NotificationCenter() {
   const [open, setOpen] = useState(false)
   const [savedNotifications, setSavedNotifications] = useState<Notification[]>([])
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  const visibleNotifications = notifications.filter(n => n.showInNotificationCenter !== false)
+  const unreadCount = visibleNotifications.filter(n => !n.read).length
 
   const handleSaveNotification = (notif: Notification) => {
     setSavedNotifications(prev => {
@@ -213,7 +225,7 @@ export function NotificationCenter() {
         <div className="sticky top-0 bg-white border-b border-slate-200 p-4 flex items-center justify-between">
           <h3 className="font-semibold text-slate-900">Notifications</h3>
           <div className="flex items-center gap-3">
-            {notifications.length > 0 && unreadCount > 0 && (
+            {visibleNotifications.length > 0 && unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
                 className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
@@ -221,7 +233,7 @@ export function NotificationCenter() {
                 Mark all as read
               </button>
             )}
-            {notifications.length > 0 && (
+            {visibleNotifications.length > 0 && (
               <button
                 onClick={clearAll}
                 className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
@@ -232,14 +244,14 @@ export function NotificationCenter() {
           </div>
         </div>
 
-        {notifications.length === 0 ? (
+        {visibleNotifications.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">No notifications yet</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
-            {notifications.map(notif => (
+            {visibleNotifications.map(notif => (
               <div
                 key={notif.id}
                 className={`p-4 border-l-4 ${getTypeColor(notif.type)} cursor-pointer hover:bg-opacity-75 transition-colors`}

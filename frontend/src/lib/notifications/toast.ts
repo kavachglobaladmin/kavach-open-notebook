@@ -56,7 +56,7 @@ function emitWithOptions(
   level: ToastLevel,
   title: string,
   description?: string,
-  showInNotificationCenter = true
+  showInNotificationCenter = false
 ) {
   if (showInNotificationCenter) {
     pushNotification(level, title, description)
@@ -74,20 +74,20 @@ type ToastFn = ((payload: ToastPayload) => void) & {
 const baseToast = (payload: ToastPayload) => {
   const title = payload.title || (payload.variant === 'destructive' ? 'Error' : 'Success')
   const level: ToastLevel = payload.variant === 'destructive' ? 'error' : 'success'
-  emitWithOptions(level, title, payload.description, payload.showInNotificationCenter ?? true)
+  emitWithOptions(level, title, payload.description, payload.showInNotificationCenter ?? false)
 }
 
 export const toast = Object.assign(baseToast, {
   success: (title: string, options?: ToastOptions) => {
-    emitWithOptions('success', title, options?.description, options?.showInNotificationCenter ?? true)
+    emitWithOptions('success', title, options?.description, options?.showInNotificationCenter ?? false)
   },
   error: (title: string, options?: ToastOptions) => {
-    emitWithOptions('error', title, options?.description, options?.showInNotificationCenter ?? true)
+    emitWithOptions('error', title, options?.description, options?.showInNotificationCenter ?? false)
   },
   info: (title: string, options?: ToastOptions) => {
-    emitWithOptions('info', title, options?.description, options?.showInNotificationCenter ?? true)
+    emitWithOptions('info', title, options?.description, options?.showInNotificationCenter ?? false)
   },
   warning: (title: string, options?: ToastOptions) => {
-    emitWithOptions('warning', title, options?.description, options?.showInNotificationCenter ?? true)
+    emitWithOptions('warning', title, options?.description, options?.showInNotificationCenter ?? false)
   },
 }) as ToastFn

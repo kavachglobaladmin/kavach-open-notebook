@@ -30,7 +30,7 @@ export function useVersionCheck() {
           t.advanced.updateAvailable.replace('{version}', config.latestVersion),
           {
             description: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/lfnovo/open-notebook`,
-            showInNotificationCenter: false,
+            showInNotificationCenter: true,
           }
         )
         sessionStorage.setItem(dismissKey, 'true')
