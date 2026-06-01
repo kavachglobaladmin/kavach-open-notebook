@@ -73,6 +73,7 @@ import {
   AlertCircle,
   MessageSquare,
   BarChart2,
+  RefreshCw,
 } from 'lucide-react'
 import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
@@ -175,6 +176,56 @@ function deduplicateContent(text: string): string {
   return lines.filter((_, i) => keep[i]).join('\n')
 }
 
+function highlightPlainText(text: string, query: string): React.ReactNode {
+  const q = query.trim()
+  if (!q) return text
+
+  const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  const parts = text.split(re)
+
+  return parts.map((part, index) => {
+    if (part.toLowerCase() !== q.toLowerCase()) return part
+    return (
+      <mark
+        key={index}
+        data-search-hit="true"
+        className="rounded-sm bg-yellow-200 px-0.5 text-inherit"
+      >
+        {part}
+      </mark>
+    )
+  })
+}
+
+function normalizeContentForDisplay(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n(===\s*Page\s+\d+\s*===)/gi, '\n\n$1\n')
+    .replace(/\n([IVX]+\.\s+[A-Z][A-Z0-9\s/().,-]{5,})/g, '\n\n$1\n')
+    .replace(/\n([A-Z][A-Z0-9\s/().,-]{8,}:)\s*/g, '\n\n$1\n')
+}
+
+function isTableLikeBlock(block: string): boolean {
+  const lines = block.split('\n').map(line => line.trim()).filter(Boolean)
+  if (lines.length < 3) return false
+  const delimited = lines.filter(line => {
+    const pipes = (line.match(/\s\|\s/g) || []).length
+    const tabs = (line.match(/\t/g) || []).length
+    const wideGaps = (line.match(/ {2,}/g) || []).length
+    return pipes >= 2 || tabs >= 2 || wideGaps >= 3
+  })
+  return delimited.length >= Math.min(lines.length, 4)
+}
+
+function isSectionHeading(block: string): boolean {
+  const line = block.trim()
+  return (
+    /^===\s*Page\s+\d+\s*===$/i.test(line) ||
+    /^[IVX]+\.\s+[A-Z][A-Z0-9\s/().,-]{5,}$/.test(line) ||
+    /^[A-Z][A-Z0-9\s/().,-]{8,}:$/.test(line)
+  )
+}
+
 function SafeContent({
   text,
   noContentLabel,
@@ -201,13 +252,32 @@ function SafeContent({
   const dedupedText = deduplicateContent(text)
   const slice = dedupedText.slice(0, visible)
   const hasMore = visible < dedupedText.length
+  const blocks = normalizeContentForDisplay(slice).split(/\n{2,}/).filter(Boolean)
   return (
     <div ref={contentRef} className="space-y-2">
-      {slice.split(/\n{2,}/).filter(Boolean).map((para, i) => (
-        <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-          {normalizedQuery ? highlightPlainText(para, normalizedQuery) : para}
-        </p>
-      ))}
+      {blocks.map((block, i) => {
+        if (isSectionHeading(block)) {
+          return (
+            <h3 key={i} className="pt-3 text-xs font-black uppercase tracking-widest text-slate-500">
+              {block.replace(/^===\s*|\s*===$/g, '')}
+            </h3>
+          )
+        }
+
+        if (isTableLikeBlock(block)) {
+          return (
+            <pre key={i} className="overflow-x-auto rounded-lg border bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+              {normalizedQuery ? highlightPlainText(block, normalizedQuery) : block}
+            </pre>
+          )
+        }
+
+        return (
+          <p key={i} className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {normalizedQuery ? highlightPlainText(block, normalizedQuery) : block}
+          </p>
+        )
+      })}
       {hasMore && (
         <div className="pt-3 flex flex-col items-center gap-1">
           <span className="text-xs text-muted-foreground">
@@ -560,6 +630,7 @@ export function SourceDetailContent({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isEmbedding, setIsEmbedding] = useState(false)
+  const [isReprocessing, setIsReprocessing] = useState(false)
   const [isDownloadingFile, setIsDownloadingFile] = useState(false)
   const [fileAvailable, setFileAvailable] = useState<boolean | null>(null)
   const [selectedInsight, setSelectedInsight] = useState<SourceInsightResponse | null>(null)
@@ -842,6 +913,23 @@ export function SourceDetailContent({
     }
   }
 
+  const handleReprocessSource = async () => {
+    if (!source || isReprocessing) return
+
+    try {
+      setIsReprocessing(true)
+      await sourcesApi.retry(sourceId)
+      toast.success('Re-extraction queued. Refresh this source after processing finishes.')
+      await fetchSource()
+      queryClient.invalidateQueries({ queryKey: ['sources'] })
+    } catch (err) {
+      console.error('Failed to re-extract source:', err)
+      toast.error(t.common.error)
+    } finally {
+      setIsReprocessing(false)
+    }
+  }
+
   const extractFilename = (pathOrUrl: string | undefined, fallback: string) => {
     if (!pathOrUrl) return fallback
     const segments = pathOrUrl.split(/[/\\]/)
@@ -1036,6 +1124,15 @@ export function SourceDetailContent({
                   <Database className="mr-2 h-4 w-4" />
                   {isEmbedding ? t.sources.embedding : source.embedded ? t.sources.alreadyEmbedded : t.sources.embedContent}
                 </DropdownMenuItem>
+                {source.asset?.file_path && (
+                  <DropdownMenuItem
+                    onClick={handleReprocessSource}
+                    disabled={isReprocessing}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {isReprocessing ? 'Queueing re-extraction...' : 'Re-extract content'}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive"
@@ -1446,7 +1543,7 @@ export function SourceDetailContent({
           contexts from cutting it off behind the sidebar or navbar. */}
       {isMarkdownView && source.full_text && typeof window !== 'undefined' && createPortal(
         <FormattedViewDialog
-          text={showOriginalContent || !source.translated_content ? source.full_text : source.translated_content}
+          text={source.full_text || source.translated_content || ''}
           sourceId={source.id}
           open={isMarkdownView}
           onClose={() => setIsMarkdownView(false)}

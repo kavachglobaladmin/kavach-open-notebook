@@ -7,6 +7,7 @@ import {
   extractAndMergeJson,
   flattenSubject,
   hasValue,
+  normalizeInfographicBlock,
   parseMarkdownToInfographic,
   resolveTheme,
   resolveType,
@@ -994,14 +995,34 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
     { title: 'Call Summary', pairs: callSummaryPairs },
   ].filter(block => block.pairs.length > 0)
 
+  const highlights = (data.highlights ?? []).filter(
+    item => hasValue(item.title) || hasValue(item.description)
+  )
+
   const narrativeItems: InfographicColumn[] = [
     ...(data.left_column ?? []),
     ...(data.right_column ?? []),
   ].filter(item => hasValue(item.title) || hasValue(item.description))
 
-  const highlights = (data.highlights ?? []).filter(
-    item => hasValue(item.title) || hasValue(item.description)
-  )
+  if (narrativeItems.length === 0 && highlights.length > 0) {
+    for (const finding of highlights.slice(0, 8)) {
+      narrativeItems.push({
+        title: clean(finding.title || 'Finding'),
+        description: clean(finding.description || '-'),
+        icon: clean(finding.title || 'finding'),
+      })
+    }
+  }
+
+  const dynamicSections = (data.dynamic_sections ?? [])
+    .filter(section => hasValue(section.title) && Array.isArray(section.items) && section.items.length > 0)
+    .map(section => ({
+      title: clean(section.title),
+      items: section.items
+        .map(item => ({ key: clean(item.key), value: clean(item.value) }))
+        .filter(item => hasValue(item.key) && hasValue(item.value)),
+    }))
+    .filter(section => section.items.length > 0)
 
   const associates = (data.associates ?? []).filter(
     item => hasValue(item.name) || hasValue(item.relation)
@@ -1032,7 +1053,8 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
     item => hasValue(item.date) || hasValue(item.description) || hasValue(item.amount)
   )
 
-  if (type === 'criminal') {
+  const forceCardLayout = clean((data.profile_summary as Record<string, string> | undefined)?.layout_mode || '').toLowerCase() === 'dynamic'
+  if (!forceCardLayout && type === 'criminal') {
     return (
       <CriminalPosterView
         data={data}
@@ -1042,7 +1064,7 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
       />
     )
   }
-  if (type === 'cdr') {
+  if (!forceCardLayout && type === 'cdr') {
     return <CdrStoryboardView data={data} />
   }
 
@@ -1187,6 +1209,41 @@ function InfographicLayout({ data, sourceTitle }: { data: InfographicResponse; s
               ))}
             </div>
           </DataCard>
+        </div>
+      )}
+
+      {dynamicSections.length > 0 && (
+        <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {dynamicSections.map(section => (
+            <DataCard
+              key={`dynamic-${section.title}`}
+              title={section.title}
+              accent={theme.accent}
+              textColor={textColor}
+              borderColor={borderColor}
+              surfaceColor={cardSurface}
+              headerSurfaceColor={cardHeaderSurface}
+            >
+              <div className="space-y-2">
+                {section.items.map((item, index) => (
+                  <div
+                    key={`${section.title}-${item.key}-${index}`}
+                    className="grid gap-2 rounded-lg border px-3 py-2"
+                    style={{
+                      gridTemplateColumns: 'minmax(110px, 0.65fr) 1.35fr',
+                      borderColor,
+                      background: rowSurface,
+                    }}
+                  >
+                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: theme.accent }}>
+                      {item.key}
+                    </span>
+                    <span className="text-sm leading-relaxed break-words">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+          ))}
         </div>
       )}
 
@@ -1389,7 +1446,7 @@ export function InfographicInsightViewer({ content, sourceTitle }: { content?: s
     try {
       const direct = JSON.parse(content) as InfographicResponse
       if (direct && (direct.header || direct.document_type || direct.source_id)) {
-        return direct
+        return normalizeInfographicBlock(direct)
       }
     } catch {
       // Non-JSON payload, continue with robust extraction.
@@ -1400,7 +1457,7 @@ export function InfographicInsightViewer({ content, sourceTitle }: { content?: s
       return extracted
     }
 
-    return parseMarkdownToInfographic(content)
+    return normalizeInfographicBlock(parseMarkdownToInfographic(content))
   }, [content])
 
   if (!data) {

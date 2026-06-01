@@ -21,9 +21,102 @@ interface ParsedDoc {
   plainHtml: string
 }
 
+function parseCdrCsvExcerpt(text: string): ParsedDoc | null {
+  const normalized = text.replace(/\r\n/g, '\n')
+  const excerptIdx = normalized.indexOf('=== SOURCE EXCERPT ===')
+  const body = excerptIdx >= 0 ? normalized.slice(excerptIdx + '=== SOURCE EXCERPT ==='.length) : normalized
+  const lines = body.split('\n').map(line => line.trim()).filter(Boolean)
+
+  const headerIdx = lines.findIndex(line => {
+    const low = line.toLowerCase()
+    return low.includes('target no') && low.includes('call type') && (low.includes('dur(s)') || low.includes('dur'))
+  })
+  if (headerIdx < 0) return null
+
+  const headers = splitRow(lines[headerIdx], ',').map(col => col.replace(/^'+|'+$/g, '').trim())
+  if (headers.length < 8) return null
+
+  const rows: string[][] = []
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line || line.startsWith('===')) break
+    const parsed = splitRow(line, ',').map(col => col.replace(/^'+|'+$/g, '').trim())
+    if (parsed.length < 5) continue
+    const nonEmpty = parsed.filter(Boolean).length
+    if (nonEmpty < 4) continue
+    const normalizedRow = Array.from({ length: headers.length }, (_, idx) => parsed[idx] ?? '')
+    rows.push(normalizedRow)
+    if (rows.length >= 5000) break
+  }
+
+  if (rows.length === 0) return null
+  return { type: 'csv', headers, rows, plainHtml: '' }
+}
+
+function parseGenericDelimitedTable(text: string): ParsedDoc | null {
+  const lines = text.replace(/\r\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean)
+  if (lines.length < 5) return null
+
+  const separators = ['\t', ',', '|', ';']
+  for (const sep of separators) {
+    let headerIdx = -1
+    let headers: string[] = []
+    let expectedCols = 0
+
+    for (let i = 0; i < Math.min(lines.length - 3, 350); i++) {
+      const c0 = splitRow(lines[i], sep).map(c => c.trim())
+      if (c0.length < 3) continue
+      const c1 = splitRow(lines[i + 1], sep).map(c => c.trim())
+      const c2 = splitRow(lines[i + 2], sep).map(c => c.trim())
+      const c3 = splitRow(lines[i + 3], sep).map(c => c.trim())
+      const near = (n: number) => n >= Math.max(2, c0.length - 1)
+      if (near(c1.length) && near(c2.length) && near(c3.length)) {
+        headerIdx = i
+        headers = c0.map(c => c.replace(/^'+|'+$/g, '').trim())
+        expectedCols = headers.length
+        break
+      }
+    }
+
+    if (headerIdx < 0 || expectedCols < 3) continue
+
+    const rows: string[][] = []
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+      const line = lines[i]
+      if (!line || /^===\s*.+\s*===$/.test(line)) break
+      const parsed = splitRow(line, sep).map(c => c.replace(/^'+|'+$/g, '').trim())
+      const nonEmpty = parsed.filter(Boolean).length
+      if (nonEmpty < Math.max(2, Math.floor(expectedCols * 0.4))) continue
+      rows.push(Array.from({ length: expectedCols }, (_, idx) => parsed[idx] ?? ''))
+      if (rows.length >= 8000) break
+    }
+
+    if (rows.length >= 3) {
+      return {
+        type: sep === '\t' ? 'tsv' : 'csv',
+        headers,
+        rows,
+        plainHtml: '',
+      }
+    }
+  }
+
+  return null
+}
+
 // ── Deduplicate repeated content blocks ───────────────────────────────────────
 function deduplicateContent(text: string): string {
   if (!text) return text
+  // Mobile-data summaries intentionally contain repetitive, high-volume rows.
+  // Deduping them corrupts structure and breaks formatted rendering.
+  const mobileSignals = [
+    '=== MOBILE DATA SUMMARY ===',
+    '=== TOP CONTACTS (sample) ===',
+    '=== CALL ACTIVITY BY DAY (sample) ===',
+    '=== SOURCE EXCERPT ===',
+  ]
+  if (mobileSignals.some(signal => text.includes(signal))) return text
+
   const lines = text.split('\n')
   const WINDOW = 5
   const seen = new Set<string>()
@@ -58,6 +151,17 @@ function deduplicateContent(text: string): string {
 
 // ── Detect & parse ────────────────────────────────────────────────────────────
 function parseDoc(text: string): ParsedDoc {
+  const mobileSummaryHtml = parseMobileSummaryHtml(text)
+  if (mobileSummaryHtml) {
+    return { type: 'plain', headers: [], rows: [], plainHtml: mobileSummaryHtml }
+  }
+
+  const cdrTable = parseCdrCsvExcerpt(text)
+  if (cdrTable) return cdrTable
+
+  const genericTable = parseGenericDelimitedTable(text)
+  if (genericTable) return genericTable
+
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
   const sample = lines.slice(0, 30)
 
@@ -93,7 +197,241 @@ function esc(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function formatNumeric(value: string): string {
+  const n = Number(String(value).replace(/[^0-9.-]/g, ''))
+  if (!Number.isFinite(n)) return value
+  return n.toLocaleString('en-IN')
+}
+
+function parseMobileSummaryHtml(text: string): string | null {
+  const lines = text.replace(/\r\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean)
+  const hasMobileHeader = lines.some(line => /^===\s*mobile data summary\s*===$/i.test(line))
+  const hasContactPattern = lines.some(line => /\|\s*count\s*=\s*\d+/i.test(line) && /\|\s*dur_?sec\s*=\s*\d+/i.test(line))
+  const hasActivityPattern = lines.some(line => /^\d{4}-\d{2}-\d{2}\s*:\s*\d+$/i.test(line))
+  const hasSummaryPattern = lines.some(line => /^(parsed rows|unique contacts|sms rows|date range)\s*:/i.test(line))
+  if (!hasMobileHeader && !hasContactPattern && !hasActivityPattern && !hasSummaryPattern) return null
+
+  type ContactRow = { number: string; count: string; incoming: string; outgoing: string; durSec: string }
+  type ActivityRow = { date: string; count: string }
+
+  const summaryLines: string[] = []
+  const contactLines: string[] = []
+  const activityLines: string[] = []
+  const excerptLines: string[] = []
+  const extraLines: string[] = []
+
+  let section: 'summary' | 'contacts' | 'activity' | 'excerpt' | 'other' = 'summary'
+  for (const line of lines) {
+    const marker = line.match(/^===\s*(.+?)\s*===$/i)
+    if (marker) {
+      const label = marker[1].toLowerCase()
+      if (label.includes('top contacts')) section = 'contacts'
+      else if (label.includes('call activity by day')) section = 'activity'
+      else if (label.includes('source excerpt')) section = 'excerpt'
+      else if (label.includes('mobile data summary')) section = 'summary'
+      else section = 'other'
+      continue
+    }
+
+    // Heuristic section detection when markers are missing.
+    if (!marker) {
+      if (/\|\s*count\s*=\s*\d+/i.test(line) && /\|\s*dur_?sec\s*=\s*\d+/i.test(line)) {
+        contactLines.push(line)
+        continue
+      }
+      if (/^\d{4}-\d{2}-\d{2}\s*:\s*\d+$/i.test(line)) {
+        activityLines.push(line)
+        continue
+      }
+      if (/^(parsed rows|unique contacts|sms rows|date range)\s*:/i.test(line)) {
+        summaryLines.push(line)
+        continue
+      }
+    }
+
+    if (section === 'summary') summaryLines.push(line)
+    else if (section === 'contacts') contactLines.push(line)
+    else if (section === 'activity') activityLines.push(line)
+    else if (section === 'excerpt') excerptLines.push(line)
+    else extraLines.push(line)
+  }
+
+  const summaryPairs = summaryLines
+    .map(line => {
+      const kv = line.match(/^([^:]{2,80}):\s*(.+)$/)
+      if (!kv) return null
+      return { key: kv[1].trim(), value: kv[2].trim() }
+    })
+    .filter((item): item is { key: string; value: string } => !!item)
+
+  const contacts: ContactRow[] = contactLines
+    .map(line => {
+      const parts = line.split('|').map(part => part.trim()).filter(Boolean)
+      if (!parts.length) return null
+      const row: ContactRow = {
+        number: parts[0] ?? '',
+        count: '',
+        incoming: '',
+        outgoing: '',
+        durSec: '',
+      }
+      for (const part of parts.slice(1)) {
+        const m = part.match(/^([a-z_]+)\s*=\s*(.+)$/i)
+        if (!m) continue
+        const key = m[1].toLowerCase()
+        const value = m[2].trim()
+        if (key === 'count' || key === 'call_count') row.count = value
+        else if (key === 'in' || key === 'incoming') row.incoming = value
+        else if (key === 'out' || key === 'outgoing') row.outgoing = value
+        else if (key === 'dur_sec' || key === 'duration_sec') row.durSec = value
+      }
+      return row.number ? row : null
+    })
+    .filter((item): item is ContactRow => !!item)
+
+  const activity: ActivityRow[] = activityLines
+    .map(line => {
+      const m = line.match(/^(\d{4}-\d{2}-\d{2})\s*:\s*(\d+)$/)
+      if (!m) return null
+      return { date: m[1], count: m[2] }
+    })
+    .filter((item): item is ActivityRow => !!item)
+
+  const parts: string[] = []
+  parts.push('<h1>Mobile Data Summary</h1>')
+
+  if (summaryPairs.length > 0) {
+    const rows = summaryPairs
+      .map(item => `<tr><td class="kv-key">${esc(item.key)}</td><td class="kv-val">${esc(item.value)}</td></tr>`)
+      .join('\n')
+    parts.push(`<table class="kv-table"><tbody>${rows}</tbody></table>`)
+  }
+
+  if (contacts.length > 0) {
+    const rows = contacts
+      .map(
+        (row, index) =>
+          `<tr>
+            <td class="mds-num">${index + 1}</td>
+            <td>${esc(row.number)}</td>
+            <td>${esc(formatNumeric(row.count || '-'))}</td>
+            <td>${esc(formatNumeric(row.incoming || '-'))}</td>
+            <td>${esc(formatNumeric(row.outgoing || '-'))}</td>
+            <td>${esc(formatNumeric(row.durSec || '-'))}</td>
+          </tr>`
+      )
+      .join('\n')
+    parts.push('<h2>Top Contacts</h2>')
+    parts.push(`
+      <div class="mds-table-wrap">
+        <table class="mds-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Number</th>
+              <th>Count</th>
+              <th>Incoming</th>
+              <th>Outgoing</th>
+              <th>Duration (sec)</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `)
+  }
+
+  if (activity.length > 0) {
+    const rows = activity
+      .map(
+        row =>
+          `<tr>
+            <td>${esc(row.date)}</td>
+            <td>${esc(formatNumeric(row.count))}</td>
+          </tr>`
+      )
+      .join('\n')
+    parts.push('<h2>Call Activity By Day</h2>')
+    parts.push(`
+      <div class="mds-table-wrap">
+        <table class="mds-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Total Events</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `)
+  }
+
+  if (extraLines.length > 0) {
+    parts.push('<h2>Additional Details</h2>')
+    const preview = extraLines.slice(0, 40)
+    for (const line of preview) {
+      parts.push(`<p>${esc(line)}</p>`)
+    }
+    if (extraLines.length > preview.length) {
+      const rest = extraLines.slice(preview.length, preview.length + 800)
+      parts.push(`
+        <details class="mds-details">
+          <summary>Show more details (${(extraLines.length - preview.length).toLocaleString()} lines)</summary>
+          <pre class="mds-pre">${esc(rest.join('\n'))}</pre>
+        </details>
+      `)
+    }
+  }
+
+  if (excerptLines.length > 0) {
+    const csvCandidates = excerptLines
+      .map(line => splitRow(line, ','))
+      .filter(cols => cols.length >= 6)
+
+    let excerptBody = ''
+    if (csvCandidates.length >= 4) {
+      const header = csvCandidates[0]
+      const rows = csvCandidates.slice(1, 201)
+      const headHtml = header.map(col => `<th>${esc(col)}</th>`).join('')
+      const rowHtml = rows
+        .map(
+          row => `<tr>${row.map(col => `<td>${esc(col)}</td>`).join('')}</tr>`
+        )
+        .join('\n')
+      excerptBody = `
+        <div class="mds-table-wrap">
+          <table class="mds-table">
+            <thead><tr>${headHtml}</tr></thead>
+            <tbody>${rowHtml}</tbody>
+          </table>
+        </div>
+        <p class="mds-note">Showing first ${rows.length} parsed rows from source excerpt.</p>
+      `
+    } else {
+      const previewLines = excerptLines.slice(0, 2000)
+      excerptBody = `
+        <pre class="mds-pre">${esc(previewLines.join('\n'))}</pre>
+        <p class="mds-note">Showing first ${previewLines.length.toLocaleString()} lines from source excerpt.</p>
+      `
+    }
+
+    parts.push('<h2>Source Excerpt</h2>')
+    parts.push(`
+      <details class="mds-details">
+        <summary>Open raw source excerpt preview</summary>
+        ${excerptBody}
+      </details>
+    `)
+  }
+
+  return parts.join('\n')
+}
+
 function toPlainHtml(text: string): string {
+  const mobileSummaryHtml = parseMobileSummaryHtml(text)
+  if (mobileSummaryHtml) return mobileSummaryHtml
+
   const lines = text.replace(/\r\n/g, '\n').split('\n').map(l => l.trim())
 
   const isLabel = (s: string) =>
@@ -115,6 +453,8 @@ function toPlainHtml(text: string): string {
 
   for (const line of lines) {
     if (!line) { closeUl(); parts.push('<p></p>'); continue }
+    const pageMarker = line.match(/^===\s*(Page\s+\d+)\s*===$/i)
+    if (pageMarker) { closeUl(); parts.push(`<h2>${esc(pageMarker[1])}</h2>`); continue }
     const h1 = line.match(/^#\s+(.+)/);   if (h1) { closeUl(); parts.push(`<h1>${esc(h1[1])}</h1>`); continue }
     const h2 = line.match(/^##\s+(.+)/);  if (h2) { closeUl(); parts.push(`<h2>${esc(h2[1])}</h2>`); continue }
     const h3 = line.match(/^###\s+(.+)/); if (h3) { closeUl(); parts.push(`<h3>${esc(h3[1])}</h3>`); continue }
@@ -125,6 +465,8 @@ function toPlainHtml(text: string): string {
     }
     const kv = line.match(/^([^:\n]{2,40}):\s+(.+)$/)
     if (kv && !line.includes(',')) { closeUl(); parts.push(`<p><strong>${esc(kv[1])}:</strong> ${esc(kv[2])}</p>`); continue }
+    const eqKv = line.match(/^([A-Za-z][A-Za-z0-9 _\/().-]{1,48})\s*=\s*(.+)$/)
+    if (eqKv && !line.includes(',')) { closeUl(); parts.push(`<p><strong>${esc(eqKv[1])}:</strong> ${esc(eqKv[2])}</p>`); continue }
     if (/^[-•*]\s+/.test(line)) {
       if (!inUl) { parts.push('<ul>'); inUl = true }
       parts.push(`<li>${esc(line.replace(/^[-•*]\s+/, ''))}</li>`)
@@ -150,6 +492,8 @@ function parseLabelValueDoc(lines: string[]): string {
   while (i < lines.length) {
     const line = lines[i]
     if (!line) { i++; continue }
+    const pageMarker = line.match(/^===\s*(Page\s+\d+)\s*===$/i)
+    if (pageMarker) { flushTable(); parts.push(`<h2>${esc(pageMarker[1])}</h2>`); i++; continue }
     const kv = line.match(/^([^:\n]{2,50}):\s+(.+)$/)
     if (kv) { tableRows.push([kv[1].trim(), kv[2].trim()]); i++; continue }
     const nextIdx = lines.findIndex((l, j) => j > i && l.trim() !== '')
@@ -388,11 +732,17 @@ function PlainViewer({ html, query }: { html: string; query: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialogProps) {
+  const MAX_PARSE_CHARS = 2_000_000
   const [query, setQuery]           = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  // Deduplicate repeated content blocks before parsing/rendering
-  const dedupedText = useMemo(() => deduplicateContent(text), [text])
-  const doc = useMemo(() => parseDoc(dedupedText), [dedupedText])
+  // Keep source text intact for reliable structure detection across all document types.
+  // Parse only a safe preview slice to avoid memory spikes on huge documents.
+  const parseText = useMemo(
+    () => (text.length > MAX_PARSE_CHARS ? text.slice(0, MAX_PARSE_CHARS) : text),
+    [text]
+  )
+  const isTruncatedForView = text.length > MAX_PARSE_CHARS
+  const doc = useMemo(() => parseDoc(parseText), [parseText])
 
   const [plainMatchCount, setPlainMatchCount] = useState(0)
   const [plainCurrentMatch, setPlainCurrentMatch] = useState(0)
@@ -580,7 +930,16 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
                 [&_.kv-table]:w-full [&_.kv-table]:mb-4 [&_.kv-table]:border-collapse
                 [&_.kv-key]:text-xs [&_.kv-key]:font-semibold [&_.kv-key]:text-slate-500 [&_.kv-key]:uppercase [&_.kv-key]:tracking-wide [&_.kv-key]:py-1.5 [&_.kv-key]:pr-4 [&_.kv-key]:pl-2 [&_.kv-key]:w-48 [&_.kv-key]:border-b [&_.kv-key]:border-slate-100 [&_.kv-key]:align-top
                 [&_.kv-val]:text-sm [&_.kv-val]:text-slate-800 [&_.kv-val]:py-1.5 [&_.kv-val]:border-b [&_.kv-val]:border-slate-100 [&_.kv-val]:font-medium
-                [&_.txn]:font-mono [&_.txn]:text-xs [&_.txn]:text-slate-600 [&_.txn]:bg-slate-50 [&_.txn]:px-2 [&_.txn]:py-1 [&_.txn]:rounded [&_.txn]:mb-1"
+                [&_.txn]:font-mono [&_.txn]:text-xs [&_.txn]:text-slate-600 [&_.txn]:bg-slate-50 [&_.txn]:px-2 [&_.txn]:py-1 [&_.txn]:rounded [&_.txn]:mb-1
+                [&_.mds-table-wrap]:mb-4 [&_.mds-table-wrap]:overflow-x-auto [&_.mds-table-wrap]:rounded-lg [&_.mds-table-wrap]:border [&_.mds-table-wrap]:border-slate-200
+                [&_.mds-table]:w-full [&_.mds-table]:border-collapse [&_.mds-table]:text-sm [&_.mds-table]:table-auto
+                [&_.mds-table_th]:bg-slate-100 [&_.mds-table_th]:px-3 [&_.mds-table_th]:py-2 [&_.mds-table_th]:text-left [&_.mds-table_th]:font-semibold [&_.mds-table_th]:text-slate-700 [&_.mds-table_th]:border-b [&_.mds-table_th]:border-slate-200
+                [&_.mds-table_td]:px-3 [&_.mds-table_td]:py-2 [&_.mds-table_td]:border-b [&_.mds-table_td]:border-slate-100
+                [&_.mds-table_tbody_tr:nth-child(even)]:bg-slate-50 [&_.mds-num]:text-xs [&_.mds-num]:text-slate-500 [&_.mds-num]:font-medium
+                [&_.mds-details]:rounded-lg [&_.mds-details]:border [&_.mds-details]:border-slate-200 [&_.mds-details]:bg-slate-50 [&_.mds-details]:p-3
+                [&_.mds-details_summary]:cursor-pointer [&_.mds-details_summary]:font-semibold [&_.mds-details_summary]:text-slate-700
+                [&_.mds-pre]:mt-3 [&_.mds-pre]:max-h-[460px] [&_.mds-pre]:overflow-auto [&_.mds-pre]:rounded-md [&_.mds-pre]:bg-white [&_.mds-pre]:border [&_.mds-pre]:border-slate-200 [&_.mds-pre]:p-3 [&_.mds-pre]:text-xs [&_.mds-pre]:leading-5 [&_.mds-pre]:whitespace-pre
+                [&_.mds-note]:mt-2 [&_.mds-note]:text-xs [&_.mds-note]:text-slate-500"
               dangerouslySetInnerHTML={{ __html: doc.plainHtml }}
             />
           </div>
@@ -590,8 +949,9 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
       {/* Footer */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-t border-slate-200 bg-white shrink-0">
         <span className="text-xs text-slate-500">
-          {(dedupedText.length / 1000).toFixed(1)}K characters · {doc.type.toUpperCase()}
-          {isTable && ` · ${doc.headers.length} columns`}
+          {(parseText.length / 1000).toFixed(1)}K characters | {doc.type.toUpperCase()}
+          {isTable && ` | ${doc.headers.length} columns`}
+          {isTruncatedForView ? ' | preview mode' : ''}
         </span>
         <Button size="sm" variant="outline" onClick={onClose} className="font-semibold px-6">
           Close View
@@ -600,3 +960,4 @@ export function FormattedViewDialog({ text, open, onClose }: FormattedViewDialog
     </div>
   )
 }
+

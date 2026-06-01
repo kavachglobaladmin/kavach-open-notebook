@@ -25,6 +25,70 @@ function repairJson(raw: string): string {
   return s
 }
 
+export function normalizeInfographicBlock(input: InfographicResponse): InfographicResponse {
+  const normalized: InfographicResponse = { ...input }
+
+  if (normalized.stat) {
+    normalized.stat = {
+      value: clean(normalized.stat.value ?? ''),
+      label: clean(normalized.stat.label ?? ''),
+    }
+  }
+
+  if (Array.isArray(normalized.highlights)) {
+    normalized.highlights = normalized.highlights
+      .map(item => {
+        const dict = item as unknown as Record<string, unknown>
+        const subtitle = hasValue(item.subtitle)
+          ? clean(item.subtitle)
+          : clean(dict.category ?? '')
+        return {
+          title: clean(item.title ?? ''),
+          subtitle: subtitle || undefined,
+          description: clean(item.description ?? ''),
+        }
+      })
+      .filter(item => hasValue(item.title) || hasValue(item.description))
+  }
+
+  if (Array.isArray(normalized.top_contacts)) {
+    normalized.top_contacts = normalized.top_contacts
+      .map(contact => {
+        const dict = contact as unknown as Record<string, unknown>
+        return {
+          number: clean(contact.number ?? dict.phone ?? dict.msisdn ?? ''),
+          calls: clean(contact.calls ?? dict.call_count ?? dict.count ?? ''),
+          type: clean(contact.type ?? dict.direction ?? 'both'),
+        }
+      })
+      .filter(contact => hasValue(contact.number))
+  }
+
+  if (Array.isArray(normalized.key_locations)) {
+    normalized.key_locations = normalized.key_locations
+      .map(location => {
+        const dict = location as unknown as Record<string, unknown>
+        return {
+          area: clean(location.area ?? dict.location ?? dict.circle ?? dict.lac ?? ''),
+          cell_id: clean(location.cell_id ?? dict.cell ?? dict.cellid ?? ''),
+          count: clean(location.count ?? dict.hits ?? dict.call_count ?? ''),
+        }
+      })
+      .filter(location => hasValue(location.area) || hasValue(location.cell_id))
+  }
+
+  if (!normalized.call_summary && normalized.stat && hasValue(normalized.stat.value)) {
+    normalized.call_summary = {
+      incoming: '',
+      outgoing: clean(normalized.stat.value),
+      sms: '',
+      data: '',
+    }
+  }
+
+  return normalized
+}
+
 export function extractAndMergeJson(raw: string): InfographicResponse | null {
   const tryParse = (s: string): InfographicResponse | null => {
     try { return JSON.parse(s) as InfographicResponse } catch { /* try repair */ }
@@ -46,16 +110,17 @@ export function extractAndMergeJson(raw: string): InfographicResponse | null {
     }
   }
   if (blocks.length === 0) return null
-  if (blocks.length === 1) return blocks[0]
+  const normalizedBlocks = blocks.map(normalizeInfographicBlock)
+  if (normalizedBlocks.length === 1) return normalizedBlocks[0]
 
-  const primary = blocks.find(b => b.document_type === 'ir_document')
-    ?? blocks.find(b => b.document_type === 'bank_statement')
-    ?? blocks.find(b => b.document_type === 'mobile_cdr')
-    ?? blocks.find(b => b.header?.title && b.stat?.value)
-    ?? blocks[0]
+  const primary = normalizedBlocks.find(b => b.document_type === 'ir_document')
+    ?? normalizedBlocks.find(b => b.document_type === 'bank_statement')
+    ?? normalizedBlocks.find(b => b.document_type === 'mobile_cdr')
+    ?? normalizedBlocks.find(b => b.header?.title && b.stat?.value)
+    ?? normalizedBlocks[0]
   const merged: InfographicResponse = { ...primary }
 
-  for (const b of blocks.slice(1)) {
+  for (const b of normalizedBlocks.slice(1)) {
     if (b.case_details?.length) merged.case_details = [...(merged.case_details ?? []), ...b.case_details]
     if (b.timeline_events?.length) merged.timeline_events = [...(merged.timeline_events ?? []), ...b.timeline_events]
     if (b.highlights?.length) merged.highlights = [...(merged.highlights ?? []), ...b.highlights]

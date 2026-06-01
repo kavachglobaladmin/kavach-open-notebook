@@ -26,6 +26,7 @@ export interface InfographicResponse {
   timeline_events?: { date: string; event: string }[]
   highlights?: { title: string; subtitle?: string; description: string }[]
   profile_summary?: Record<string, string>
+  dynamic_sections?: { title: string; items: { key: string; value: string }[] }[]
 }
 
 export type DocumentType = 'cdr' | 'bank' | 'criminal' | 'general'

@@ -39,6 +39,11 @@ export interface InfographicResponse {
   associates?: Array<{ name: string; relation: string }>
   // Person profile specific
   personal?: Record<string, string>
+  profile_summary?: Record<string, string>
+  dynamic_sections?: Array<{
+    title: string
+    items: Array<{ key: string; value: string }>
+  }>
 }
 
 // ── localStorage cache helpers ────────────────────────────────────────────────
