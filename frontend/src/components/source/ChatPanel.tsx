@@ -62,6 +62,10 @@ interface ChatPanelProps {
   sourceTitle?: string
   // Source insights count for source chat context display
   sourceInsightsCount?: number
+  // When true the model-selector row in the input area is hidden
+  hideModelSelector?: boolean
+  // When provided, overrides the auto-generated "N sources" line in the header
+  subtitleLine?: string
 }
 
 export function ChatPanel({
@@ -87,7 +91,9 @@ export function ChatPanel({
   notebookId,
   suggestedQuestions = [],
   sourceTitle,
-  sourceInsightsCount
+  sourceInsightsCount,
+  hideModelSelector = false,
+  subtitleLine,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -201,7 +207,7 @@ export function ChatPanel({
               </span>
             )}
             <span className="text-[11px] font-semibold text-slate-500 mt-0.5">
-              {connectedSourcesCount} {connectedSourcesCount === 1 ? t.common.source : t.navigation.sources}
+              {subtitleLine ?? `${connectedSourcesCount} ${connectedSourcesCount === 1 ? t.common.source : t.navigation.sources}`}
             </span>
           </div>
         </div>
@@ -388,7 +394,7 @@ export function ChatPanel({
         onSendMessage={handleSend}
         isStreaming={isStreaming}
         modelOverride={modelOverride}
-        onModelChange={onModelChange}
+        onModelChange={hideModelSelector ? undefined : onModelChange}
         chatInputId={chatInputId}
         keyHint={keyHint}
         t={t}

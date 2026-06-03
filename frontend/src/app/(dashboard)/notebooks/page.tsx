@@ -14,6 +14,7 @@ import { notebooksApi } from '@/lib/api/notebooks'
 import { useQueryClient } from '@tanstack/react-query'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import { motion } from 'framer-motion'
+import { getAllChildIds } from '@/lib/hooks/use-sub-folders'
 
 export default function NotebooksPage() {
   const { t } = useTranslation()
@@ -45,26 +46,38 @@ export default function NotebooksPage() {
 
   const normalizedQuery = searchTerm.trim().toLowerCase()
 
+  // ── Exclude sub-folders from the top-level Cases list ───────────────────
+  // getAllChildIds reads from localStorage synchronously so it's safe in useMemo.
+  const childIdsSet = useMemo(() => getAllChildIds(), [
+    // Re-compute whenever the notebooks list changes (new sub-folder created
+    // writes to localStorage, then React Query re-fetches the notebooks list).
+    notebooks,
+    archivedNotebooks,
+  ])
+
   const filteredActive = useMemo(() => {
     if (!notebooks) return undefined
-    if (!normalizedQuery) return notebooks
-    return notebooks.filter((notebook) =>
+    const topLevel = notebooks.filter((nb) => !childIdsSet.has(nb.id))
+    if (!normalizedQuery) return topLevel
+    return topLevel.filter((notebook) =>
       notebook.name.toLowerCase().includes(normalizedQuery)
     )
-  }, [notebooks, normalizedQuery])
+  }, [notebooks, normalizedQuery, childIdsSet])
 
   const filteredArchived = useMemo(() => {
     if (!archivedNotebooks) return undefined
-    if (!normalizedQuery) return archivedNotebooks
-    return archivedNotebooks.filter((notebook) =>
+    const topLevel = archivedNotebooks.filter((nb) => !childIdsSet.has(nb.id))
+    if (!normalizedQuery) return topLevel
+    return topLevel.filter((notebook) =>
       notebook.name.toLowerCase().includes(normalizedQuery)
     )
-  }, [archivedNotebooks, normalizedQuery])
+  }, [archivedNotebooks, normalizedQuery, childIdsSet])
 
   // ── Dynamic Statistics Calculation ─────────────────────────────────────────
   const stats = useMemo(() => {
-    const active = notebooks || []
-    const archived = archivedNotebooks || []
+    // Only count top-level notebooks (exclude sub-folders) in stats
+    const active = (notebooks || []).filter((nb) => !childIdsSet.has(nb.id))
+    const archived = (archivedNotebooks || []).filter((nb) => !childIdsSet.has(nb.id))
     const allCases = [...active, ...archived]
     const activeCount = active.length
     
@@ -103,7 +116,7 @@ export default function NotebooksPage() {
       : (activeCount > 0 ? 78 : 0)
 
     return { activeCount, completedCount, memberCount, avgCompletion }
-  }, [notebooks, archivedNotebooks])
+  }, [notebooks, archivedNotebooks, childIdsSet])
 
   const hasArchived = (archivedNotebooks?.length ?? 0) > 0
   const isSearching = normalizedQuery.length > 0
