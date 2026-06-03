@@ -15,9 +15,13 @@ import Link from 'next/link'
 
 interface NotebookHeaderProps {
   notebook: NotebookResponse
+  /** Override the back-navigation href. Defaults to "/notebooks". */
+  backHref?: string
+  /** Override the back-navigation label. Defaults to "Back to Cases". */
+  backLabel?: string
 }
 
-export function NotebookHeader({ notebook }: NotebookHeaderProps) {
+export function NotebookHeader({ notebook, backHref = '/notebooks', backLabel = 'Back to Cases' }: NotebookHeaderProps) {
   const { t, language } = useTranslation()
   const dfLocale = getDateLocale(language)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -26,9 +30,9 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
   return (
     <>
       <div className="pb-6 sm:pb-8">
-        <Link href="/notebooks" className="text-[13px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 mb-6 transition-colors">
+        <Link href={backHref} className="text-[13px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 mb-6 transition-colors">
           <ChevronLeft className="h-4 w-4" />
-          Back to Cases
+          {backLabel}
         </Link>
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

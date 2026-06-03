@@ -19,6 +19,12 @@ interface ChatColumnProps {
   sources: SourceListResponse[]
   sourcesLoading?: boolean
   notes: NoteResponse[]
+  /** Optional override for the chat panel header title */
+  chatTitle?: string
+  /** When provided, replaces the auto "N sources" subtitle line */
+  subtitleLine?: string
+  /** When true, hides the model-selector row in the input area */
+  hideModelSelector?: boolean
 }
 
 export function ChatColumn({
@@ -26,6 +32,9 @@ export function ChatColumn({
   contextSelections,
   sources,
   notes,
+  chatTitle,
+  subtitleLine,
+  hideModelSelector = false,
 }: ChatColumnProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [chatConfig, setChatConfig] = useState({ goal: 'Default', length: 'Default' })
@@ -104,6 +113,9 @@ export function ChatColumn({
           loadingSessions={chat.loadingSessions}
           contextType="notebook"
           notebookId={notebookId}
+          title={chatTitle}
+          subtitleLine={subtitleLine}
+          hideModelSelector={hideModelSelector}
           notebookContextStats={{
             tokenCount: chat.tokenCount,
             charCount: chat.charCount,

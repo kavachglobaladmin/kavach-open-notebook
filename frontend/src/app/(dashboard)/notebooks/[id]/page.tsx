@@ -4,22 +4,23 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { NotebookHeader } from '../components/NotebookHeader'
-import { SourcesColumn } from '../components/SourcesColumn'
-import { NotesColumn } from '../components/NotesColumn'
 import { ChatColumn } from '../components/ChatColumn'
-import { useNotebook } from '@/lib/hooks/use-notebooks'
+import { SubFolderCard } from '../components/SubFolderCard'
+import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
+import { useNotebook, useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useNotebookSources } from '@/lib/hooks/use-sources'
 import { useNotes } from '@/lib/hooks/use-notes'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FileText, StickyNote, MessageSquare } from 'lucide-react'
-import { StudioActionsCard } from '@/components/source/StudioSection'
+import { MessageSquare, FolderOpen, Plus, ChevronLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useSubFolders } from '@/lib/hooks/use-sub-folders'
+import Link from 'next/link'
 
+// ── Re-exported types used by ChatColumn / sub-folder page ────────────────────
 export type ContextMode = 'off' | 'insights' | 'full'
 
 export interface ContextSelections {
@@ -27,20 +28,38 @@ export interface ContextSelections {
   notes: Record<string, ContextMode>
 }
 
-export default function NotebookPage() {
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function NotebookFolderPage() {
   const { t } = useTranslation()
   const params = useParams()
   const searchParams = useSearchParams()
 
   // Reconstruct the full SurrealDB record ID from the URL param.
-  // The URL contains only the short ID (e.g. "2jvvymcm2ls9dqvpw2kx") to avoid
-  // colons in the path which Next.js rejects. We prepend "notebook:" here so
-  // the API receives the full record ID it expects.
   const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
-  const notebookId = rawParam.includes(':') ? rawParam : (rawParam ? `notebook:${rawParam}` : '')
+  const notebookId = rawParam.includes(':') ? rawParam : rawParam ? `notebook:${rawParam}` : ''
   const queryFromUrl = searchParams?.get('q')?.trim() || ''
 
+  // ── Fetch this notebook (the "main folder") ──────────────────────────────
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
+
+  // ── Static chat panel title ───────────────────────────────────────────────
+  const chatTitle = 'Chat with Super'
+  // ── Sub-folder management via localStorage ────────────────────────────────
+  const { childIds, addChild, removeChild } = useSubFolders(notebookId)
+
+  // Fetch all notebooks so we can resolve child IDs → full NotebookResponse objects
+  const { data: allNotebooks } = useNotebooks(false)
+  const { data: allArchivedNotebooks } = useNotebooks(true)
+
+  const allNotebooksFlat = [
+    ...(allNotebooks ?? []),
+    ...(allArchivedNotebooks ?? []),
+  ]
+
+  const subFolders = allNotebooksFlat.filter((nb) => childIds.includes(nb.id))
+
+  // ── Sources & Notes (still needed for the Chat context) ──────────────────
   const {
     sources,
     isLoading: sourcesLoading,
@@ -51,79 +70,61 @@ export default function NotebookPage() {
   } = useNotebookSources(notebookId)
   const { data: notes, isLoading: notesLoading } = useNotes(notebookId)
 
-  // Get collapse states for dynamic layout
-  const { sourcesCollapsed, notesCollapsed } = useNotebookColumnsStore()
-
-  // Detect desktop to avoid double-mounting ChatColumn
   const isDesktop = useIsDesktop()
 
-  // Mobile tab state (Sources, Notes, or Chat)
-  const [mobileActiveTab, setMobileActiveTab] = useState<'sources' | 'notes' | 'chat'>('chat')
+  // Mobile tab state
+  const [mobileActiveTab, setMobileActiveTab] = useState<'folders' | 'chat'>('folders')
 
   // Search term for PageHeader
   const [searchTerm, setSearchTerm] = useState('')
-
   useEffect(() => {
-    if (queryFromUrl) {
-      setSearchTerm(queryFromUrl)
-    }
+    if (queryFromUrl) setSearchTerm(queryFromUrl)
   }, [queryFromUrl])
 
-  // Context selection state
+  // ── Context selections for Chat (default all sources to insights / full) ──
   const [contextSelections, setContextSelections] = useState<ContextSelections>({
     sources: {},
-    notes: {}
+    notes: {},
   })
 
-  // Initialize and update selections when sources load or change
   useEffect(() => {
     if (sources && sources.length > 0) {
-      setContextSelections(prev => {
-        const newSourceSelections = { ...prev.sources }
-        sources.forEach(source => {
-          const currentMode = newSourceSelections[source.id]
+      setContextSelections((prev) => {
+        const next = { ...prev.sources }
+        sources.forEach((source) => {
+          const current = next[source.id]
           const hasInsights = source.insights_count > 0
-
-          if (currentMode === undefined) {
-            // Initial setup - default based on insights availability
-            newSourceSelections[source.id] = hasInsights ? 'insights' : 'full'
-          } else if (currentMode === 'full' && hasInsights) {
-            // Source gained insights while in 'full' mode - auto-switch to 'insights'
-            newSourceSelections[source.id] = 'insights'
+          if (current === undefined) {
+            next[source.id] = hasInsights ? 'insights' : 'full'
+          } else if (current === 'full' && hasInsights) {
+            next[source.id] = 'insights'
           }
         })
-        return { ...prev, sources: newSourceSelections }
+        return { ...prev, sources: next }
       })
     }
   }, [sources])
 
   useEffect(() => {
     if (notes && notes.length > 0) {
-      setContextSelections(prev => {
-        const newNoteSelections = { ...prev.notes }
-        notes.forEach(note => {
-          // Only set default if not already set
-          if (!(note.id in newNoteSelections)) {
-            // Notes default to 'full'
-            newNoteSelections[note.id] = 'full'
-          }
+      setContextSelections((prev) => {
+        const next = { ...prev.notes }
+        notes.forEach((note) => {
+          if (!(note.id in next)) next[note.id] = 'full'
         })
-        return { ...prev, notes: newNoteSelections }
+        return { ...prev, notes: next }
       })
     }
   }, [notes])
 
-  // Handler to update context selection
-  const handleContextModeChange = (itemId: string, mode: ContextMode, type: 'source' | 'note') => {
-    setContextSelections(prev => ({
-      ...prev,
-      [type === 'source' ? 'sources' : 'notes']: {
-        ...(type === 'source' ? prev.sources : prev.notes),
-        [itemId]: mode
-      }
-    }))
+  // ── Sub-folder dialog ─────────────────────────────────────────────────────
+  const [createSubFolderOpen, setCreateSubFolderOpen] = useState(false)
+
+  const handleSubFolderCreated = (newNotebookId: string) => {
+    addChild(newNotebookId)
   }
 
+  // ── Loading / not-found states ────────────────────────────────────────────
   if (notebookLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -143,15 +144,83 @@ export default function NotebookPage() {
     )
   }
 
+  // ── Sub-folders panel ─────────────────────────────────────────────────────
+  const SubFoldersPanel = (
+    <div className="flex flex-col h-full bg-white rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 px-6 pt-6 pb-4 flex-shrink-0">
+        <div>
+          <h2 className="text-[20px] font-bold text-slate-900">Sub-folders</h2>
+          <p className="text-[13px] text-slate-500 font-medium mt-0.5">
+            {subFolders.length} folder{subFolders.length !== 1 ? 's' : ''} inside this case
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setCreateSubFolderOpen(true)}
+          className="bg-[#6149f6] hover:bg-[#523cdb] text-white rounded-[12px] h-[40px] px-5 font-semibold shadow-[0_4px_12px_rgba(97,73,246,0.35)] transition-all shrink-0"
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          New Sub-folder
+        </Button>
+      </div>
+
+      {/* Sub-folder grid */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#c4b5fd transparent' }}>
+        {subFolders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full pt-10 pb-10">
+            <div className="w-16 h-16 bg-[#F5F3FF] rounded-2xl flex items-center justify-center mb-4">
+              <FolderOpen className="w-8 h-8 text-[#6149f6]" />
+            </div>
+            <h3 className="text-[16px] font-bold text-slate-900 mb-1">No sub-folders yet</h3>
+            <p className="text-[13px] text-slate-500 text-center max-w-[220px] leading-relaxed">
+              Create sub-folders to organise this case (e.g.&nbsp;IR, ICJS&nbsp;Dossier)
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {subFolders.map((sf) => (
+              <SubFolderCard
+                key={sf.id}
+                notebook={sf}
+                parentId={notebookId}
+                onUnlink={(childId) => removeChild(childId)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // ── Chat panel (wrapped in ChatColumn which handles its own state) ─────────
+  const ChatPanelWrapper = (
+    <div className="h-full">
+      <ChatColumn
+        notebookId={notebookId}
+        contextSelections={contextSelections}
+        sources={sources ?? []}
+        sourcesLoading={sourcesLoading}
+        notes={notes ?? []}
+        chatTitle={chatTitle}
+        subtitleLine={`${subFolders.length} folder${subFolders.length !== 1 ? 's' : ''}`}
+        hideModelSelector
+      />
+    </div>
+  )
+
   return (
     <AppShell>
-      <div className="flex flex-col flex-1 min-h-0 relative overflow-hidden" style={{ background: '#ECEDF8' }}>
-
-        {/* Top-right purple glow — exact match to Cases page */}
+      <div
+        className="flex flex-col flex-1 min-h-0 relative overflow-hidden"
+        style={{ background: '#ECEDF8' }}
+      >
+        {/* Ambient glow — same as other pages */}
         <div
           className="absolute top-[-10%] right-[-5%] w-[55%] h-[70%] rounded-full pointer-events-none z-0"
           style={{
-            background: 'radial-gradient(ellipse at 70% 30%, rgba(180,160,255,0.60) 0%, rgba(200,185,255,0.35) 30%, rgba(220,210,255,0.15) 55%, transparent 75%)',
+            background:
+              'radial-gradient(ellipse at 70% 30%, rgba(180,160,255,0.60) 0%, rgba(200,185,255,0.35) 30%, rgba(220,210,255,0.15) 55%, transparent 75%)',
             filter: 'blur(60px)',
           }}
         />
@@ -160,130 +229,83 @@ export default function NotebookPage() {
           <PageHeader
             searchValue={searchTerm}
             onSearchChange={setSearchTerm}
-            searchPlaceholder="Search notebook..."
+            searchPlaceholder="Search case…"
             newLabel="NOTEBOOK"
           />
+
+          {/* Back + Case title header */}
           <div className="flex-shrink-0 px-3 sm:px-4 pt-3 pb-0">
-            <NotebookHeader notebook={notebook} />
+            <div className="pb-4 sm:pb-5">
+              <Link
+                href="/notebooks"
+                className="text-[13px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 mb-4 transition-colors w-fit"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back to Cases
+              </Link>
+              <h1 className="text-[26px] sm:text-[32px] font-extrabold text-slate-900 tracking-tight leading-tight">
+                {notebook.name}
+              </h1>
+              {notebook.description && (
+                <p className="text-[14px] text-slate-500 font-medium mt-1 leading-relaxed">
+                  {notebook.description}
+                </p>
+              )}
+            </div>
           </div>
 
-          <div className="flex-1 p-3 sm:p-4 pt-3 sm:pt-4 overflow-x-hidden lg:overflow-x-auto flex flex-col min-h-0">
-          {/* Mobile: Tabbed interface - only render on mobile to avoid double-mounting */}
-          {!isDesktop && (
-            <>
-              <div className="lg:hidden mb-4">
-                <Tabs value={mobileActiveTab} onValueChange={(value) => setMobileActiveTab(value as 'sources' | 'notes' | 'chat')}>
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="sources" className="gap-2">
-                      <FileText className="h-4 w-4" />
-                      {t.navigation.sources}
-                    </TabsTrigger>
-                    <TabsTrigger value="notes" className="gap-2">
-                      <StickyNote className="h-4 w-4" />
-                      {t.common.notes}
-                    </TabsTrigger>
-                    <TabsTrigger value="chat" className="gap-2">
-                      <MessageSquare className="h-4 w-4" />
-                      {t.common.chat}
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+          {/* Main content area */}
+          <div className="flex-1 px-3 sm:px-4 pb-4 sm:pb-5 overflow-hidden flex flex-col min-h-0">
+            {/* ── Mobile: tabs ── */}
+            {!isDesktop && (
+              <>
+                <div className="lg:hidden mb-4 flex-shrink-0">
+                  <Tabs
+                    value={mobileActiveTab}
+                    onValueChange={(v) => setMobileActiveTab(v as 'folders' | 'chat')}
+                  >
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="folders" className="gap-2">
+                        <FolderOpen className="h-4 w-4" />
+                        Sub-folders
+                      </TabsTrigger>
+                      <TabsTrigger value="chat" className="gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        {t.common.chat}
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+                <div className="flex-1 overflow-hidden lg:hidden">
+                  {mobileActiveTab === 'folders' && SubFoldersPanel}
+                  {mobileActiveTab === 'chat' && ChatPanelWrapper}
+                </div>
+              </>
+            )}
 
-              {/* Mobile: Show only active tab */}
-              <div className="flex-1 overflow-hidden lg:hidden">
-                {mobileActiveTab === 'sources' && (
-                  <SourcesColumn
-                    sources={sources}
-                    isLoading={sourcesLoading}
-                    notebookId={notebookId}
-                    notebookName={notebook?.name}
-                    searchTerm={searchTerm}
-                    onRefresh={refetchSources}
-                    contextSelections={contextSelections.sources}
-                    onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
-                    hasNextPage={hasNextPage}
-                    isFetchingNextPage={isFetchingNextPage}
-                    fetchNextPage={fetchNextPage}
-                  />
-                )}
-                {mobileActiveTab === 'notes' && (
-                  <NotesColumn
-                    notes={notes}
-                    isLoading={notesLoading}
-                    notebookId={notebookId}
-                    searchTerm={searchTerm}
-                    contextSelections={contextSelections.notes}
-                    onContextModeChange={(noteId, mode) => handleContextModeChange(noteId, mode, 'note')}
-                  />
-                )}
-                {mobileActiveTab === 'chat' && (
-                  <ChatColumn
-                    notebookId={notebookId}
-                    contextSelections={contextSelections}
-                    sources={sources ?? []}
-                    sourcesLoading={sourcesLoading}
-                    notes={notes ?? []}
-                  />
-                )}
-              </div>
-            </>
-          )}
+            {/* ── Desktop: two-column layout — Sub-folders (left) + Chat (right) ── */}
+            <div
+              className={cn(
+                'hidden lg:grid h-full min-h-0 gap-4',
+                'grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]',
+              )}
+            >
+              {/* Left: sub-folders */}
+              <div className="h-full min-h-0 overflow-hidden">{SubFoldersPanel}</div>
 
-          {/* Desktop: Collapsible columns layout */}
-          <div className={cn(
-            'hidden lg:flex h-full min-h-0 gap-4 transition-all duration-150',
-            'flex-row'
-          )}>
-            {/* Sources Column — equal 1/3 */}
-            <div className={cn(
-              'transition-all duration-150 flex-shrink-0',
-              sourcesCollapsed ? 'w-12' : 'flex-1 min-w-0'
-            )}>
-              <SourcesColumn
-                sources={sources}
-                isLoading={sourcesLoading}
-                notebookId={notebookId}
-                notebookName={notebook?.name}
-                searchTerm={searchTerm}
-                onRefresh={refetchSources}
-                contextSelections={contextSelections.sources}
-                onContextModeChange={(sourceId, mode) => handleContextModeChange(sourceId, mode, 'source')}
-                hasNextPage={hasNextPage}
-                isFetchingNextPage={isFetchingNextPage}
-                fetchNextPage={fetchNextPage}
-              />
-            </div>
-
-            {/* Notes Column — equal 1/3 */}
-            <div className={cn(
-              'transition-all duration-150 flex flex-col h-full flex-shrink-0',
-              notesCollapsed ? 'w-12' : 'flex-1 min-w-0'
-            )}>
-              <NotesColumn
-                notes={notes}
-                isLoading={notesLoading}
-                notebookId={notebookId}
-                searchTerm={searchTerm}
-                contextSelections={contextSelections.notes}
-                onContextModeChange={(noteId, mode) => handleContextModeChange(noteId, mode, 'note')}
-              />
-            </div>
-
-            {/* Chat Column — equal 1/3 */}
-            <div className="flex-1 min-w-0 h-full">
-              <ChatColumn
-                notebookId={notebookId}
-                contextSelections={contextSelections}
-                sources={sources ?? []}
-                sourcesLoading={sourcesLoading}
-                notes={notes ?? []}
-              />
+              {/* Right: chat */}
+              <div className="h-full min-h-0">{ChatPanelWrapper}</div>
             </div>
           </div>
         </div>
-        </div>{/* end relative z-10 */}
-      </div>{/* end background wrapper */}
+      </div>
+
+      {/* Create sub-folder dialog */}
+      <CreateSubFolderDialog
+        open={createSubFolderOpen}
+        onOpenChange={setCreateSubFolderOpen}
+        onCreated={handleSubFolderCreated}
+      />
     </AppShell>
   )
 }

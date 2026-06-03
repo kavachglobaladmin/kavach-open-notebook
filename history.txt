@@ -56,3 +56,5 @@ cls
 INFO FOR DB
 cls
 >>>>>>> Stashed changes
+info for db;
+select * from kavach_user;
