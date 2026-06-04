@@ -97,6 +97,68 @@ def parse_thinking_content(content: str) -> Tuple[str, str]:
     return "", content
 
 
+_INTERNAL_CONTEXT_LINE_PATTERNS = [
+    re.compile(r"^\s*-?\s*Response rule:", re.IGNORECASE),
+    re.compile(r"^\s*-?\s*Shared-source rule:", re.IGNORECASE),
+    re.compile(r"^\s*Shared-source rule:", re.IGNORECASE),
+]
+
+
+def strip_internal_context_instructions(content: str) -> str:
+    """Remove leaked per-folder context instructions from model replies."""
+    if not isinstance(content, str) or not content:
+        return content if isinstance(content, str) else ""
+
+    filtered = [
+        line
+        for line in content.splitlines()
+        if not any(pattern.search(line) for pattern in _INTERNAL_CONTEXT_LINE_PATTERNS)
+    ]
+    cleaned = "\n".join(filtered)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
+_FAKE_CITATION_IDS = frozenset(
+    {
+        "xyz456",
+        "abc123",
+        "iuiodadalknda",
+        "adadadadadadad",
+        "example_note_id_not_real",
+        "example_source_id_not_real",
+    }
+)
+
+
+def strip_fake_example_citations(content: str) -> str:
+    """Remove citations that match prompt examples, not real context IDs."""
+    if not isinstance(content, str) or not content:
+        return content if isinstance(content, str) else ""
+
+    cleaned = content
+    for fake_id in _FAKE_CITATION_IDS:
+        cleaned = re.sub(
+            rf"\[(?:source|note):{re.escape(fake_id)}\]",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            rf"\b(?:source|note):\s*{re.escape(fake_id)}\b",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+    return re.sub(r"[ \t]{2,}", " ", cleaned)
+
+
+def finalize_chat_response(content: str) -> str:
+    """Apply full-response cleanup. Do not call this on individual stream tokens."""
+    return strip_fake_example_citations(
+        strip_internal_context_instructions(clean_thinking_content(content))
+    )
+
+
 def clean_thinking_content(content: str) -> str:
     """
     Remove thinking content from AI responses, returning only the cleaned content.

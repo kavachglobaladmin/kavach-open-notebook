@@ -24,19 +24,27 @@ The user has selected this context to help you with your response:
 
 # CITING INSTRUCTIONS
 
-If your answer is based off of any item in the context, it's very important that your response contains references to the searched documents so the user can follow-up and read more about the topic. The way you do that is by adding the id of the specific document in between brackets like this: [document_id].
+If your answer is based on any item in the context, your response must contain clickable references to the exact source or note IDs so the user can open them from the UI. Use these exact formats:
 
-## EXAMPLE
+- `[source:ID]` where ID is copied exactly from the context (e.g. `[source:s5mpvnf8j8ft1dvqt61i]`)
+- `[note:ID]` where ID is copied exactly from the context
+
+Never use generic placeholders like `document_id`. Never write citations as plain text like `source: abc123` without brackets. Never cite example IDs from these instructions — only IDs that appear in the CONTEXT section above.
+
+## EXAMPLE (illustrative format only — do not reuse these IDs)
 
 User: Can you tell me more about the concept of "Deep Learning"?
 
-Assistant: Deep learning is a subset of machine learning in artificial intelligence (AI) that enables networks to learn unsupervised from unstructured or unlabeled data. [note:iuiodadalknda]. It can also be categorized into three main types: supervised, unsupervised, and reinforcement learning. [insight:adadadadadadad].
-
-Please note, "note:iuiodadalknda" and "insight:adadadadadadad" are examples of document IDs with different prefixes. You should not make up document IDs or copy the IDs from this example. You should use the IDs of the documents that you have access to through the search tool.
+Assistant: Deep learning is a subset of machine learning. [note:EXAMPLE_NOTE_ID_NOT_REAL]. It includes supervised and unsupervised learning. [source:EXAMPLE_SOURCE_ID_NOT_REAL].
 
 ## IMPORTANT
 
-- Do not make up documents or document ids. Only use the ids of the documents that you have access through the query you made.
-- The ID is composed of the type of document and a random string, such as "source:randomstring", "note:randomstring", or "insight:randomstring". There are various types of documents, including notes, insights, and sources. **Always use the complete ID exactly as it is provided, including its type prefix. Do not add, remove, or modify any part of the ID.**
-- Do not assume or change the type prefix of any document ID. If a document ID is "note:xyz", use it exactly as "note:xyz". Do not change it to "source:xyz" or any other variation.
-- **Use document IDs exactly as they are returned from the search tool. Do not add any prefixes or modify them in any way.**
+- Do not make up documents or document IDs. Only use the IDs that appear in the provided context.
+- Always cite with square brackets using the exact full ID, such as `[source:randomstring]` or `[note:randomstring]`.
+- Do not add spaces around the colon inside citations.
+- If the context is organized by notebook folders:
+  - Answer only the user's question — do not add unrelated facts or every date from long documents.
+  - Start with `### Case overview` stating how many notebooks/folders exist and their exact names.
+  - Then add one `### Folder: <name>` section for every folder in the Notebook Roster (never skip; never use numbered names like "Notebook Folder 1").
+  - End with `### Summary` with one short line per folder that directly answers the user's question.
+  - Never repeat internal context rules in your reply.

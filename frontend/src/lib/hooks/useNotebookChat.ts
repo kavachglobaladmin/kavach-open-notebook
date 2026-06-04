@@ -434,6 +434,10 @@ interface UseNotebookChatParams {
   }>
 }
 
+function normalizeRecordId(value: string | null | undefined) {
+  return value?.trim() ?? ''
+}
+
 export function useNotebookChat({ notebookId, sources, notes, contextSelections, folderContexts = [] }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -587,6 +591,127 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
     }
   })
 
+  const buildFolderStructure = useCallback(() => {
+    return folderContexts.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      sources: folder.sources.map((source) => ({
+        id: source.id,
+        title: source.title ?? null,
+      })),
+      notes: folder.notes.map((note) => ({
+        id: note.id,
+        title: note.title ?? null,
+      })),
+    }))
+  }, [folderContexts])
+
+  const buildFolderSummary = useCallback((folderStructure: ReturnType<typeof buildFolderStructure>) => {
+    return folderStructure
+      .map((folder) => {
+        const sourceLabels = folder.sources.length > 0
+          ? folder.sources.map((source) => `${source.title ?? source.id} [${source.id}]`).join(', ')
+          : 'none'
+        const noteLabels = folder.notes.length > 0
+          ? folder.notes.map((note) => `${note.title ?? note.id} [${note.id}]`).join(', ')
+          : 'none'
+
+        return [
+          `Folder: ${folder.name} [${folder.id}]`,
+          `Sources: ${sourceLabels}`,
+          `Notes: ${noteLabels}`,
+        ].join('\n')
+      })
+      .join('\n\n')
+  }, [])
+
+  const estimateTokenCount = useCallback((text: string) => {
+    return Math.max(0, Math.ceil(text.length / 4))
+  }, [])
+
+  const buildLocalContextFallback = useCallback(() => {
+    const folder_structure = buildFolderStructure()
+    const folder_summary = buildFolderSummary(folder_structure)
+
+    const context = {
+      sources: sources.map((source) => {
+        const mode = contextSelections.sources[source.id]
+        const sourceId = normalizeRecordId(source.id)
+        return {
+          id: source.id,
+          title: source.title ?? null,
+          mode: mode ?? 'off',
+          notebooks: folderContexts
+            .filter((folder) =>
+              folder.sources.some(
+                (folderSource) => normalizeRecordId(folderSource.id) === sourceId,
+              ),
+            )
+            .map((folder) => ({ id: folder.id, name: folder.name })),
+        }
+      }),
+      notes: notes.map((note) => {
+        const mode = contextSelections.notes[note.id]
+        const noteId = normalizeRecordId(note.id)
+        return {
+          id: note.id,
+          title: note.title ?? null,
+          mode: mode ?? 'off',
+          notebooks: folderContexts
+            .filter((folder) =>
+              folder.notes.some(
+                (folderNote) => normalizeRecordId(folderNote.id) === noteId,
+              ),
+            )
+            .map((folder) => ({ id: folder.id, name: folder.name })),
+        }
+      }),
+      folder_structure,
+      folder_summary,
+    }
+
+    const countText = [
+      folder_summary,
+      ...context.sources.map((source) => JSON.stringify(source)),
+      ...context.notes.map((note) => JSON.stringify(note)),
+    ].join('\n')
+
+    setTokenCount(estimateTokenCount(countText))
+    setCharCount(countText.length)
+
+    return context
+  }, [buildFolderStructure, buildFolderSummary, contextSelections.notes, contextSelections.sources, estimateTokenCount, folderContexts, notes, sources])
+
+  const ensureFolderSourcesInContextConfig = useCallback(
+    (
+      context_config: { sources: Record<string, string>; notes: Record<string, string> },
+    ) => {
+      folderContexts.forEach((folder) => {
+        folder.sources.forEach((source) => {
+          const mode = contextSelections.sources[source.id]
+          if (mode === 'insights') {
+            context_config.sources[source.id] = 'insights'
+          } else if (mode === 'full') {
+            context_config.sources[source.id] = 'full content'
+          } else if (!(source.id in context_config.sources)) {
+            const hasInsights = source.insights_count > 0
+            context_config.sources[source.id] = hasInsights ? 'insights' : 'full content'
+          }
+        })
+
+        folder.notes.forEach((note) => {
+          const mode = contextSelections.notes[note.id]
+          if (mode === 'full') {
+            context_config.notes[note.id] = 'full content'
+          } else if (!(note.id in context_config.notes)) {
+            context_config.notes[note.id] = 'full content'
+          }
+        })
+      })
+    },
+    [contextSelections.notes, contextSelections.sources, folderContexts],
+  )
+
   // Build context from sources and notes based on user selections
   const buildContext = useCallback(async () => {
     const context_config: { sources: Record<string, string>, notes: Record<string, string> } = {
@@ -614,32 +739,40 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
       }
     })
 
-    const response: BuildContextResponse = await chatApi.buildContext({
-      notebook_id: notebookId,
-      context_config
-    })
+    ensureFolderSourcesInContextConfig(context_config)
+    const folder_structure = buildFolderStructure()
 
-    const folder_structure = folderContexts.map((folder) => ({
-      id: folder.id,
-      name: folder.name,
-      sources: folder.sources.map((source) => ({
-        id: source.id,
-        title: source.title ?? null,
-      })),
-      notes: folder.notes.map((note) => ({
-        id: note.id,
-        title: note.title ?? null,
-      })),
-    }))
+    try {
+      const response: BuildContextResponse = await chatApi.buildContext({
+        notebook_id: notebookId,
+        context_config,
+        folder_structure,
+      })
 
-    setTokenCount(response.token_count)
-    setCharCount(response.char_count)
+      const folder_summary = buildFolderSummary(folder_structure)
 
-    return {
-      ...response.context,
-      folder_structure,
+      setTokenCount(response.token_count)
+      setCharCount(response.char_count)
+
+      return {
+        ...response.context,
+        folder_structure,
+        folder_summary,
+      }
+    } catch (error) {
+      console.warn('Falling back to local context builder:', error)
+      return buildLocalContextFallback()
     }
-  }, [notebookId, sources, notes, contextSelections, folderContexts])
+  }, [
+    notebookId,
+    sources,
+    notes,
+    contextSelections,
+    buildFolderStructure,
+    buildFolderSummary,
+    buildLocalContextFallback,
+    ensureFolderSourcesInContextConfig,
+  ])
 
   // Send message (with streaming)
   const sendMessage = useCallback(async (message: string, modelOverride?: string) => {

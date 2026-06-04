@@ -30,7 +30,9 @@ export interface CommandJobStatusResponse {
 
 export const insightsApi = {
   listForSource: async (sourceId: string) => {
-    const response = await apiClient.get<SourceInsightResponse[]>(`/sources/${sourceId}/insights`)
+    // Strip SurrealDB table prefix to avoid colons in URL path
+    const cleanId = sourceId.startsWith('source:') ? sourceId.slice(7) : sourceId
+    const response = await apiClient.get<SourceInsightResponse[]>(`/sources/${cleanId}/insights`)
     return response.data
   },
 
@@ -40,15 +42,19 @@ export const insightsApi = {
   },
 
   create: async (sourceId: string, data: CreateSourceInsightRequest) => {
+    // Strip SurrealDB table prefix to avoid colons in URL path
+    const cleanId = sourceId.startsWith('source:') ? sourceId.slice(7) : sourceId
     const response = await apiClient.post<InsightCreationResponse>(
-      `/sources/${sourceId}/insights`,
+      `/sources/${cleanId}/insights`,
       data
     )
     return response.data
   },
 
   delete: async (insightId: string) => {
-    await apiClient.delete(`/insights/${insightId}`)
+    // Strip any table prefix (e.g. "source_insight:xxx" → "xxx")
+    const cleanId = insightId.includes(':') ? insightId.split(':').slice(1).join(':') : insightId
+    await apiClient.delete(`/insights/${cleanId}`)
   },
 
   getCommandStatus: async (commandId: string) => {

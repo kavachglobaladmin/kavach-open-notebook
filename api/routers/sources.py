@@ -3284,11 +3284,16 @@ def _extract_profile_graph(text: str) -> dict:
 async def get_source(source_id: str, include_text: bool = True):
     """Get a specific source by ID. Pass include_text=false to skip full_text for faster loads."""
     try:
-        source = await Source.get(source_id)
+        # Normalize ID — add table prefix if missing
+        full_source_id = (
+            source_id if source_id.startswith("source:")
+            else f"source:{source_id}"
+        )
+        source = await Source.get(full_source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        # Get status information if command exists
+        # Get status information if command exists — never let this crash the endpoint
         status = None
         processing_info = None
         if source.command:
@@ -3298,17 +3303,27 @@ async def get_source(source_id: str, include_text: bool = True):
             except Exception as e:
                 logger.warning(f"Failed to get status for source {source_id}: {e}")
                 status = "unknown"
+                processing_info = None
 
-        embedded_chunks = await source.get_embedded_chunks()
+        # Embedded chunk count — default to 0 on failure
+        try:
+            embedded_chunks = await source.get_embedded_chunks()
+        except Exception as e:
+            logger.warning(f"Failed to get embedded chunks for source {source_id}: {e}")
+            embedded_chunks = 0
 
         # Get associated notebooks
-        notebooks_query = await repo_query(
-            "SELECT VALUE out FROM reference WHERE in = $source_id",
-            {"source_id": ensure_record_id(source.id or source_id)},
-        )
-        notebook_ids = (
-            [str(nb_id) for nb_id in notebooks_query] if notebooks_query else []
-        )
+        try:
+            notebooks_query = await repo_query(
+                "SELECT VALUE out FROM reference WHERE in = $source_id",
+                {"source_id": ensure_record_id(source.id or source_id)},
+            )
+            notebook_ids = (
+                [str(nb_id) for nb_id in notebooks_query] if notebooks_query else []
+            )
+        except Exception as e:
+            logger.warning(f"Failed to get notebooks for source {source_id}: {e}")
+            notebook_ids = []
 
         return SourceResponse(
             id=source.id or "",
@@ -3695,13 +3710,19 @@ async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Q
 async def delete_source(source_id: str):
     """Delete a source."""
     try:
-        source = await Source.get(source_id)
+        full_source_id = (
+            source_id if source_id.startswith("source:")
+            else f"source:{source_id}"
+        )
+        source = await Source.get(full_source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
         await source.delete()
 
         return {"message": "Source deleted successfully"}
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
     except HTTPException:
         raise
     except Exception as e:
@@ -3713,22 +3734,38 @@ async def delete_source(source_id: str):
 async def get_source_insights(source_id: str):
     """Get all insights for a specific source."""
     try:
-        source = await Source.get(source_id)
+        # Normalize ID — add table prefix if missing
+        full_source_id = (
+            source_id if source_id.startswith("source:")
+            else f"source:{source_id}"
+        )
+        source = await Source.get(full_source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        insights = await source.get_insights()
-        return [
-            SourceInsightResponse(
-                id=insight.id or "",
-                source_id=source_id,
-                insight_type=insight.insight_type,
-                content=insight.content,
-                created=str(insight.created),
-                updated=str(insight.updated),
-            )
-            for insight in insights
-        ]
+        try:
+            insights = await source.get_insights()
+        except Exception as e:
+            logger.warning(f"Could not fetch insights for source {source_id}: {e}")
+            insights = []
+
+        result = []
+        for insight in insights:
+            try:
+                result.append(
+                    SourceInsightResponse(
+                        id=insight.id or "",
+                        source_id=source_id,
+                        insight_type=insight.insight_type or "",
+                        content=insight.content or "",
+                        created=str(insight.created) if insight.created else "",
+                        updated=str(insight.updated) if insight.updated else "",
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Skipping malformed insight for source {source_id}: {e}")
+                continue
+        return result
     except HTTPException:
         raise
     except Exception as e:

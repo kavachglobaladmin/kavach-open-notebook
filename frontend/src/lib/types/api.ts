@@ -259,6 +259,19 @@ export interface SendNotebookChatMessageRequest {
   context: {
     sources: Array<Record<string, unknown>>
     notes: Array<Record<string, unknown>>
+    folder_structure?: Array<{
+      id: string
+      name: string
+      sources: Array<{
+        id: string
+        title: string | null
+      }>
+      notes: Array<{
+        id: string
+        title: string | null
+      }>
+    }>
+    folder_summary?: string
   }
   model_override?: string
 }
@@ -269,6 +282,18 @@ export interface BuildContextRequest {
     sources: Record<string, string>
     notes: Record<string, string>
   }
+  folder_structure?: Array<{
+    id: string
+    name: string
+    sources: Array<{
+      id: string
+      title: string | null
+    }>
+    notes: Array<{
+      id: string
+      title: string | null
+    }>
+  }>
 }
 
 export interface BuildContextResponse {
@@ -287,6 +312,7 @@ export interface BuildContextResponse {
         title: string | null
       }>
     }>
+    folder_summary?: string
   }
   token_count: number
   char_count: number

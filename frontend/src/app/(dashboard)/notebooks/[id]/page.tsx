@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { useQueries } from '@tanstack/react-query'
 import { ChevronLeft, FolderOpen, MessageSquare, Plus } from 'lucide-react'
 import Link from 'next/link'
 
@@ -11,34 +10,21 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { notesApi } from '@/lib/api/notes'
-import { QUERY_KEYS } from '@/lib/api/query-client'
-import { sourcesApi } from '@/lib/api/sources'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useNotebook, useNotebooks } from '@/lib/hooks/use-notebooks'
 import { getDescendantIds, useSubFolders } from '@/lib/hooks/use-sub-folders'
+import { useSubFolderAggregateData } from '@/lib/hooks/use-sub-folder-aggregate-data'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { ChatColumn } from '../components/ChatColumn'
 import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
 import { SubFolderCard } from '../components/SubFolderCard'
-import type { NoteResponse, SourceListResponse } from '@/lib/types/api'
 
 export type ContextMode = 'off' | 'insights' | 'full'
 
 export interface ContextSelections {
   sources: Record<string, ContextMode>
   notes: Record<string, ContextMode>
-}
-
-function mergeById<T extends { id: string }>(collections: T[][]): T[] {
-  const deduped = new Map<string, T>()
-  collections.forEach((collection) => {
-    collection.forEach((item) => {
-      deduped.set(item.id, item)
-    })
-  })
-  return Array.from(deduped.values())
 }
 
 export default function NotebookFolderPage() {
@@ -51,11 +37,13 @@ export default function NotebookFolderPage() {
   const queryFromUrl = searchParams?.get('q')?.trim() || ''
 
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
-  const chatTitle = 'Chat with Super'
+  const chatTitle = 'Chat with All Notebooks' // TODO: allow customising this
 
   const { childIds, addChild, removeChild } = useSubFolders(notebookId)
-  const contextNotebookIds = getDescendantIds(notebookId)
-  const contextNotebookIdKey = contextNotebookIds.join('|')
+  const contextNotebookIds = useMemo(
+    () => Array.from(new Set([...childIds, ...getDescendantIds(notebookId)])),
+    [childIds, notebookId],
+  )
 
   const { data: allNotebooks } = useNotebooks(false)
   const { data: allArchivedNotebooks } = useNotebooks(true)
@@ -65,101 +53,13 @@ export default function NotebookFolderPage() {
     [allNotebooks, allArchivedNotebooks],
   )
   const subFolders = allNotebooksFlat.filter((nb) => childIds.includes(nb.id))
-  const contextFolders = allNotebooksFlat.filter((nb) => contextNotebookIds.includes(nb.id))
-  const contextFolderNames = contextFolders.map((folder) => folder.name).filter(Boolean)
-
-  const sourcesQueries = useQueries({
-    queries: contextNotebookIds.map((id) => ({
-      queryKey: QUERY_KEYS.sources(id),
-      queryFn: () =>
-        sourcesApi.list({
-          notebook_id: id,
-          limit: 500,
-          offset: 0,
-          sort_by: 'updated',
-          sort_order: 'desc',
-        }),
-      enabled: !!id,
-    })),
-  })
-
-  const notesQueries = useQueries({
-    queries: contextNotebookIds.map((id) => ({
-      queryKey: QUERY_KEYS.notes(id),
-      queryFn: () => notesApi.list({ notebook_id: id }),
-      enabled: !!id,
-    })),
-  })
-
-  const sourcesDataStamp = sourcesQueries.map((query) => query.dataUpdatedAt).join('|')
-  const notesDataStamp = notesQueries.map((query) => query.dataUpdatedAt).join('|')
-
-  const sourcesCacheRef = useRef<{ stamp: string; value: SourceListResponse[] }>({
-    stamp: '',
-    value: [],
-  })
-  if (sourcesCacheRef.current.stamp !== sourcesDataStamp) {
-    sourcesCacheRef.current = {
-      stamp: sourcesDataStamp,
-      value: mergeById<SourceListResponse>(sourcesQueries.map((query) => query.data ?? [])),
-    }
-  }
-  const sources = sourcesCacheRef.current.value
-
-  const notesCacheRef = useRef<{ stamp: string; value: NoteResponse[] }>({
-    stamp: '',
-    value: [],
-  })
-  if (notesCacheRef.current.stamp !== notesDataStamp) {
-    notesCacheRef.current = {
-      stamp: notesDataStamp,
-      value: mergeById<NoteResponse>(notesQueries.map((query) => query.data ?? [])),
-    }
-  }
-  const notes = notesCacheRef.current.value
-
-  const folderContextsCacheRef = useRef<{
-    stamp: string
-    value: Array<{
-      id: string
-      name: string
-      sources: SourceListResponse[]
-      notes: NoteResponse[]
-    }>
-  }>({
-    stamp: '',
-    value: [],
-  })
-  const folderContextsStamp = `${contextNotebookIdKey}::${sourcesDataStamp}::${notesDataStamp}`
-  if (folderContextsCacheRef.current.stamp !== folderContextsStamp) {
-    const folderLookup = new Map(allNotebooksFlat.map((folder) => [folder.id, folder]))
-    folderContextsCacheRef.current = {
-      stamp: folderContextsStamp,
-      value: contextNotebookIds
-        .map((folderId, index) => {
-          const folder = folderLookup.get(folderId)
-          if (!folder) return null
-
-          return {
-            id: folder.id,
-            name: folder.name,
-            sources: sourcesQueries[index]?.data ?? [],
-            notes: notesQueries[index]?.data ?? [],
-          }
-        })
-        .filter((folder): folder is {
-          id: string
-          name: string
-          sources: SourceListResponse[]
-          notes: NoteResponse[]
-        } => folder !== null),
-    }
-  }
-  const folderContexts = folderContextsCacheRef.current.value
-
-  const sourcesLoading = sourcesQueries.some((query) => query.isLoading)
-  const notesLoading = notesQueries.some((query) => query.isLoading)
-  const contextLoading = sourcesLoading || notesLoading
+  const {
+    sources,
+    notes,
+    folderContexts,
+    loading: contextLoading,
+  } = useSubFolderAggregateData(contextNotebookIds)
+  const contextFolderNames = folderContexts.map((folder) => folder.name).filter(Boolean)
 
   const isDesktop = useIsDesktop()
   const [mobileActiveTab, setMobileActiveTab] = useState<'folders' | 'chat'>('folders')

@@ -13,6 +13,19 @@ import {
   UpdateSourceRequest 
 } from '@/lib/types/api'
 
+/**
+ * Strip SurrealDB table prefix from a source ID.
+ * "source:abc123" → "abc123"
+ * "abc123"        → "abc123"
+ *
+ * Colons in URL path segments are not valid and cause FastAPI to misparse
+ * the route, resulting in 500 / 404 errors. Always use this before
+ * embedding an ID in a URL path.
+ */
+function stripSourcePrefix(id: string): string {
+  return id.startsWith('source:') ? id.slice(7) : id
+}
+
 export const sourcesApi = {
   list: async (params?: {
     notebook_id?: string
@@ -26,7 +39,8 @@ export const sourcesApi = {
   },
 
   get: async (id: string) => {
-    const response = await apiClient.get<SourceDetailResponse>(`/sources/${id}`)
+    const cleanId = stripSourcePrefix(id)
+    const response = await apiClient.get<SourceDetailResponse>(`/sources/${cleanId}`)
     return response.data
   },
 
@@ -34,7 +48,6 @@ export const sourcesApi = {
     // Always use FormData to match backend expectations
     const formData = new FormData()
     
-    // Add basic fields
     formData.append('type', data.type)
     
     if (data.notebooks !== undefined) {
@@ -70,16 +83,19 @@ export const sourcesApi = {
   },
 
   update: async (id: string, data: UpdateSourceRequest) => {
-    const response = await apiClient.put<SourceListResponse>(`/sources/${id}`, data)
+    const cleanId = stripSourcePrefix(id)
+    const response = await apiClient.put<SourceListResponse>(`/sources/${cleanId}`, data)
     return response.data
   },
 
   delete: async (id: string) => {
-    await apiClient.delete(`/sources/${id}`)
+    const cleanId = stripSourcePrefix(id)
+    await apiClient.delete(`/sources/${cleanId}`)
   },
 
   status: async (id: string) => {
-    const response = await apiClient.get<SourceStatusResponse>(`/sources/${id}/status`)
+    const cleanId = stripSourcePrefix(id)
+    const response = await apiClient.get<SourceStatusResponse>(`/sources/${cleanId}/status`)
     return response.data
   },
 
@@ -99,7 +115,8 @@ export const sourcesApi = {
   },
 
   retry: async (id: string, notebookId?: string) => {
-    const response = await apiClient.post<SourceResponse>(`/sources/${id}/retry`, undefined, {
+    const cleanId = stripSourcePrefix(id)
+    const response = await apiClient.post<SourceResponse>(`/sources/${cleanId}/retry`, undefined, {
       params: notebookId ? { notebook_id: notebookId } : undefined,
     })
     return response.data
@@ -116,14 +133,16 @@ export const sourcesApi = {
   },
 
   getProfileGraph: async (sourceId: string, modelId?: string) => {
+    const cleanId = stripSourcePrefix(sourceId)
     const params = modelId ? { model_id: modelId } : {}
-    const response = await apiClient.get<ProfileGraphData>(`/sources/${encodeURIComponent(sourceId)}/profile-graph`, { params })
+    const response = await apiClient.get<ProfileGraphData>(`/sources/${cleanId}/profile-graph`, { params })
     return response.data
   },
 
   getProfileImage: async (sourceId: string): Promise<string | null> => {
     try {
-      const response = await apiClient.get(`/sources/${encodeURIComponent(sourceId)}/profile-image`, { responseType: 'blob' })
+      const cleanId = stripSourcePrefix(sourceId)
+      const response = await apiClient.get(`/sources/${cleanId}/profile-image`, { responseType: 'blob' })
       return URL.createObjectURL(response.data)
     } catch {
       return null
@@ -131,27 +150,31 @@ export const sourcesApi = {
   },
 
   getWordCloud: async (sourceId: string) => {
-    const response = await apiClient.get<{ words: { text: string; value: number }[]; source_id: string }>(`/sources/${encodeURIComponent(sourceId)}/word-cloud`)
+    const cleanId = stripSourcePrefix(sourceId)
+    const response = await apiClient.get<{ words: { text: string; value: number }[]; source_id: string }>(`/sources/${cleanId}/word-cloud`)
     return response.data
   },
 
   getPersonContext: async (sourceId: string, name: string): Promise<{ paragraphs: string[]; name: string }> => {
-    const response = await apiClient.get(`/sources/${encodeURIComponent(sourceId)}/person-context`, { params: { name } })
+    const cleanId = stripSourcePrefix(sourceId)
+    const response = await apiClient.get(`/sources/${cleanId}/person-context`, { params: { name } })
     return response.data
   },
 
   getPartIV: async (sourceId: string) => {
+    const cleanId = stripSourcePrefix(sourceId)
     const response = await apiClient.get<{
       sections: Record<string, string>
       raw: string
       source_id: string
       found: boolean
-    }>(`/sources/${encodeURIComponent(sourceId)}/part-iv`)
+    }>(`/sources/${cleanId}/part-iv`)
     return response.data
   },
 
   downloadFile: async (id: string): Promise<AxiosResponse<Blob>> => {
-    return apiClient.get(`/sources/${id}/download`, {
+    const cleanId = stripSourcePrefix(id)
+    return apiClient.get(`/sources/${cleanId}/download`, {
       responseType: 'blob',
     })
   },

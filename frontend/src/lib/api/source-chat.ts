@@ -8,49 +8,74 @@ import {
   SendMessageRequest
 } from '@/lib/types/api'
 
+/**
+ * Strip SurrealDB table prefix from a source ID.
+ * "source:abc123" → "abc123"
+ * Colons in URL path segments cause FastAPI route-matching failures.
+ */
+function cleanSourceId(id: string): string {
+  return id.startsWith('source:') ? id.slice(7) : id
+}
+
+/**
+ * Strip SurrealDB table prefix from a session ID.
+ * "chat_session:abc123" → "abc123"
+ */
+function cleanSessionId(id: string): string {
+  return id.startsWith('chat_session:') ? id.slice(13) : id
+}
+
 export const sourceChatApi = {
   // Session management
   createSession: async (sourceId: string, data: Omit<CreateSourceChatSessionRequest, 'source_id'>) => {
-    // Extract clean ID without "source:" prefix for the request body
-    const cleanId = sourceId.startsWith('source:') ? sourceId.slice(7) : sourceId
+    const cleanId = cleanSourceId(sourceId)
     const response = await apiClient.post<SourceChatSession>(
-      `/sources/${sourceId}/chat/sessions`,
-      { ...data, source_id: cleanId }  // Include source_id in the request body
+      `/sources/${cleanId}/chat/sessions`,
+      { ...data, source_id: cleanId }
     )
     return response.data
   },
 
   listSessions: async (sourceId: string) => {
+    const cleanId = cleanSourceId(sourceId)
     const response = await apiClient.get<SourceChatSession[]>(
-      `/sources/${sourceId}/chat/sessions`
+      `/sources/${cleanId}/chat/sessions`
     )
     return response.data
   },
 
   getSession: async (sourceId: string, sessionId: string) => {
+    const cleanSrc = cleanSourceId(sourceId)
+    const cleanSess = cleanSessionId(sessionId)
     const response = await apiClient.get<SourceChatSessionWithMessages>(
-      `/sources/${sourceId}/chat/sessions/${sessionId}`
+      `/sources/${cleanSrc}/chat/sessions/${cleanSess}`
     )
     return response.data
   },
 
   updateSession: async (sourceId: string, sessionId: string, data: UpdateSourceChatSessionRequest) => {
+    const cleanSrc = cleanSourceId(sourceId)
+    const cleanSess = cleanSessionId(sessionId)
     const response = await apiClient.put<SourceChatSession>(
-      `/sources/${sourceId}/chat/sessions/${sessionId}`,
+      `/sources/${cleanSrc}/chat/sessions/${cleanSess}`,
       data
     )
     return response.data
   },
 
   deleteSession: async (sourceId: string, sessionId: string) => {
-    await apiClient.delete(`/sources/${sourceId}/chat/sessions/${sessionId}`)
+    const cleanSrc = cleanSourceId(sourceId)
+    const cleanSess = cleanSessionId(sessionId)
+    await apiClient.delete(`/sources/${cleanSrc}/chat/sessions/${cleanSess}`)
   },
 
   // Messaging with streaming
   sendMessage: async (sourceId: string, sessionId: string, data: SendMessageRequest) => {
+    const cleanSrc = cleanSourceId(sourceId)
+    const cleanSess = cleanSessionId(sessionId)
     const apiUrl = await getApiUrl()
     const baseURL = apiUrl ? `${apiUrl}/api` : '/api'
-    const url = `${baseURL}/sources/${sourceId}/chat/sessions/${sessionId}/messages`
+    const url = `${baseURL}/sources/${cleanSrc}/chat/sessions/${cleanSess}/messages`
 
     // Build auth headers — must match apiClient interceptor exactly.
     // The backend PasswordAuthMiddleware validates the raw API password,

@@ -524,7 +524,7 @@ class Source(ObjectModel):
         return data
 
     async def delete(self) -> bool:
-        """Delete source and clean up associated file, embeddings, and insights."""
+        """Delete source and clean up associated file, relationships, embeddings, and insights."""
         # Clean up uploaded file if it exists
         if self.asset and self.asset.file_path:
             file_path = Path(self.asset.file_path)
@@ -559,6 +559,29 @@ class Source(ObjectModel):
                 f"Failed to delete embeddings/insights for source {self.id}: {e}. "
                 "Continuing with source deletion."
             )
+
+        # Remove notebook/source chat relationships and generation-tracking records.
+        # These tables may not exist in every deployment, so each failure is non-fatal.
+        cleanup_queries = [
+            ("DELETE reference WHERE in = $source_id", "reference links"),
+            ("DELETE refers_to WHERE out = $source_id", "source chat links"),
+            (
+                "DELETE source_insight_generation WHERE source = $source_id",
+                "insight generation records",
+            ),
+            (
+                "DELETE source_insight_tombstone WHERE source = $source_id",
+                "insight tombstones",
+            ),
+        ]
+        for query, label in cleanup_queries:
+            try:
+                await repo_query(query, {"source_id": source_id})
+            except Exception as e:
+                logger.warning(
+                    f"Failed to delete {label} for source {self.id}: {e}. "
+                    "Continuing with source deletion."
+                )
 
         # Call parent delete to remove database record
         return await super().delete()

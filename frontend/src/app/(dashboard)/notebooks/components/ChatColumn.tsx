@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useMemo } from 'react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { ConfigureChatModal } from '@/components/source/ConfigureChatModal'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
@@ -13,6 +14,15 @@ import {
   BaseChatSession,
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
+import { ReferenceType } from '@/lib/utils/source-references'
+
+function toBareRecordId(value: string | null | undefined, prefix: 'source' | 'note') {
+  const normalized = value?.trim() ?? ''
+  if (!normalized) return ''
+  return normalized.startsWith(`${prefix}:`)
+    ? normalized.slice(prefix.length + 1)
+    : normalized
+}
 
 interface ChatColumnProps {
   notebookId: string
@@ -47,6 +57,61 @@ export function ChatColumn({
 }: ChatColumnProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [chatConfig, setChatConfig] = useState({ goal: 'Default', length: 'Default' })
+
+  const referenceCatalog = useMemo(() => {
+    const catalog = new Map<string, {
+      type: ReferenceType
+      id: string
+      title?: string | null
+      notebookNames: string[]
+    }>()
+
+    folderContexts.forEach((folder) => {
+      folder.sources.forEach((source) => {
+        const bareId = toBareRecordId(source.id, 'source')
+        if (!bareId) return
+
+        const key = `source:${bareId}`
+        const existing = catalog.get(key)
+        if (existing) {
+          if (!existing.notebookNames.includes(folder.name)) {
+            existing.notebookNames.push(folder.name)
+          }
+          if (!existing.title && source.title) existing.title = source.title
+          return
+        }
+        catalog.set(key, {
+          type: 'source',
+          id: bareId,
+          title: source.title ?? null,
+          notebookNames: [folder.name],
+        })
+      })
+
+      folder.notes.forEach((note) => {
+        const bareId = toBareRecordId(note.id, 'note')
+        if (!bareId) return
+
+        const key = `note:${bareId}`
+        const existing = catalog.get(key)
+        if (existing) {
+          if (!existing.notebookNames.includes(folder.name)) {
+            existing.notebookNames.push(folder.name)
+          }
+          if (!existing.title && note.title) existing.title = note.title
+          return
+        }
+        catalog.set(key, {
+          type: 'note',
+          id: bareId,
+          title: note.title ?? null,
+          notebookNames: [folder.name],
+        })
+      })
+    })
+
+    return Array.from(catalog.values())
+  }, [folderContexts])
 
   const chat = useNotebookChat({
     notebookId,
@@ -141,6 +206,7 @@ export function ChatColumn({
             sourcesFull: selectedFullSourceIds.length,
             notesCount: selectedNoteIds.length,
           }}
+          referenceCatalog={referenceCatalog}
           suggestedQuestions={chat.suggestedQuestions}
         />
       </div>

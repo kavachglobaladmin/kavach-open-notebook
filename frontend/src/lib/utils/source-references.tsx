@@ -31,6 +31,8 @@ export interface ReferenceData {
   id: string
 }
 
+const REFERENCE_PATTERN = /\b(source_insight|note|source)\s*:\s*([a-zA-Z0-9_]+)/g
+
 /**
  * Parse source references from text
  *
@@ -44,13 +46,11 @@ export interface ReferenceData {
  * @returns Array of parsed references
  */
 export function parseSourceReferences(text: string): ParsedReference[] {
-  // Match pattern: (source_insight|note|source):alphanumeric_id
-  // This handles references both inside and outside brackets
-  const pattern = /(source_insight|note|source):([a-zA-Z0-9_]+)/g
   const matches: ParsedReference[] = []
+  REFERENCE_PATTERN.lastIndex = 0
 
   let match
-  while ((match = pattern.exec(text)) !== null) {
+  while ((match = REFERENCE_PATTERN.exec(text)) !== null) {
     const type = match[1] as ReferenceType
     const id = match[2]
 
@@ -59,7 +59,7 @@ export function parseSourceReferences(text: string): ParsedReference[] {
       id,
       originalText: match[0],
       startIndex: match.index,
-      endIndex: pattern.lastIndex
+      endIndex: REFERENCE_PATTERN.lastIndex
     })
   }
 
@@ -173,11 +173,11 @@ export function convertSourceReferences(
  */
 export function convertReferencesToMarkdownLinks(text: string): string {
   // Step 1: Find ALL references using simple greedy pattern
-  const refPattern = /(source_insight|note|source):([a-zA-Z0-9_]+)/g
   const references: Array<{ type: string; id: string; index: number; length: number }> = []
+  REFERENCE_PATTERN.lastIndex = 0
 
   let match
-  while ((match = refPattern.exec(text)) !== null) {
+  while ((match = REFERENCE_PATTERN.exec(text)) !== null) {
     const type = match[1]
     const id = match[2]
 

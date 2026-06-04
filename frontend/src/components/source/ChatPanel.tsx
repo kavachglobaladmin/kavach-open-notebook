@@ -3,10 +3,8 @@
 import React, { useState, useRef, useEffect, useId, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Bot, User, Send, FileText, Lightbulb, StickyNote, Clock } from 'lucide-react'
+import { Bot, User, Send, Lightbulb, Clock } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -14,11 +12,15 @@ import {
   SourceChatContextIndicator,
   BaseChatSession
 } from '@/lib/types/api'
-import { ModelSelector } from './ModelSelector'
 import { ContextIndicator } from '@/components/common/ContextIndicator'
 import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
-import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
+import {
+  convertReferencesToCompactMarkdown,
+  createCompactReferenceLinkComponent,
+  parseSourceReferences,
+  ReferenceType,
+} from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from '@/lib/notifications/toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -38,7 +40,6 @@ interface ChatPanelProps {
   contextIndicators: SourceChatContextIndicator | null
   onSendMessage: (message: string, modelOverride?: string) => void
   modelOverride?: string
-  onModelChange?: (model?: string) => void
   // Session management props
   sessions?: BaseChatSession[]
   currentSessionId?: string | null
@@ -66,6 +67,13 @@ interface ChatPanelProps {
   hideModelSelector?: boolean
   // When provided, overrides the auto-generated "N sources" line in the header
   subtitleLine?: string
+  // Optional source catalog used to show citation details under answers
+  referenceCatalog?: Array<{
+    type: ReferenceType
+    id: string
+    title?: string | null
+    notebookNames?: string[]
+  }>
 }
 
 export function ChatPanel({
@@ -75,7 +83,6 @@ export function ChatPanel({
   contextIndicators,
   onSendMessage,
   modelOverride,
-  onModelChange,
   sessions = [],
   currentSessionId,
   onCreateSession,
@@ -94,7 +101,10 @@ export function ChatPanel({
   sourceInsightsCount,
   hideModelSelector = false,
   subtitleLine,
+  referenceCatalog = [],
 }: ChatPanelProps) {
+  void sourceTitle
+  void hideModelSelector
   const { t } = useTranslation()
   const chatInputId = useId()
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
@@ -102,6 +112,7 @@ export function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isAtBottomRef = useRef(true)
   const prevMessageCountRef = useRef(0)
+  const modelOverrideRef = useRef(modelOverride)
   const { openModal } = useModalManager()
 
   const handleReferenceClick = (type: string, id: string) => {
@@ -115,6 +126,10 @@ export function ChatPanel({
 
   // Memoize the send message callback to prevent unnecessary re-renders
   const memoizedOnSendMessage = useCallback(onSendMessage, [onSendMessage])
+
+  useEffect(() => {
+    modelOverrideRef.current = modelOverride
+  }, [modelOverride])
 
   // Track if user is scrolled to bottom
   const handleScroll = useCallback(() => {
@@ -149,9 +164,9 @@ export function ChatPanel({
 
   const handleSend = useCallback((messageText: string) => {
     if (messageText.trim() && !isStreaming) {
-      onSendMessage(messageText.trim(), modelOverride)
+      onSendMessage(messageText.trim(), modelOverrideRef.current)
     }
-  }, [isStreaming, onSendMessage, modelOverride])
+  }, [isStreaming, onSendMessage])
 
   const keyHint = 'Enter'
 
@@ -295,6 +310,7 @@ export function ChatPanel({
                         <AIMessageContent
                           content={message.content}
                           onReferenceClick={memoizedHandleReferenceClick}
+                          referenceCatalog={referenceCatalog}
                         />
                       )
                     ) : (
@@ -393,8 +409,6 @@ export function ChatPanel({
       <ChatInputArea
         onSendMessage={handleSend}
         isStreaming={isStreaming}
-        modelOverride={modelOverride}
-        onModelChange={hideModelSelector ? undefined : onModelChange}
         chatInputId={chatInputId}
         keyHint={keyHint}
         t={t}
@@ -423,45 +437,75 @@ function TypingDots() {
 // Helper component to render AI messages with clickable references - memoized for performance
 const AIMessageContent = React.memo(function AIMessageContentComponent({
   content,
-  onReferenceClick
+  onReferenceClick,
+  referenceCatalog = [],
 }: {
   content: string
   onReferenceClick: (type: string, id: string) => void
+  referenceCatalog?: Array<{
+    type: ReferenceType
+    id: string
+    title?: string | null
+    notebookNames?: string[]
+  }>
 }) {
   const { t } = useTranslation()
   const markdownWithCompactRefs = convertReferencesToCompactMarkdown(content, t.common.references)
   const LinkComponent = createCompactReferenceLinkComponent(onReferenceClick)
+  const referencedSources = useMemo(() => {
+    const refs = parseSourceReferences(content)
+    const seen = new Set<string>()
+
+    return refs
+      .filter((ref) => ref.type === 'source' || ref.type === 'note' || ref.type === 'source_insight')
+      .filter((ref) => {
+        const key = `${ref.type}:${ref.id}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((ref) => {
+        const catalogEntry = referenceCatalog.find((entry) => entry.type === ref.type && entry.id === ref.id)
+        return {
+          ...ref,
+          title: catalogEntry?.title ?? null,
+          notebookNames: catalogEntry?.notebookNames ?? [],
+        }
+      })
+  }, [content, referenceCatalog])
 
   return (
-    <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: LinkComponent,
-          p: ({ children }) => <p className="mb-4">{children}</p>,
-          h1: ({ children }) => <h1 className="mb-4 mt-6">{children}</h1>,
-          h2: ({ children }) => <h2 className="mb-3 mt-5">{children}</h2>,
-          h3: ({ children }) => <h3 className="mb-3 mt-4">{children}</h3>,
-          h4: ({ children }) => <h4 className="mb-2 mt-4">{children}</h4>,
-          h5: ({ children }) => <h5 className="mb-2 mt-3">{children}</h5>,
-          h6: ({ children }) => <h6 className="mb-2 mt-3">{children}</h6>,
-          li: ({ children }) => <li className="mb-1">{children}</li>,
-          ul: ({ children }) => <ul className="mb-4 space-y-1">{children}</ul>,
-          ol: ({ children }) => <ol className="mb-4 space-y-1">{children}</ol>,
-          table: ({ children }) => (
-            <div className="my-4 overflow-x-auto">
-              <table className="min-w-full border-collapse border border-border">{children}</table>
-            </div>
-          ),
-          thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-          tbody: ({ children }) => <tbody>{children}</tbody>,
-          tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
-          th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
-          td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
-        }}
-      >
-        {markdownWithCompactRefs}
-      </ReactMarkdown>
+    <div className="space-y-3">
+      <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-blue-600 prose-a:break-all prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-p:mb-4 prose-p:leading-7 prose-li:mb-2">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: LinkComponent,
+            p: ({ children }) => <p className="mb-4">{children}</p>,
+            h1: ({ children }) => <h1 className="mb-4 mt-6">{children}</h1>,
+            h2: ({ children }) => <h2 className="mb-3 mt-5">{children}</h2>,
+            h3: ({ children }) => <h3 className="mb-3 mt-4">{children}</h3>,
+            h4: ({ children }) => <h4 className="mb-2 mt-4">{children}</h4>,
+            h5: ({ children }) => <h5 className="mb-2 mt-3">{children}</h5>,
+            h6: ({ children }) => <h6 className="mb-2 mt-3">{children}</h6>,
+            li: ({ children }) => <li className="mb-1">{children}</li>,
+            ul: ({ children }) => <ul className="mb-4 space-y-1">{children}</ul>,
+            ol: ({ children }) => <ol className="mb-4 space-y-1">{children}</ol>,
+            table: ({ children }) => (
+              <div className="my-4 overflow-x-auto">
+                <table className="min-w-full border-collapse border border-border">{children}</table>
+              </div>
+            ),
+            thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+            tbody: ({ children }) => <tbody>{children}</tbody>,
+            tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+            th: ({ children }) => <th className="border border-border px-3 py-2 text-left font-semibold">{children}</th>,
+            td: ({ children }) => <td className="border border-border px-3 py-2">{children}</td>,
+          }}
+        >
+          {markdownWithCompactRefs}
+        </ReactMarkdown>
+      </div>
     </div>
   )
 })
@@ -505,16 +549,12 @@ const SuggestedQuestionsCard = React.memo(function SuggestedQuestionsCardCompone
 const ChatInputArea = React.memo(function ChatInputAreaComponent({
   onSendMessage,
   isStreaming,
-  modelOverride,
-  onModelChange,
   chatInputId,
   keyHint,
   t,
 }: {
   onSendMessage: (message: string) => void
   isStreaming: boolean
-  modelOverride?: string
-  onModelChange?: (model?: string) => void
   chatInputId: string
   keyHint: string
   t: ReturnType<typeof useTranslation>['t']
@@ -580,10 +620,9 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
 }, (prevProps, nextProps) => {
   return (
     prevProps.isStreaming === nextProps.isStreaming &&
-    prevProps.modelOverride === nextProps.modelOverride &&
-    prevProps.onModelChange === nextProps.onModelChange &&
     prevProps.onSendMessage === nextProps.onSendMessage
   )
 })
+
 
 
