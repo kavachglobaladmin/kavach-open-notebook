@@ -542,7 +542,7 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
   return (
     <div className="flex-shrink-0 border-t border-slate-100 bg-white">
       {/* Model row — model selector only */}
-      {onModelChange && (
+      {/* {onModelChange && (
         <div className="flex items-center justify-end px-4 sm:px-5 pt-2.5 pb-1">
           <ModelSelector
             currentModel={modelOverride}
@@ -550,7 +550,7 @@ const ChatInputArea = React.memo(function ChatInputAreaComponent({
             disabled={isStreaming}
           />
         </div>
-      )}
+      )} */}
       {/* Input row */}
       <div className="flex gap-2 sm:gap-2.5 items-end px-4 sm:px-5 py-3">
         <Textarea

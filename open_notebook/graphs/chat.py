@@ -27,17 +27,27 @@ class ThreadState(TypedDict):
     model_override: Optional[str]
 
 
+STRICT_CONTEXT_INSTRUCTION = (
+    "Answer using ONLY the notebook folders/files in the provided context. "
+    "Do not use outside knowledge or guesswork. "
+    "If the answer is not explicitly supported by the context, say that you "
+    "could not find it in the selected folders/files."
+)
+
+
+def _build_system_prompt(state: ThreadState) -> str:
+    context = state.get("context", "") or ""
+    if context and len(context) > 1000:
+        context = context[:1000] + "...[truncated]"
+
+    limited_state = {**state, "context": context}
+    base_prompt = Prompter(prompt_template="chat/system").render(data=limited_state)  # type: ignore[arg-type]
+    return f"{STRICT_CONTEXT_INSTRUCTION}\n\n{base_prompt}"
+
+
 def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
     try:
-        # Limit context to first 1000 characters to speed up processing
-        context = state.get("context", "")
-        if context and len(context) > 1000:
-            context = context[:1000] + "...[truncated]"
-        
-        # Create limited state for prompt rendering
-        limited_state = {**state, "context": context}
-        
-        system_prompt = Prompter(prompt_template="chat/system").render(data=limited_state)  # type: ignore[arg-type]
+        system_prompt = _build_system_prompt(state)
         payload = [SystemMessage(content=system_prompt)] + state.get("messages", [])
         model_id = config.get("configurable", {}).get("model_id") or state.get(
             "model_override"
@@ -98,7 +108,7 @@ async def stream_model_tokens(
 ) -> AsyncIterator[str]:
     """Stream tokens from the model as they're generated."""
     try:
-        system_prompt = Prompter(prompt_template="chat/system").render(data=state)  # type: ignore[arg-type]
+        system_prompt = _build_system_prompt(state)
         payload = [SystemMessage(content=system_prompt)] + messages
 
         model = await provision_langchain_model(

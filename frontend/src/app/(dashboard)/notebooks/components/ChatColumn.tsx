@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { ConfigureChatModal } from '@/components/source/ConfigureChatModal'
+import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
 import {
   SourceListResponse,
@@ -19,6 +20,12 @@ interface ChatColumnProps {
   sources: SourceListResponse[]
   sourcesLoading?: boolean
   notes: NoteResponse[]
+  folderContexts?: Array<{
+    id: string
+    name: string
+    sources: SourceListResponse[]
+    notes: NoteResponse[]
+  }>
   /** Optional override for the chat panel header title */
   chatTitle?: string
   /** When provided, replaces the auto "N sources" subtitle line */
@@ -30,8 +37,10 @@ interface ChatColumnProps {
 export function ChatColumn({
   notebookId,
   contextSelections,
-  sources,
-  notes,
+  sources = [],
+  sourcesLoading = false,
+  notes = [],
+  folderContexts = [],
   chatTitle,
   subtitleLine,
   hideModelSelector = false,
@@ -44,6 +53,7 @@ export function ChatColumn({
     sources: sources ?? [],
     notes: notes ?? [],
     contextSelections,
+    folderContexts,
   })
 
   // Build context indicators for ChatPanel from current user selections.
@@ -84,6 +94,14 @@ export function ChatColumn({
     message_count: session.message_count,
     model_override: session.model_override ?? null,
   }))
+
+  if (sourcesLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
 
   return (
     <>

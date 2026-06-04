@@ -275,6 +275,18 @@ export interface BuildContextResponse {
   context: {
     sources: Array<Record<string, unknown>>
     notes: Array<Record<string, unknown>>
+    folder_structure?: Array<{
+      id: string
+      name: string
+      sources: Array<{
+        id: string
+        title: string | null
+      }>
+      notes: Array<{
+        id: string
+        title: string | null
+      }>
+    }>
   }
   token_count: number
   char_count: number

@@ -62,6 +62,154 @@ def _normalize_dict_values(data: Dict[str, Any]) -> Dict[str, str]:
     return normalized
 
 
+def _normalize_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+
+
+def _pick_first_value(data: Dict[str, str], candidates: List[str]) -> Optional[str]:
+    if not data:
+        return None
+    normalized = {
+        _normalize_key(key): clean_value
+        for key, value in data.items()
+        if (clean_value := _clean_scalar(value))
+    }
+    for candidate in candidates:
+        found = normalized.get(_normalize_key(candidate))
+        if found:
+            return found
+    return None
+
+
+def _normalize_columns(raw: Any) -> List[Dict[str, str]]:
+    if isinstance(raw, dict):
+        raw = [{"title": key, "description": value} for key, value in raw.items()]
+    if not isinstance(raw, list):
+        return []
+
+    columns: List[Dict[str, str]] = []
+    seen = set()
+    for item in raw:
+        if isinstance(item, dict):
+            title = _clean_scalar(item.get("title")) or _clean_scalar(item.get("label"))
+            description = (
+                _clean_scalar(item.get("description"))
+                or _clean_scalar(item.get("value"))
+                or _clean_scalar(item.get("detail"))
+            )
+            icon = _clean_scalar(item.get("icon")) or _clean_scalar(item.get("title")) or "info"
+        else:
+            title = None
+            description = _clean_scalar(item)
+            icon = "info"
+
+        if not title and not description:
+            continue
+        clean_title = title or (description[:80] if description else "Key Point")
+        clean_description = description or clean_title
+        key = (clean_title.lower(), clean_description.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        columns.append({
+            "title": clean_title,
+            "description": clean_description,
+            "icon": icon or "info",
+        })
+    return columns
+
+
+def _normalize_record_list(raw: Any, fields: List[str]) -> List[Dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    output: List[Dict[str, str]] = []
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        row = {field: _clean_scalar(item.get(field)) or "" for field in fields}
+        if not any(row.values()):
+            continue
+        key = tuple(row[field] for field in fields)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(row)
+    return output
+
+
+def _normalize_call_summary(raw: Any) -> Dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+
+    normalized = _normalize_dict_values(raw)
+    key_map = {
+        "incoming": ["incoming", "in", "incoming_calls"],
+        "outgoing": ["outgoing", "out", "outgoing_calls"],
+        "sms": ["sms", "message", "messages"],
+        "data": ["data", "internet", "gprs"],
+    }
+
+    call_summary: Dict[str, str] = {}
+    for target, aliases in key_map.items():
+        value = _pick_first_value(normalized, aliases)
+        if value:
+            call_summary[target] = value
+    return call_summary
+
+
+def _build_dynamic_sections(data: Dict[str, Any], skip_keys: set) -> List[Dict[str, Any]]:
+    sections: List[Dict[str, Any]] = []
+
+    for raw_key, raw_value in data.items():
+        key = _clean_scalar(raw_key)
+        if not key or raw_key in skip_keys:
+            continue
+
+        items: List[Dict[str, str]] = []
+        if isinstance(raw_value, dict):
+            pairs = _normalize_dict_values(raw_value)
+            items = [{"key": pair_key, "value": pair_value} for pair_key, pair_value in pairs.items()]
+        elif isinstance(raw_value, list):
+            for index, entry in enumerate(raw_value[:16], start=1):
+                if isinstance(entry, dict):
+                    pairs = _normalize_dict_values(entry)
+                    if not pairs:
+                        continue
+                    label = (
+                        _pick_first_value(
+                            pairs,
+                            ["title", "name", "label", "date", "id", "number", "type"],
+                        )
+                        or f"Item {index}"
+                    )
+                    detail_parts = [
+                        f"{pair_key}: {pair_value}"
+                        for pair_key, pair_value in pairs.items()
+                        if pair_value and pair_value != label
+                    ]
+                    detail = " | ".join(detail_parts) if detail_parts else label
+                    items.append({"key": label, "value": detail})
+                else:
+                    clean_entry = _clean_scalar(entry)
+                    if clean_entry:
+                        items.append({"key": f"Item {index}", "value": clean_entry})
+        else:
+            clean_scalar = _clean_scalar(raw_value)
+            if clean_scalar:
+                items = [{"key": key, "value": clean_scalar}]
+
+        if items:
+            sections.append({
+                "title": key.replace("_", " ").strip().title(),
+                "items": items[:12],
+            })
+        if len(sections) >= 8:
+            break
+
+    return sections
+
+
 def _infer_document_type(text: str, data: Dict[str, Any]) -> str:
     raw_type = (_clean_scalar(data.get("document_type")) or "").lower()
     if raw_type in {"mobile_cdr", "bank_statement", "ir_document", "general"}:
@@ -89,7 +237,11 @@ def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text:
     subject = _normalize_dict_values(normalized.get("subject", {}) if isinstance(normalized.get("subject"), dict) else {})
     personal = _normalize_dict_values(normalized.get("personal", {}) if isinstance(normalized.get("personal"), dict) else {})
     account = _normalize_dict_values(normalized.get("account", {}) if isinstance(normalized.get("account"), dict) else {})
+    profile_summary = _normalize_dict_values(normalized.get("profile_summary", {}) if isinstance(normalized.get("profile_summary"), dict) else {})
     financial_summary = _normalize_dict_values(normalized.get("financial_summary", {}) if isinstance(normalized.get("financial_summary"), dict) else {})
+
+    left_column = _normalize_columns(normalized.get("left_column") or normalized.get("left"))
+    right_column = _normalize_columns(normalized.get("right_column") or normalized.get("right"))
 
     highlight_items: List[Dict[str, str]] = []
     for item in normalized.get("highlights", []) or []:
@@ -110,55 +262,22 @@ def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text:
             "description": item_description,
         })
 
-    timeline_events: List[Dict[str, str]] = []
-    seen_timeline = set()
-    for item in normalized.get("timeline_events", []) or []:
-        if not isinstance(item, dict):
-            continue
-        date = _clean_scalar(item.get("date"))
-        event = _clean_scalar(item.get("event"))
-        if not date or not event:
-            continue
-        key = (date, event)
-        if key in seen_timeline:
-            continue
-        seen_timeline.add(key)
-        timeline_events.append({"date": date, "event": event})
+    timeline_events = _normalize_record_list(normalized.get("timeline_events"), ["date", "event"])
+    case_details = _normalize_record_list(normalized.get("case_details"), ["fir_no", "section", "date", "police_station", "status"])
+    associates = _normalize_record_list(normalized.get("associates"), ["name", "relation"])
+    top_contacts = _normalize_record_list(normalized.get("top_contacts"), ["number", "calls", "type"])
+    key_locations = _normalize_record_list(normalized.get("key_locations"), ["area", "cell_id", "count"])
+    key_transactions = _normalize_record_list(normalized.get("key_transactions"), ["date", "description", "amount", "type", "balance"])
+    call_summary = _normalize_call_summary(normalized.get("call_summary"))
 
-    case_details: List[Dict[str, str]] = []
-    seen_cases = set()
-    for item in normalized.get("case_details", []) or []:
-        if not isinstance(item, dict):
-            continue
-        case = {
-            "fir_no": _clean_scalar(item.get("fir_no")) or "",
-            "section": _clean_scalar(item.get("section")) or "",
-            "date": _clean_scalar(item.get("date")) or "",
-            "police_station": _clean_scalar(item.get("police_station")) or "",
-            "status": _clean_scalar(item.get("status")) or "",
-        }
-        if not any(case.values()):
-            continue
-        key = tuple(case.values())
-        if key in seen_cases:
-            continue
-        seen_cases.add(key)
-        case_details.append(case)
-
-    associates: List[Dict[str, str]] = []
-    seen_associates = set()
-    for item in normalized.get("associates", []) or []:
-        if not isinstance(item, dict):
-            continue
-        name = _clean_scalar(item.get("name"))
-        relation = _clean_scalar(item.get("relation")) or "associate"
-        if not name:
-            continue
-        key = (name, relation)
-        if key in seen_associates:
-            continue
-        seen_associates.add(key)
-        associates.append({"name": name, "relation": relation})
+    if not left_column and not right_column and highlight_items:
+        derived_columns = [
+            {"title": item["title"], "description": item["description"], "icon": item["title"]}
+            for item in highlight_items[:8]
+        ]
+        midpoint = max(1, len(derived_columns) // 2)
+        left_column = derived_columns[:midpoint]
+        right_column = derived_columns[midpoint:]
 
     stat = normalized.get("stat") if isinstance(normalized.get("stat"), dict) else {}
     stat_value = _clean_scalar(stat.get("value"))
@@ -170,6 +289,14 @@ def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text:
         elif normalized["document_type"] == "bank_statement" and financial_summary.get("closing_balance"):
             stat_value = financial_summary["closing_balance"]
             stat_label = stat_label or "Closing Balance"
+        elif normalized["document_type"] == "mobile_cdr" and call_summary:
+            incoming = int(re.sub(r"[^\d]", "", call_summary.get("incoming", "0")) or "0")
+            outgoing = int(re.sub(r"[^\d]", "", call_summary.get("outgoing", "0")) or "0")
+            sms = int(re.sub(r"[^\d]", "", call_summary.get("sms", "0")) or "0")
+            total_activity = incoming + outgoing + sms
+            if total_activity > 0:
+                stat_value = str(total_activity)
+                stat_label = stat_label or "Voice and SMS Activity"
         elif timeline_events:
             stat_value = str(len(timeline_events))
             stat_label = stat_label or "Timeline Events"
@@ -179,11 +306,74 @@ def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text:
 
     if not subtitle:
         if normalized["document_type"] == "ir_document":
-            subtitle = subject.get("Social Status") or subject.get("Status") or (timeline_events[0]["date"] if timeline_events else None)
+            subtitle = (
+                _pick_first_value(subject, ["social_status", "social status", "status"])
+                or _pick_first_value(profile_summary, ["status", "current_status", "current status"])
+                or (timeline_events[0]["date"] if timeline_events else None)
+            )
         elif normalized["document_type"] == "bank_statement":
-            subtitle = account.get("Bank") or account.get("Account Number") or financial_summary.get("closing_balance")
+            subtitle = (
+                _pick_first_value(account, ["bank", "bank_name", "account_number", "account number"])
+                or _pick_first_value(financial_summary, ["closing_balance", "closing balance"])
+            )
         elif normalized["document_type"] == "mobile_cdr":
-            subtitle = subject.get("Phone Number") or subject.get("Period")
+            subtitle = (
+                _pick_first_value(subject, ["phone_number", "phone number", "target number", "period"])
+                or _pick_first_value(personal, ["phone_number", "phone number"])
+            )
+
+    if not highlight_items:
+        auto_highlights: List[Dict[str, str]] = []
+        highlight_sources = [
+            ("Profile", subject),
+            ("Personal", personal),
+            ("Account", account),
+            ("Financial", financial_summary),
+            ("Summary", profile_summary),
+            ("Calls", call_summary),
+        ]
+        for group_name, mapping in highlight_sources:
+            if not mapping:
+                continue
+            first_pair = next(iter(mapping.items()), None)
+            if not first_pair:
+                continue
+            pair_key, pair_value = first_pair
+            auto_highlights.append({
+                "title": f"{group_name}: {pair_key}",
+                "subtitle": group_name,
+                "description": pair_value,
+            })
+            if len(auto_highlights) >= 6:
+                break
+        highlight_items = auto_highlights
+
+    dynamic_sections = _build_dynamic_sections(
+        normalized,
+        {
+            "source_id",
+            "document_type",
+            "header",
+            "stat",
+            "subject",
+            "personal",
+            "account",
+            "profile_summary",
+            "financial_summary",
+            "highlights",
+            "timeline_events",
+            "case_details",
+            "associates",
+            "top_contacts",
+            "key_locations",
+            "key_transactions",
+            "call_summary",
+            "left",
+            "right",
+            "left_column",
+            "right_column",
+        },
+    )
 
     result: Dict[str, Any] = {
         "source_id": normalized.get("source_id", ""),
@@ -192,11 +382,19 @@ def _normalize_infographic_output(data: Dict[str, Any], source_title: str, text:
         "subject": subject if subject else None,
         "personal": personal if personal else None,
         "account": account if account else None,
+        "profile_summary": profile_summary if profile_summary else None,
         "financial_summary": financial_summary if financial_summary else None,
+        "left_column": left_column,
+        "right_column": right_column,
         "highlights": highlight_items,
         "timeline_events": timeline_events,
         "case_details": case_details,
         "associates": associates,
+        "call_summary": call_summary if call_summary else None,
+        "top_contacts": top_contacts,
+        "key_locations": key_locations,
+        "key_transactions": key_transactions,
+        "dynamic_sections": dynamic_sections,
     }
     if stat_value or stat_label:
         result["stat"] = {"value": stat_value or "", "label": stat_label or ""}

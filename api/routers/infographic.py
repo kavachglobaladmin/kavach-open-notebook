@@ -169,6 +169,7 @@ class InfographicResponse(BaseModel):
     subject: Optional[Any] = None
     account: Optional[dict] = None
     personal: Optional[dict] = None
+    profile_summary: Optional[dict] = None
     financial_summary: Optional[dict] = None
     key_transactions: list = []
     call_summary: Optional[dict] = None
@@ -177,6 +178,7 @@ class InfographicResponse(BaseModel):
     case_details: list = []
     associates: list = []
     timeline_events: list = []
+    dynamic_sections: list = []
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -224,6 +226,7 @@ async def generate_infographic(
             subject=result.get("subject"),
             account=result.get("account"),
             personal=result.get("personal"),
+            profile_summary=result.get("profile_summary"),
             financial_summary=result.get("financial_summary"),
             key_transactions=_safe_list(result.get("key_transactions", [])),
             call_summary=result.get("call_summary"),
@@ -232,6 +235,7 @@ async def generate_infographic(
             case_details=_safe_list(result.get("case_details", [])),
             associates=_safe_list(result.get("associates", [])),
             timeline_events=_safe_list(result.get("timeline_events", [])),
+            dynamic_sections=_safe_list(result.get("dynamic_sections", [])),
         )
 
     except HTTPException:

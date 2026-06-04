@@ -120,6 +120,30 @@ class SuccessResponse(BaseModel):
     message: str = Field(..., description="Success message")
 
 
+async def _get_related_notebooks(record_table: str, record_id: str) -> list[dict[str, str]]:
+    relation_table = "reference" if record_table == "source" else "artifact"
+    try:
+        rows = await repo_query(
+            f"SELECT out AS notebook FROM {relation_table} WHERE in = $record_id",
+            {"record_id": ensure_record_id(record_id)},
+        )
+    except Exception:
+        return []
+
+    notebooks: list[dict[str, str]] = []
+    for row in rows or []:
+        notebook_obj = row.get("notebook")
+        if not notebook_obj:
+            continue
+        try:
+            notebook = Notebook(**notebook_obj) if isinstance(notebook_obj, dict) else await Notebook.get(str(notebook_obj))
+        except Exception:
+            continue
+        if notebook and notebook.id:
+            notebooks.append({"id": str(notebook.id), "name": notebook.name})
+    return notebooks
+
+
 @router.get("/chat/sessions", response_model=List[ChatSessionResponse])
 async def get_sessions(notebook_id: str = Query(..., description="Notebook ID")):
     """Get all chat sessions for a notebook."""
@@ -727,7 +751,7 @@ async def build_context(request: BuildContextRequest):
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
 
-        context_data: dict[str, list[dict[str, str]]] = {"sources": [], "notes": []}
+        context_data: dict[str, list[dict[str, Any]]] = {"sources": [], "notes": []}
         total_content = ""
 
         # Process context configuration if provided
@@ -752,10 +776,12 @@ async def build_context(request: BuildContextRequest):
 
                     if "insights" in status:
                         source_context = await source.get_context(context_size="short")
+                        source_context["notebooks"] = await _get_related_notebooks("source", source_id)
                         context_data["sources"].append(source_context)
                         total_content += str(source_context)
                     elif "full content" in status:
                         source_context = await source.get_context(context_size="long")
+                        source_context["notebooks"] = await _get_related_notebooks("source", source_id)
                         context_data["sources"].append(source_context)
                         total_content += str(source_context)
                 except Exception as e:
@@ -778,6 +804,7 @@ async def build_context(request: BuildContextRequest):
 
                     if "full content" in status:
                         note_context = note.get_context(context_size="long")
+                        note_context["notebooks"] = await _get_related_notebooks("note", note_id)
                         context_data["notes"].append(note_context)
                         total_content += str(note_context)
                 except Exception as e:
@@ -789,6 +816,7 @@ async def build_context(request: BuildContextRequest):
             for source in sources:
                 try:
                     source_context = await source.get_context(context_size="short")
+                    source_context["notebooks"] = await _get_related_notebooks("source", source.id or "")
                     context_data["sources"].append(source_context)
                     total_content += str(source_context)
                 except Exception as e:
@@ -799,6 +827,7 @@ async def build_context(request: BuildContextRequest):
             for note in notes:
                 try:
                     note_context = note.get_context(context_size="short")
+                    note_context["notebooks"] = await _get_related_notebooks("note", note.id or "")
                     context_data["notes"].append(note_context)
                     total_content += str(note_context)
                 except Exception as e:

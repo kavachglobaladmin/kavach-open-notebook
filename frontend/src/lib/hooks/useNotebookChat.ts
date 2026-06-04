@@ -404,7 +404,7 @@
 
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/lib/notifications/toast'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
@@ -416,7 +416,8 @@ import {
   CreateNotebookChatSessionRequest,
   UpdateNotebookChatSessionRequest,
   SourceListResponse,
-  NoteResponse
+  NoteResponse,
+  BuildContextResponse
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 
@@ -425,14 +426,21 @@ interface UseNotebookChatParams {
   sources: SourceListResponse[]
   notes: NoteResponse[]
   contextSelections: ContextSelections
+  folderContexts?: Array<{
+    id: string
+    name: string
+    sources: SourceListResponse[]
+    notes: NoteResponse[]
+  }>
 }
 
-export function useNotebookChat({ notebookId, sources, notes, contextSelections }: UseNotebookChatParams) {
+export function useNotebookChat({ notebookId, sources, notes, contextSelections, folderContexts = [] }: UseNotebookChatParams) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<NotebookChatMessage[]>([])
   const [isSending, setIsSending] = useState(false)
+  const isSendingRef = useRef(false)
   const [tokenCount, setTokenCount] = useState<number>(0)
   const [charCount, setCharCount] = useState<number>(0)
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(null)
@@ -442,7 +450,6 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
   const {
     data: sessions = [],
     isLoading: loadingSessions,
-    refetch: refetchSessions
   } = useQuery({
     queryKey: QUERY_KEYS.notebookChatSessions(notebookId),
     queryFn: () => chatApi.listSessions(notebookId),
@@ -497,7 +504,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
 
     // ✅ FIX: Only load suggested questions from session when NOT actively sending
     // This prevents overwriting questions already set by the stream callback
-    if (!isSending) {
+    if (!isSendingRef.current) {
       if (currentSession?.suggested_questions && currentSession.suggested_questions.length > 0) {
         setSuggestedQuestions(currentSession.suggested_questions)
       } else {
@@ -607,16 +614,32 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       }
     })
 
-    const response = await chatApi.buildContext({
+    const response: BuildContextResponse = await chatApi.buildContext({
       notebook_id: notebookId,
       context_config
     })
 
+    const folder_structure = folderContexts.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      sources: folder.sources.map((source) => ({
+        id: source.id,
+        title: source.title ?? null,
+      })),
+      notes: folder.notes.map((note) => ({
+        id: note.id,
+        title: note.title ?? null,
+      })),
+    }))
+
     setTokenCount(response.token_count)
     setCharCount(response.char_count)
 
-    return response.context
-  }, [notebookId, sources, notes, contextSelections])
+    return {
+      ...response.context,
+      folder_structure,
+    }
+  }, [notebookId, sources, notes, contextSelections, folderContexts])
 
   // Send message (with streaming)
   const sendMessage = useCallback(async (message: string, modelOverride?: string) => {
@@ -653,6 +676,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
     }
     setMessages(prev => [...prev, userMessage])
     setIsSending(true)
+    isSendingRef.current = true
 
     // ✅ FIX: Clear suggestions only once here, before streaming starts
     setSuggestedQuestions([])
@@ -707,6 +731,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections 
       setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-') && msg.id !== aiMessageId))
     } finally {
       setIsSending(false)
+      isSendingRef.current = false
     }
   }, [
     notebookId,

@@ -394,6 +394,8 @@
 
 import asyncio
 import operator
+import os
+import re
 from typing import Any, Dict, List, Optional
 
 import fitz
@@ -411,6 +413,317 @@ from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.graphs.transformation import graph as transform_graph
+
+
+def _clean_pdf_piece(value: Any) -> str:
+    text = str(value or "").replace("\x00", " ").strip()
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    return text.strip()
+
+
+def _looks_like_pdf_form_text(text: str, file_path: str = "") -> bool:
+    lower = f"{file_path}\n{text[:20000]}".lower()
+    signals = [
+        "form no. mgt",
+        "mgt-7",
+        "annual return",
+        "corporate identification number",
+        "cin",
+        "companies act",
+        "authorised capital",
+        "share holding pattern",
+        "board meetings",
+        "certificate of practice number",
+    ]
+    return sum(1 for signal in signals if signal in lower) >= 3
+
+
+def _compose_layout_line(items: list[tuple[float, float, str]]) -> str:
+    items = sorted(items, key=lambda item: item[0])
+    parts: list[str] = []
+    last_x1: float | None = None
+    for x0, x1, text in items:
+        clean = _clean_pdf_piece(text)
+        if not clean:
+            continue
+        if last_x1 is not None:
+            gap = max(0, x0 - last_x1)
+            if gap > 90:
+                parts.append(" | ")
+            elif gap > 25:
+                parts.append("  ")
+            else:
+                parts.append(" ")
+        parts.append(clean)
+        last_x1 = max(last_x1 or x1, x1)
+    return re.sub(r" {3,}", "  ", "".join(parts)).strip()
+
+
+def _normalize_line_for_compare(line: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", line.lower())
+
+
+def _normalize_cin_candidate(token: str) -> str:
+    raw = re.sub(r"[^A-Za-z0-9]", "", token or "").upper()
+    if len(raw) != 21:
+        return ""
+    chars = list(raw)
+    digit_pos = {1, 2, 3, 4, 5, 8, 9, 10, 11, 15, 16, 17, 18, 19, 20}
+    to_digit = {"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "S": "5", "B": "8", "G": "6"}
+    to_alpha = {"0": "O", "1": "I", "5": "S", "8": "B", "6": "G"}
+    for idx, ch in enumerate(chars):
+        if idx in digit_pos:
+            chars[idx] = to_digit.get(ch, ch)
+        else:
+            chars[idx] = to_alpha.get(ch, ch)
+    cin = "".join(chars)
+    if re.fullmatch(r"[A-Z]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}", cin):
+        return cin
+    return ""
+
+
+def _normalize_pan_candidate(token: str) -> str:
+    raw = re.sub(r"[^A-Za-z0-9]", "", token or "").upper()
+    if len(raw) != 10:
+        return ""
+    chars = list(raw)
+    digit_pos = {5, 6, 7, 8}
+    to_digit = {"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "S": "5", "B": "8"}
+    to_alpha = {"0": "O", "1": "I", "5": "S", "8": "B"}
+    for idx, ch in enumerate(chars):
+        if idx in digit_pos:
+            chars[idx] = to_digit.get(ch, ch)
+        else:
+            chars[idx] = to_alpha.get(ch, ch)
+    pan = "".join(chars)
+    if re.fullmatch(r"[A-Z]{5}\d{4}[A-Z]", pan):
+        return pan
+    return ""
+
+
+def _add_identifier_normalizations(page_text: str) -> str:
+    upper = page_text.upper()
+    additions: list[str] = []
+
+    cin_tokens = set(re.findall(r"\b[A-Z0-9]{21}\b", upper))
+    for token in cin_tokens:
+        norm = _normalize_cin_candidate(token)
+        if norm and norm != token and norm not in upper:
+            additions.append(f"CIN (normalized): {norm}")
+            break
+
+    pan_tokens = set(re.findall(r"\b[A-Z0-9]{10}\b", upper))
+    for token in pan_tokens:
+        norm = _normalize_pan_candidate(token)
+        if norm and norm != token and norm not in upper:
+            additions.append(f"PAN (normalized): {norm}")
+            break
+
+    if not additions:
+        return page_text
+    return page_text.strip() + "\n" + "\n".join(additions)
+
+
+def _merge_layout_and_ocr_text(layout_text: str, ocr_text: str) -> str:
+    """
+    Merge OCR lines into layout text by adding only lines that are not already present.
+    This keeps structure from layout extraction while filling missed typed values.
+    """
+    layout_lines = [line.rstrip() for line in layout_text.splitlines()]
+    ocr_lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+
+    seen = {
+        _normalize_line_for_compare(line)
+        for line in layout_lines
+        if _normalize_line_for_compare(line)
+    }
+    merged = list(layout_lines)
+    added = 0
+
+    for line in ocr_lines:
+        # Skip tiny/noisy OCR fragments.
+        if len(line) < 3:
+            continue
+        key = _normalize_line_for_compare(line)
+        if not key:
+            continue
+        if key in seen:
+            continue
+        if len(key) <= 3:
+            continue
+        merged.append(line)
+        seen.add(key)
+        added += 1
+        # Keep supplement bounded.
+        if added >= 180:
+            break
+
+    return "\n".join(merged).strip()
+
+
+def _ocr_page_sync(page: Any, reader: Any, dpi: int = 220) -> str:
+    try:
+        import io as _io
+        import numpy as _np
+        from PIL import Image as _Image
+
+        pix = page.get_pixmap(dpi=dpi)
+        img = _Image.open(_io.BytesIO(pix.tobytes("png"))).convert("RGB")
+        arr = _np.array(img)
+        lines = reader.readtext(arr, detail=0, batch_size=4)
+        return "\n".join(_clean_pdf_piece(line) for line in lines if _clean_pdf_piece(line)).strip()
+    except Exception as e:
+        logger.debug(f"OCR page extraction failed: {e}")
+        return ""
+
+
+def _extract_pdf_structured_sync(file_path: str) -> str:
+    """
+    Extract text from table/form-heavy PDFs while preserving reading order.
+
+    content-core is good for ordinary documents, but MCA/ROC PDFs often contain
+    AcroForm fields and dense table layouts. PyMuPDF lets us read both page text
+    and widget values with coordinates, so we can rebuild cleaner page lines.
+    """
+    try:
+        doc = fitz.open(file_path)
+    except Exception as e:
+        logger.warning(f"Structured PDF extraction could not open '{file_path}': {e}")
+        return ""
+
+    page_texts: list[str] = []
+    all_text_for_detection: list[str] = []
+    widget_count = 0
+
+    for page_index, page in enumerate(doc, start=1):
+        positioned: list[tuple[float, float, float, str]] = []
+
+        try:
+            data = page.get_text("dict", sort=True)
+            for block in data.get("blocks", []):
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    spans = []
+                    for span in line.get("spans", []):
+                        clean = _clean_pdf_piece(span.get("text", ""))
+                        if not clean:
+                            continue
+                        x0, y0, x1, _y1 = span.get("bbox", (0, 0, 0, 0))
+                        spans.append((float(x0), float(x1), clean))
+                    line_text = _compose_layout_line(spans)
+                    if line_text:
+                        x0, y0, _x1, _y1 = line.get("bbox", (0, 0, 0, 0))
+                        positioned.append((float(y0), float(x0), float(_x1), line_text))
+                        all_text_for_detection.append(line_text)
+        except Exception as e:
+            logger.debug(f"Structured PDF text extraction failed on page {page_index}: {e}")
+
+        try:
+            widgets = list(page.widgets() or [])
+        except Exception:
+            widgets = []
+
+        for widget in widgets:
+            value = _clean_pdf_piece(getattr(widget, "field_value", ""))
+            if not value or value.lower() in {"off", "false", "none"}:
+                continue
+            widget_count += 1
+            name = _clean_pdf_piece(getattr(widget, "field_label", "") or getattr(widget, "field_name", ""))
+            # Many generated PDFs use opaque names. Keep useful labels only.
+            if name and re.search(r"[A-Za-z]", name) and not re.fullmatch(r"[A-Za-z_]*\d+[A-Za-z_\d]*", name):
+                widget_text = f"{name}: {value}"
+            else:
+                widget_text = value
+            rect = getattr(widget, "rect", None)
+            y0 = float(rect.y0) if rect is not None else 0.0
+            x0 = float(rect.x0) if rect is not None else 0.0
+            x1 = float(rect.x1) if rect is not None else x0
+            positioned.append((y0, x0, x1, widget_text))
+            all_text_for_detection.append(widget_text)
+
+        positioned.sort(key=lambda item: (round(item[0] / 3) * 3, item[1]))
+        grouped: list[tuple[float, list[tuple[float, float, str]]]] = []
+        for y0, x0, x1, text in positioned:
+            if grouped and abs(grouped[-1][0] - y0) <= 3:
+                grouped[-1][1].append((x0, x1, text))
+            else:
+                grouped.append((y0, [(x0, x1, text)]))
+
+        lines: list[str] = []
+        last_y: float | None = None
+        for y0, items in grouped:
+            line = _compose_layout_line(items)
+            if not line:
+                continue
+            if last_y is not None and y0 - last_y > 22 and lines and lines[-1] != "":
+                lines.append("")
+            lines.append(line)
+            last_y = y0
+
+        page_text = "\n".join(lines).strip()
+        page_texts.append(page_text)
+
+    detection_text = "\n".join(all_text_for_detection)
+    form_like = widget_count >= 8 or _looks_like_pdf_form_text(detection_text, file_path)
+
+    # For form-like PDFs (e.g. MGT-7), OCR the first pages and merge unique lines.
+    # These pages often contain filled values that are visually rendered but not
+    # reliably available in the PDF text layer.
+    if form_like:
+        try:
+            import easyocr
+            import torch as _torch
+            reader = easyocr.Reader(["en"], gpu=_torch.cuda.is_available(), verbose=False)
+            ocr_pages = min(3, len(page_texts))
+            for idx in range(ocr_pages):
+                ocr_text = _ocr_page_sync(doc[idx], reader, dpi=220)
+                if ocr_text:
+                    merged = _merge_layout_and_ocr_text(page_texts[idx], ocr_text)
+                    page_texts[idx] = _add_identifier_normalizations(merged)
+        except Exception as e:
+            logger.warning(f"Structured PDF OCR supplement skipped: {e}")
+
+    pages: list[str] = []
+    for i, text in enumerate(page_texts, start=1):
+        if text.strip():
+            pages.append(f"=== Page {i} ===\n{text.strip()}")
+
+    doc.close()
+
+    result = "\n\n".join(pages).strip()
+    if not result:
+        return ""
+
+    if form_like:
+        logger.info(
+            f"Structured PDF extraction produced {len(result)} chars "
+            f"with {widget_count} form field value(s)"
+        )
+        return result
+
+    return ""
+
+
+def _prefer_structured_pdf_text(current_text: str, structured_text: str, file_path: str) -> bool:
+    if not structured_text or len(structured_text.strip()) < 300:
+        return False
+    if _looks_like_pdf_form_text(structured_text, file_path):
+        return True
+    if not current_text or len(current_text.strip()) < 500:
+        return True
+
+    current_lines = [line.strip() for line in current_text.splitlines() if line.strip()]
+    structured_lines = [line.strip() for line in structured_text.splitlines() if line.strip()]
+    current_short = sum(1 for line in current_lines if len(line) <= 3)
+    structured_short = sum(1 for line in structured_lines if len(line) <= 3)
+    current_noise_ratio = current_short / max(1, len(current_lines))
+    structured_noise_ratio = structured_short / max(1, len(structured_lines))
+
+    return (
+        len(structured_lines) >= max(10, int(len(current_lines) * 0.45))
+        and structured_noise_ratio + 0.08 < current_noise_ratio
+    )
 
 
 def _ocr_image_bytes(image_bytes: bytes, reader) -> str:
@@ -595,6 +908,21 @@ async def content_process(state: SourceState) -> dict:
     }
     _fname_lower = str(file_path).lower() if file_path else ""
     _is_bank_pdf = is_pdf and file_path and any(kw in _fname_lower for kw in _BANK_KEYWORDS)
+
+    if is_pdf and file_path and not _is_bank_pdf:
+        try:
+            structured_pdf_text = await asyncio.to_thread(_extract_pdf_structured_sync, str(file_path))
+            if _prefer_structured_pdf_text(content_text, structured_pdf_text, str(file_path)):
+                logger.info(
+                    "Using structured PDF extraction instead of generic extraction "
+                    f"for '{os.path.basename(str(file_path))}'"
+                )
+                processed_state.content = structured_pdf_text
+                content_text = structured_pdf_text
+                if not processed_state.title:
+                    processed_state.title = os.path.splitext(os.path.basename(str(file_path)))[0]
+        except Exception as _pdf_structured_error:
+            logger.warning(f"Structured PDF extraction skipped: {_pdf_structured_error}")
 
     if _is_bank_pdf:
         logger.info(f"PDF detected: '{file_path}'. Extracting text for storage...")

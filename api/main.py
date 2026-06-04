@@ -202,12 +202,13 @@ app.add_middleware(
 # Only allow requests from the frontend (port 3000) and the API itself (port 5055)
 # on the known host IP. All other origins are blocked.
 ALLOWED_ORIGINS = [
-    "http://192.168.11.136:3000",   # Next.js frontend
-    "http://192.168.11.136:5055",   # FastAPI (self / Swagger UI / direct calls)
-    "http://192.168.11.182:3000",   # Next.js frontend (alternate LAN IP)
-    "http://192.168.11.182:5055",   # FastAPI (alternate LAN IP)
-    "http://localhost:3000",         # local dev frontend
-    "http://localhost:5055",         # local dev API
+    "http://100.73.235.251:5055",
+    "http://100.73.235.251:8502",
+    "http://100.73.235.251:3000",
+    "http://100.73.235.251:8080",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "*"
 ]
 
 app.add_middleware(

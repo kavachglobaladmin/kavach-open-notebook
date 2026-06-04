@@ -93,3 +93,24 @@ export function getAllChildIds(): Set<string> {
   }
   return ids
 }
+
+/**
+ * Returns all descendant notebook IDs for a given parent notebook, including
+ * children, grandchildren, and so on.
+ */
+export function getDescendantIds(parentId: string): string[] {
+  const map = loadMap()
+  const collected = new Set<string>()
+
+  const visit = (currentParentId: string) => {
+    const children = map[currentParentId] ?? []
+    children.forEach((childId) => {
+      if (collected.has(childId)) return
+      collected.add(childId)
+      visit(childId)
+    })
+  }
+
+  visit(parentId)
+  return Array.from(collected)
+}

@@ -1,26 +1,29 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { AppShell } from '@/components/layout/AppShell'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { ChatColumn } from '../components/ChatColumn'
-import { SubFolderCard } from '../components/SubFolderCard'
-import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
-import { useNotebook, useNotebooks } from '@/lib/hooks/use-notebooks'
-import { useNotebookSources } from '@/lib/hooks/use-sources'
-import { useNotes } from '@/lib/hooks/use-notes'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { useIsDesktop } from '@/lib/hooks/use-media-query'
-import { useTranslation } from '@/lib/hooks/use-translation'
-import { cn } from '@/lib/utils'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { MessageSquare, FolderOpen, Plus, ChevronLeft } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { useSubFolders } from '@/lib/hooks/use-sub-folders'
+import { useQueries } from '@tanstack/react-query'
+import { ChevronLeft, FolderOpen, MessageSquare, Plus } from 'lucide-react'
 import Link from 'next/link'
 
-// ── Re-exported types used by ChatColumn / sub-folder page ────────────────────
+import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { notesApi } from '@/lib/api/notes'
+import { QUERY_KEYS } from '@/lib/api/query-client'
+import { sourcesApi } from '@/lib/api/sources'
+import { useIsDesktop } from '@/lib/hooks/use-media-query'
+import { useNotebook, useNotebooks } from '@/lib/hooks/use-notebooks'
+import { getDescendantIds, useSubFolders } from '@/lib/hooks/use-sub-folders'
+import { useTranslation } from '@/lib/hooks/use-translation'
+import { cn } from '@/lib/utils'
+import { ChatColumn } from '../components/ChatColumn'
+import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
+import { SubFolderCard } from '../components/SubFolderCard'
+import type { NoteResponse, SourceListResponse } from '@/lib/types/api'
+
 export type ContextMode = 'off' | 'insights' | 'full'
 
 export interface ContextSelections {
@@ -28,103 +31,190 @@ export interface ContextSelections {
   notes: Record<string, ContextMode>
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+function mergeById<T extends { id: string }>(collections: T[][]): T[] {
+  const deduped = new Map<string, T>()
+  collections.forEach((collection) => {
+    collection.forEach((item) => {
+      deduped.set(item.id, item)
+    })
+  })
+  return Array.from(deduped.values())
+}
 
 export default function NotebookFolderPage() {
   const { t } = useTranslation()
   const params = useParams()
   const searchParams = useSearchParams()
 
-  // Reconstruct the full SurrealDB record ID from the URL param.
   const rawParam = params?.id ? decodeURIComponent(params.id as string) : ''
   const notebookId = rawParam.includes(':') ? rawParam : rawParam ? `notebook:${rawParam}` : ''
   const queryFromUrl = searchParams?.get('q')?.trim() || ''
 
-  // ── Fetch this notebook (the "main folder") ──────────────────────────────
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
-
-  // ── Static chat panel title ───────────────────────────────────────────────
   const chatTitle = 'Chat with Super'
-  // ── Sub-folder management via localStorage ────────────────────────────────
-  const { childIds, addChild, removeChild } = useSubFolders(notebookId)
 
-  // Fetch all notebooks so we can resolve child IDs → full NotebookResponse objects
+  const { childIds, addChild, removeChild } = useSubFolders(notebookId)
+  const contextNotebookIds = getDescendantIds(notebookId)
+  const contextNotebookIdKey = contextNotebookIds.join('|')
+
   const { data: allNotebooks } = useNotebooks(false)
   const { data: allArchivedNotebooks } = useNotebooks(true)
 
-  const allNotebooksFlat = [
-    ...(allNotebooks ?? []),
-    ...(allArchivedNotebooks ?? []),
-  ]
-
+  const allNotebooksFlat = useMemo(
+    () => [...(allNotebooks ?? []), ...(allArchivedNotebooks ?? [])],
+    [allNotebooks, allArchivedNotebooks],
+  )
   const subFolders = allNotebooksFlat.filter((nb) => childIds.includes(nb.id))
+  const contextFolders = allNotebooksFlat.filter((nb) => contextNotebookIds.includes(nb.id))
+  const contextFolderNames = contextFolders.map((folder) => folder.name).filter(Boolean)
 
-  // ── Sources & Notes (still needed for the Chat context) ──────────────────
-  const {
-    sources,
-    isLoading: sourcesLoading,
-    refetch: refetchSources,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  } = useNotebookSources(notebookId)
-  const { data: notes, isLoading: notesLoading } = useNotes(notebookId)
+  const sourcesQueries = useQueries({
+    queries: contextNotebookIds.map((id) => ({
+      queryKey: QUERY_KEYS.sources(id),
+      queryFn: () =>
+        sourcesApi.list({
+          notebook_id: id,
+          limit: 500,
+          offset: 0,
+          sort_by: 'updated',
+          sort_order: 'desc',
+        }),
+      enabled: !!id,
+    })),
+  })
+
+  const notesQueries = useQueries({
+    queries: contextNotebookIds.map((id) => ({
+      queryKey: QUERY_KEYS.notes(id),
+      queryFn: () => notesApi.list({ notebook_id: id }),
+      enabled: !!id,
+    })),
+  })
+
+  const sourcesDataStamp = sourcesQueries.map((query) => query.dataUpdatedAt).join('|')
+  const notesDataStamp = notesQueries.map((query) => query.dataUpdatedAt).join('|')
+
+  const sourcesCacheRef = useRef<{ stamp: string; value: SourceListResponse[] }>({
+    stamp: '',
+    value: [],
+  })
+  if (sourcesCacheRef.current.stamp !== sourcesDataStamp) {
+    sourcesCacheRef.current = {
+      stamp: sourcesDataStamp,
+      value: mergeById<SourceListResponse>(sourcesQueries.map((query) => query.data ?? [])),
+    }
+  }
+  const sources = sourcesCacheRef.current.value
+
+  const notesCacheRef = useRef<{ stamp: string; value: NoteResponse[] }>({
+    stamp: '',
+    value: [],
+  })
+  if (notesCacheRef.current.stamp !== notesDataStamp) {
+    notesCacheRef.current = {
+      stamp: notesDataStamp,
+      value: mergeById<NoteResponse>(notesQueries.map((query) => query.data ?? [])),
+    }
+  }
+  const notes = notesCacheRef.current.value
+
+  const folderContextsCacheRef = useRef<{
+    stamp: string
+    value: Array<{
+      id: string
+      name: string
+      sources: SourceListResponse[]
+      notes: NoteResponse[]
+    }>
+  }>({
+    stamp: '',
+    value: [],
+  })
+  const folderContextsStamp = `${contextNotebookIdKey}::${sourcesDataStamp}::${notesDataStamp}`
+  if (folderContextsCacheRef.current.stamp !== folderContextsStamp) {
+    const folderLookup = new Map(allNotebooksFlat.map((folder) => [folder.id, folder]))
+    folderContextsCacheRef.current = {
+      stamp: folderContextsStamp,
+      value: contextNotebookIds
+        .map((folderId, index) => {
+          const folder = folderLookup.get(folderId)
+          if (!folder) return null
+
+          return {
+            id: folder.id,
+            name: folder.name,
+            sources: sourcesQueries[index]?.data ?? [],
+            notes: notesQueries[index]?.data ?? [],
+          }
+        })
+        .filter((folder): folder is {
+          id: string
+          name: string
+          sources: SourceListResponse[]
+          notes: NoteResponse[]
+        } => folder !== null),
+    }
+  }
+  const folderContexts = folderContextsCacheRef.current.value
+
+  const sourcesLoading = sourcesQueries.some((query) => query.isLoading)
+  const notesLoading = notesQueries.some((query) => query.isLoading)
+  const contextLoading = sourcesLoading || notesLoading
 
   const isDesktop = useIsDesktop()
-
-  // Mobile tab state
   const [mobileActiveTab, setMobileActiveTab] = useState<'folders' | 'chat'>('folders')
-
-  // Search term for PageHeader
   const [searchTerm, setSearchTerm] = useState('')
-  useEffect(() => {
-    if (queryFromUrl) setSearchTerm(queryFromUrl)
-  }, [queryFromUrl])
-
-  // ── Context selections for Chat (default all sources to insights / full) ──
   const [contextSelections, setContextSelections] = useState<ContextSelections>({
     sources: {},
     notes: {},
   })
+  const [createSubFolderOpen, setCreateSubFolderOpen] = useState(false)
 
   useEffect(() => {
-    if (sources && sources.length > 0) {
-      setContextSelections((prev) => {
-        const next = { ...prev.sources }
-        sources.forEach((source) => {
-          const current = next[source.id]
-          const hasInsights = source.insights_count > 0
-          if (current === undefined) {
-            next[source.id] = hasInsights ? 'insights' : 'full'
-          } else if (current === 'full' && hasInsights) {
-            next[source.id] = 'insights'
-          }
-        })
-        return { ...prev, sources: next }
+    if (queryFromUrl) setSearchTerm(queryFromUrl)
+  }, [queryFromUrl])
+
+  useEffect(() => {
+    if (sources.length === 0) return
+
+    setContextSelections((prev) => {
+      const next = { ...prev.sources }
+      let changed = false
+      sources.forEach((source) => {
+        const current = next[source.id]
+        const hasInsights = source.insights_count > 0
+        if (current === undefined) {
+          next[source.id] = hasInsights ? 'insights' : 'full'
+          changed = true
+        } else if (current === 'full' && hasInsights) {
+          next[source.id] = 'insights'
+          changed = true
+        }
       })
-    }
+      return changed ? { ...prev, sources: next } : prev
+    })
   }, [sources])
 
   useEffect(() => {
-    if (notes && notes.length > 0) {
-      setContextSelections((prev) => {
-        const next = { ...prev.notes }
-        notes.forEach((note) => {
-          if (!(note.id in next)) next[note.id] = 'full'
-        })
-        return { ...prev, notes: next }
-      })
-    }
-  }, [notes])
+    if (notes.length === 0) return
 
-  // ── Sub-folder dialog ─────────────────────────────────────────────────────
-  const [createSubFolderOpen, setCreateSubFolderOpen] = useState(false)
+    setContextSelections((prev) => {
+      const next = { ...prev.notes }
+      let changed = false
+      notes.forEach((note) => {
+        if (!(note.id in next)) {
+          next[note.id] = 'full'
+          changed = true
+        }
+      })
+      return changed ? { ...prev, notes: next } : prev
+    })
+  }, [notes])
 
   const handleSubFolderCreated = (newNotebookId: string) => {
     addChild(newNotebookId)
   }
 
-  // ── Loading / not-found states ────────────────────────────────────────────
   if (notebookLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -144,10 +234,8 @@ export default function NotebookFolderPage() {
     )
   }
 
-  // ── Sub-folders panel ─────────────────────────────────────────────────────
   const SubFoldersPanel = (
     <div className="flex flex-col h-full bg-white rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.03)] overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3 px-6 pt-6 pb-4 flex-shrink-0">
         <div>
           <h2 className="text-[20px] font-bold text-slate-900">Sub-folders</h2>
@@ -165,8 +253,10 @@ export default function NotebookFolderPage() {
         </Button>
       </div>
 
-      {/* Sub-folder grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#c4b5fd transparent' }}>
+      <div
+        className="flex-1 overflow-y-auto px-6 pb-6"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#c4b5fd transparent' }}
+      >
         {subFolders.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full pt-10 pb-10">
             <div className="w-16 h-16 bg-[#F5F3FF] rounded-2xl flex items-center justify-center mb-4">
@@ -174,7 +264,7 @@ export default function NotebookFolderPage() {
             </div>
             <h3 className="text-[16px] font-bold text-slate-900 mb-1">No sub-folders yet</h3>
             <p className="text-[13px] text-slate-500 text-center max-w-[220px] leading-relaxed">
-              Create sub-folders to organise this case (e.g.&nbsp;IR, ICJS&nbsp;Dossier)
+              Create sub-folders to organise this case (e.g. IR, ICJS Dossier)
             </p>
           </div>
         ) : (
@@ -193,17 +283,21 @@ export default function NotebookFolderPage() {
     </div>
   )
 
-  // ── Chat panel (wrapped in ChatColumn which handles its own state) ─────────
   const ChatPanelWrapper = (
     <div className="h-full">
       <ChatColumn
         notebookId={notebookId}
         contextSelections={contextSelections}
-        sources={sources ?? []}
-        sourcesLoading={sourcesLoading}
-        notes={notes ?? []}
+        sources={sources}
+        sourcesLoading={contextLoading}
+        notes={notes}
+        folderContexts={folderContexts}
         chatTitle={chatTitle}
-        subtitleLine={`${subFolders.length} folder${subFolders.length !== 1 ? 's' : ''}`}
+        subtitleLine={
+          contextFolderNames.length > 0
+            ? `${contextFolderNames.length} folders: ${contextFolderNames.join(', ')}`
+            : 'No sub-folders'
+        }
         hideModelSelector
       />
     </div>
@@ -211,11 +305,7 @@ export default function NotebookFolderPage() {
 
   return (
     <AppShell>
-      <div
-        className="flex flex-col flex-1 min-h-0 relative overflow-hidden"
-        style={{ background: '#ECEDF8' }}
-      >
-        {/* Ambient glow — same as other pages */}
+      <div className="flex flex-col flex-1 min-h-0 relative overflow-hidden" style={{ background: '#ECEDF8' }}>
         <div
           className="absolute top-[-10%] right-[-5%] w-[55%] h-[70%] rounded-full pointer-events-none z-0"
           style={{
@@ -233,7 +323,6 @@ export default function NotebookFolderPage() {
             newLabel="NOTEBOOK"
           />
 
-          {/* Back + Case title header */}
           <div className="flex-shrink-0 px-3 sm:px-4 pt-3 pb-0">
             <div className="pb-4 sm:pb-5">
               <Link
@@ -254,15 +343,13 @@ export default function NotebookFolderPage() {
             </div>
           </div>
 
-          {/* Main content area */}
           <div className="flex-1 px-3 sm:px-4 pb-4 sm:pb-5 overflow-hidden flex flex-col min-h-0">
-            {/* ── Mobile: tabs ── */}
             {!isDesktop && (
               <>
                 <div className="lg:hidden mb-4 flex-shrink-0">
                   <Tabs
                     value={mobileActiveTab}
-                    onValueChange={(v) => setMobileActiveTab(v as 'folders' | 'chat')}
+                    onValueChange={(value) => setMobileActiveTab(value as 'folders' | 'chat')}
                   >
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="folders" className="gap-2">
@@ -283,24 +370,19 @@ export default function NotebookFolderPage() {
               </>
             )}
 
-            {/* ── Desktop: two-column layout — Sub-folders (left) + Chat (right) ── */}
             <div
               className={cn(
                 'hidden lg:grid h-full min-h-0 gap-4',
                 'grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]',
               )}
             >
-              {/* Left: sub-folders */}
               <div className="h-full min-h-0 overflow-hidden">{SubFoldersPanel}</div>
-
-              {/* Right: chat */}
               <div className="h-full min-h-0">{ChatPanelWrapper}</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Create sub-folder dialog */}
       <CreateSubFolderDialog
         open={createSubFolderOpen}
         onOpenChange={setCreateSubFolderOpen}

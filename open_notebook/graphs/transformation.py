@@ -974,6 +974,11 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
         default_prompts: DefaultPrompts = await DefaultPrompts.get_instance()
         transformation_prompt = transformation.prompt or ""
 
+        is_infographic = (
+            "infographic" in t_title
+            or "infographic" in t_name
+        )
+
         # ── Bank Statement special handling ───────────────────────────────
         # If the transformation is bank-statement type, override with a
         # robust extraction prompt that returns actual data (not a schema).
@@ -981,7 +986,47 @@ async def run_transformation(state: dict, config: RunnableConfig) -> dict:
             "bank" in t_title and "statement" in t_title
             or "bank" in t_name  and "statement" in t_name
         )
-        if is_bank_statement:
+        if is_infographic:
+            source_id = str(getattr(source, "id", "") or "")
+            source_title = str(getattr(source, "title", "") or "Unknown Source")
+            try:
+                from open_notebook.graphs.infographic import (
+                    _is_cdr_text,
+                    _normalize_infographic_output,
+                    _parse_cdr_direct,
+                )
+            except Exception:
+                _is_cdr_text = None
+                _normalize_infographic_output = None
+                _parse_cdr_direct = None
+
+            if _is_cdr_text and _parse_cdr_direct and _is_cdr_text(content_str):
+                # Use deterministic parser for large CDR exports to avoid lossy LLM chunk merges.
+                parsed = _parse_cdr_direct(content_str, source_id)
+                final_output = _json.dumps(parsed, ensure_ascii=False, indent=2)
+            else:
+                if default_prompts.transformation_instructions:
+                    transformation_prompt = (
+                        f"{default_prompts.transformation_instructions}\n\n{transformation_prompt}"
+                    )
+                raw_output = await _run_with_prompt(
+                    model_id, content_str, transformation_prompt,
+                    transformation_name=t_name
+                )
+                cleaned_json = _clean_structured_json_output(raw_output)
+                try:
+                    parsed = _json.loads(cleaned_json)
+                except Exception:
+                    final_output = cleaned_json
+                else:
+                    if isinstance(parsed, dict):
+                        parsed["source_id"] = source_id
+                        if _normalize_infographic_output:
+                            parsed = _normalize_infographic_output(parsed, source_title, content_str)
+                        final_output = _json.dumps(parsed, ensure_ascii=False, indent=2)
+                    else:
+                        final_output = cleaned_json
+        elif is_bank_statement:
             final_output = await _extract_bank_statement(model_id, content_str)
         else:
             if default_prompts.transformation_instructions:
