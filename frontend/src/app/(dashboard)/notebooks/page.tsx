@@ -47,13 +47,15 @@ export default function NotebooksPage() {
   const normalizedQuery = searchTerm.trim().toLowerCase()
 
   // ── Exclude sub-folders from the top-level Cases list ───────────────────
-  // getAllChildIds reads from localStorage synchronously so it's safe in useMemo.
-  const childIdsSet = useMemo(() => getAllChildIds(), [
-    // Re-compute whenever the notebooks list changes (new sub-folder created
-    // writes to localStorage, then React Query re-fetches the notebooks list).
-    notebooks,
-    archivedNotebooks,
-  ])
+  // Use useState + useEffect to ensure localStorage is only read client-side
+  // after mount, avoiding SSR hydration errors.
+  const [childIdsSet, setChildIdsSet] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    // Re-read the sub-folder map whenever the notebooks list changes so that
+    // newly created sub-folders are immediately hidden from the top-level list.
+    setChildIdsSet(getAllChildIds())
+  }, [notebooks, archivedNotebooks])
 
   const filteredActive = useMemo(() => {
     if (!notebooks) return undefined

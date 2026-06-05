@@ -4039,17 +4039,22 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
                 logger.debug(f"Could not fetch model details: {e}")
                 model_name = model_id_to_use
 
-        # Submit transformation as background job (fire-and-forget)
-        command_id = submit_command(
-            "open_notebook",
-            "run_transformation",
-            {
-                "source_id": source_id,
-                "transformation_id": request.transformation_id,
-                "model_id": model_id_to_use,
-                "generation_id": generation_id,
-            },
-        )
+        # Submit transformation as background job (fire-and-forget).
+        # submit_command uses a synchronous WebSocket connection (blocking I/O)
+        # which must NOT run on the async event loop — wrap it in a thread.
+        def _submit():
+            return submit_command(
+                "open_notebook",
+                "run_transformation",
+                {
+                    "source_id": source_id,
+                    "transformation_id": request.transformation_id,
+                    "model_id": model_id_to_use,
+                    "generation_id": generation_id,
+                },
+            )
+
+        command_id = await asyncio.to_thread(_submit)
         logger.info(
             f"Submitted run_transformation command {command_id} for source {source_id} "
             f"using transformation '{transformation.title}' with model: {model_name}"

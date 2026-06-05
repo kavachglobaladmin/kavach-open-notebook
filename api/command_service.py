@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -24,12 +25,16 @@ class CommandService:
                 logger.error(f"Failed to import command modules: {import_err}")
                 raise ValueError("Command modules not available")
 
-            # surreal-commands expects: submit_command(app_name, command_name, args)
-            cmd_id = submit_command(
-                module_name,  # This is actually the app name (e.g., "open_notebook")
-                command_name,  # Command name (e.g., "process_text")
-                command_args,  # Input data
-            )
+            # submit_command uses a synchronous blocking WebSocket connection.
+            # Run it in a thread to avoid blocking the async event loop.
+            def _submit():
+                return submit_command(
+                    module_name,
+                    command_name,
+                    command_args,
+                )
+
+            cmd_id = await asyncio.to_thread(_submit)
             # Convert RecordID to string if needed
             if not cmd_id:
                 raise ValueError("Failed to get cmd_id from submit_command")

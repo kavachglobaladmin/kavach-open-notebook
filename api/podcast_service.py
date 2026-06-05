@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, Optional
 
 from fastapi import HTTPException
@@ -92,8 +93,13 @@ class PodcastService:
                 logger.error(f"Failed to import podcast commands: {import_err}")
                 raise ValueError("Podcast commands not available")
 
-            # Submit command to surreal-commands
-            job_id = submit_command("open_notebook", "generate_podcast", command_args)
+            # Submit command to surreal-commands.
+            # submit_command uses a synchronous blocking WebSocket connection.
+            # Run it in a thread to avoid blocking the async event loop.
+            def _submit():
+                return submit_command("open_notebook", "generate_podcast", command_args)
+
+            job_id = await asyncio.to_thread(_submit)
 
             # Convert RecordID to string if needed
             if not job_id:

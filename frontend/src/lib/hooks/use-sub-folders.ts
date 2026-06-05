@@ -22,6 +22,7 @@ function loadMap(): Record<string, string[]> {
 }
 
 function saveMap(map: Record<string, string[]>) {
+  if (typeof window === 'undefined') return
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map))
   } catch {

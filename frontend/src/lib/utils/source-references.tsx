@@ -337,12 +337,29 @@ export function createReferenceLinkComponent(
  * Output: "See [1] and [2]. Also [1] again.\n\nReferences:\n[1] - [source:abc]\n[2] - [note:xyz]"
  */
 export function convertReferencesToCompactMarkdown(text: string, referencesLabel: string = 'References'): string {
-  // Step 1: Parse all references using existing function
-  const references = parseSourceReferences(text)
+  // Step 0: Strip any LLM-generated raw reference block.
+  // The LLM sometimes outputs its own numbered list like:
+  //   "References\n[1] 1\n[2] 2\n..." or "References:\n[1] source:abc\n..."
+  // This block is NOT the clickable references block we generate below — it is
+  // redundant and must be removed before we do our own processing.
+  //
+  // Pattern: a line that is exactly "References" or "References:" followed by
+  // lines that match "[N] <something>" where something is a short token (number,
+  // source ID, etc.).  We strip everything from that heading to the end of the
+  // consecutive reference lines.
+  const strippedText = text
+    // Remove LLM-generated "References\n[1] 1\n[2] 2" style blocks
+    .replace(/\n+References:?\s*\n((\[\d+\]\s+[^\n]*\n?)+)/gi, '\n')
+    // Also strip trailing standalone reference headings with no items
+    .replace(/\n+References:?\s*$/gi, '')
+    .trimEnd()
 
-  // Step 2: If no references found, return original text
+  // Step 1: Parse all references using existing function
+  const references = parseSourceReferences(strippedText)
+
+  // Step 2: If no references found, return stripped text
   if (references.length === 0) {
-    return text
+    return strippedText
   }
 
   // Step 3: Build reference map (deduplicate and assign numbers)
@@ -361,7 +378,7 @@ export function convertReferencesToCompactMarkdown(text: string, referencesLabel
   }
 
   // Step 4: Replace references with numbered citations (process from end to start)
-  let result = text
+  let result = strippedText
   for (let i = references.length - 1; i >= 0; i--) {
     const reference = references[i]
     const key = `${reference.type}:${reference.id}`
