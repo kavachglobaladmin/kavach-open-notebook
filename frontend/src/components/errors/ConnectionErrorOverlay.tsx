@@ -73,7 +73,7 @@ export function ConnectionErrorOverlay({
             )}
           </ul>
 
-          <h2 className="font-semibold mt-4">{t.connectionErrors.quickFixes}</h2>
+          {/* <h2 className="font-semibold mt-4">{t.connectionErrors.quickFixes}</h2>
           {isApiError ? (
             <div className="space-y-2 text-sm bg-muted p-4 rounded">
               <p className="font-medium">{t.connectionErrors.setApiUrl}</p>
@@ -99,11 +99,11 @@ export function ConnectionErrorOverlay({
                 docker compose logs surrealdb
               </code>
             </div>
-          )}
+          )} */}
         </div>
 
         {/* Documentation link */}
-        <div className="text-sm">
+        {/* <div className="text-sm">
           <p>{t.connectionErrors.seeDocumentation}</p>
           <a
             href="https://github.com/lfnovo/open-notebook"
@@ -114,7 +114,7 @@ export function ConnectionErrorOverlay({
             {t.connectionErrors.docLink}
             <ExternalLink className="w-4 h-4" />
           </a>
-        </div>
+        </div> */}
 
         {/* Collapsible technical details */}
         {error.details && (
