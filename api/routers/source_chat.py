@@ -161,6 +161,7 @@ async def create_source_chat_session(
         session = ChatSession(
             title=request.title or f"Source Chat {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
+            chat_mode="source",
         )
         await session.save()
 

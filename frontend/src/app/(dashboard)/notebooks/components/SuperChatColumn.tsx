@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { ConfigureChatModal } from '@/components/source/ConfigureChatModal'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { useNotebookChat } from '@/lib/hooks/useNotebookChat'
+import { useSuperChat } from '@/lib/hooks/useSuperChat'
 import {
   SourceListResponse,
   NoteResponse,
@@ -28,7 +28,7 @@ function getEffectiveNoteMode(
   return selections[note.id] ?? 'full'
 }
 
-interface ChatColumnProps {
+interface SuperChatColumnProps {
   notebookId: string
   contextSelections: ContextSelections
   sources: SourceListResponse[]
@@ -40,15 +40,12 @@ interface ChatColumnProps {
     sources: SourceListResponse[]
     notes: NoteResponse[]
   }>
-  /** Optional override for the chat panel header title */
   chatTitle?: string
-  /** When provided, replaces the auto "N sources" subtitle line */
   subtitleLine?: string
-  /** When true, hides the model-selector row in the input area */
   hideModelSelector?: boolean
 }
 
-export function ChatColumn({
+export function SuperChatColumn({
   notebookId,
   contextSelections,
   sources = [],
@@ -58,11 +55,11 @@ export function ChatColumn({
   chatTitle,
   subtitleLine,
   hideModelSelector = false,
-}: ChatColumnProps) {
+}: SuperChatColumnProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false)
   const [chatConfig, setChatConfig] = useState({ goal: 'Default', length: 'Default' })
 
-  const chat = useNotebookChat({
+  const chat = useSuperChat({
     notebookId,
     sources: sources ?? [],
     notes: notes ?? [],
@@ -70,7 +67,6 @@ export function ChatColumn({
     folderContexts,
   })
 
-  // Build context indicators for ChatPanel from current user selections.
   const selectedSourceIds = sources
     .filter((source) => getEffectiveSourceMode(source, contextSelections.sources) !== 'off')
     .map((source) => source.id)
@@ -119,7 +115,6 @@ export function ChatColumn({
 
   return (
     <>
-      {/* ChatPanel is now self-contained with its own white card + header */}
       <div className="h-full flex flex-col">
         <ChatPanel
           messages={panelMessages}
@@ -138,9 +133,7 @@ export function ChatColumn({
           currentSessionId={chat.currentSessionId}
           onCreateSession={(title) => chat.createSession(title)}
           onSelectSession={chat.switchSession}
-          onUpdateSession={(sessionId, title) =>
-            chat.updateSession(sessionId, { title })
-          }
+          onUpdateSession={(sessionId, title) => chat.updateSession(sessionId, { title })}
           onDeleteSession={chat.deleteSession}
           loadingSessions={chat.loadingSessions}
           contextType="notebook"
@@ -159,7 +152,6 @@ export function ChatColumn({
         />
       </div>
 
-      {/* ── Configure Chat Modal ── */}
       {isConfigOpen && (
         <ConfigureChatModal
           currentConfig={chatConfig}

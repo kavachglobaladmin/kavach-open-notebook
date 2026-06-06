@@ -421,17 +421,109 @@ import {
 } from '@/lib/types/api'
 import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
 
+function getEffectiveSourceMode(
+  source: SourceListResponse,
+  selections: ContextSelections['sources'],
+) {
+  return selections[source.id] ?? (source.insights_count > 0 ? 'insights' : 'full')
+}
+
+function getEffectiveNoteMode(
+  note: NoteResponse,
+  selections: ContextSelections['notes'],
+) {
+  return selections[note.id] ?? 'full'
+}
+
+type FolderContext = {
+  id: string
+  name: string
+  sources: SourceListResponse[]
+  notes: NoteResponse[]
+}
+
+function mergeSessionMessages(
+  previousMessages: NotebookChatMessage[],
+  serverMessages: NotebookChatMessage[],
+) {
+  const getTimestamp = (timestamp?: string | null) => {
+    if (!timestamp) return null
+
+    const value = new Date(timestamp).getTime()
+    return Number.isFinite(value) ? value : null
+  }
+
+  const contentsMatch = (serverContent: string, optimisticContent: string) => {
+    if (!serverContent && !optimisticContent) return true
+    if (!serverContent || !optimisticContent) return false
+
+    return (
+      serverContent === optimisticContent ||
+      serverContent.startsWith(optimisticContent) ||
+      optimisticContent.startsWith(serverContent)
+    )
+  }
+
+  const merged = [...serverMessages]
+
+  previousMessages.forEach((optimistic) => {
+    let matchIndex = -1
+
+    for (let index = merged.length - 1; index >= 0; index -= 1) {
+      const server = merged[index]
+      if (server.type !== optimistic.type) {
+        continue
+      }
+
+      const serverContent = server.content.trim()
+      const optimisticContent = optimistic.content.trim()
+      if (!contentsMatch(serverContent, optimisticContent)) {
+        continue
+      }
+
+      const serverTime = getTimestamp(server.timestamp)
+      const optimisticTime = getTimestamp(optimistic.timestamp)
+
+      if (serverTime !== null && optimisticTime !== null) {
+        if (Math.abs(serverTime - optimisticTime) >= 30000) {
+          continue
+        }
+      }
+
+      matchIndex = index
+      break
+    }
+
+    if (matchIndex >= 0) {
+      const serverMessage = merged[matchIndex]
+      if (optimistic.content.length > serverMessage.content.length) {
+        merged[matchIndex] = {
+          ...serverMessage,
+          content: optimistic.content,
+        }
+      }
+      return
+    }
+
+    if (optimistic.id.startsWith('temp-') || optimistic.id.startsWith('ai-')) {
+      merged.push(optimistic)
+    }
+  })
+
+  const seenIds = new Set<string>()
+  return merged.filter((message) => {
+    if (seenIds.has(message.id)) return false
+    seenIds.add(message.id)
+    return true
+  })
+}
+
 interface UseNotebookChatParams {
   notebookId: string
   sources: SourceListResponse[]
   notes: NoteResponse[]
   contextSelections: ContextSelections
-  folderContexts?: Array<{
-    id: string
-    name: string
-    sources: SourceListResponse[]
-    notes: NoteResponse[]
-  }>
+  folderContexts?: FolderContext[]
 }
 
 export function useNotebookChat({ notebookId, sources, notes, contextSelections, folderContexts = [] }: UseNotebookChatParams) {
@@ -476,30 +568,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
     }
 
     if (currentSession?.messages) {
-      setMessages(prevMessages => {
-        const serverMessages = currentSession.messages || []
-
-        const optimisticMessages = prevMessages.filter(optimistic => {
-          if (optimistic.id.startsWith('temp-') || optimistic.id.startsWith('ai-')) {
-            return !serverMessages.some(server =>
-              server.type === optimistic.type &&
-              server.content.trim() === optimistic.content.trim() &&
-              Math.abs(new Date(server.timestamp).getTime() - new Date(optimistic.timestamp).getTime()) < 30000
-            )
-          }
-          return true
-        })
-
-        const merged = [...serverMessages, ...optimisticMessages]
-        const seenIds = new Set<string>()
-        const deduplicated = merged.filter(msg => {
-          if (seenIds.has(msg.id)) return false
-          seenIds.add(msg.id)
-          return true
-        })
-
-        return deduplicated
-      })
+      setMessages((prevMessages) =>
+        mergeSessionMessages(prevMessages, currentSession.messages || []),
+      )
     }
 
     // ✅ FIX: Only load suggested questions from session when NOT actively sending
@@ -595,7 +666,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
     }
 
     sources.forEach(source => {
-      const mode = contextSelections.sources[source.id]
+      const mode = getEffectiveSourceMode(source, contextSelections.sources)
       if (mode === 'insights') {
         context_config.sources[source.id] = 'insights'
       } else if (mode === 'full') {
@@ -606,7 +677,7 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
     })
 
     notes.forEach(note => {
-      const mode = contextSelections.notes[note.id]
+      const mode = getEffectiveNoteMode(note, contextSelections.notes)
       if (mode === 'full') {
         context_config.notes[note.id] = 'full content'
       } else {
@@ -619,18 +690,43 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
       context_config
     })
 
-    const folder_structure = folderContexts.map((folder) => ({
-      id: folder.id,
-      name: folder.name,
-      sources: folder.sources.map((source) => ({
-        id: source.id,
-        title: source.title ?? null,
-      })),
-      notes: folder.notes.map((note) => ({
-        id: note.id,
-        title: note.title ?? null,
-      })),
-    }))
+    const folder_structure = folderContexts
+      .map((folder) => {
+        const selectedSources = folder.sources
+          .filter((source) => getEffectiveSourceMode(source, contextSelections.sources) !== 'off')
+          .map((source) => ({
+            id: source.id,
+            title: source.title ?? null,
+          }))
+
+        const selectedNotes = folder.notes
+          .filter((note) => getEffectiveNoteMode(note, contextSelections.notes) !== 'off')
+          .map((note) => ({
+            id: note.id,
+            title: note.title ?? null,
+          }))
+
+        if (selectedSources.length === 0 && selectedNotes.length === 0) {
+          return null
+        }
+
+        return {
+          id: folder.id,
+          name: folder.name,
+          sources: selectedSources,
+          notes: selectedNotes,
+        }
+      })
+      .filter(
+        (
+          folder,
+        ): folder is {
+          id: string
+          name: string
+          sources: Array<{ id: string; title: string | null }>
+          notes: Array<{ id: string; title: string | null }>
+        } => folder !== null,
+      )
 
     setTokenCount(response.token_count)
     setCharCount(response.char_count)
@@ -721,7 +817,9 @@ export function useNotebookChat({ notebookId, sources, notes, contextSelections,
       
       // Remove the optimistic placeholder and keep only server messages
       if (result?.data?.messages) {
-        setMessages(result.data.messages)
+        setMessages((prevMessages) =>
+          mergeSessionMessages(prevMessages, result.data.messages),
+        )
       }
 
     } catch (err: unknown) {

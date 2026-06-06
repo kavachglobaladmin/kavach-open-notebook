@@ -39,6 +39,7 @@ describe('ChatColumn', () => {
       notes: {}
     },
     sources: [],
+    notes: [],
   }
 
   it('shows loading spinner when fetching data', () => {

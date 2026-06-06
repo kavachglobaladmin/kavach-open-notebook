@@ -16,12 +16,12 @@ import { QUERY_KEYS } from '@/lib/api/query-client'
 import { sourcesApi } from '@/lib/api/sources'
 import { useIsDesktop } from '@/lib/hooks/use-media-query'
 import { useNotebook, useNotebooks } from '@/lib/hooks/use-notebooks'
-import { getDescendantIds, useSubFolders } from '@/lib/hooks/use-sub-folders'
+import { useSubFolders } from '@/lib/hooks/use-sub-folders'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
-import { ChatColumn } from '../components/ChatColumn'
 import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
 import { SubFolderCard } from '../components/SubFolderCard'
+import { SuperChatColumn } from '../components/SuperChatColumn'
 import type { NoteResponse, SourceListResponse } from '@/lib/types/api'
 
 export type ContextMode = 'off' | 'insights' | 'full'
@@ -41,6 +41,12 @@ function mergeById<T extends { id: string }>(collections: T[][]): T[] {
   return Array.from(deduped.values())
 }
 
+function getFolderDisplayName(folderId: string, fallbackName?: string | null) {
+  if (fallbackName && fallbackName.trim()) return fallbackName
+  const [, shortId = folderId] = folderId.split(':')
+  return shortId
+}
+
 export default function NotebookFolderPage() {
   const { t } = useTranslation()
   const params = useParams()
@@ -51,10 +57,12 @@ export default function NotebookFolderPage() {
   const queryFromUrl = searchParams?.get('q')?.trim() || ''
 
   const { data: notebook, isLoading: notebookLoading } = useNotebook(notebookId)
-  const chatTitle = 'Chat with Super'
+  const chatTitle = 'Chat with ALL Notebook'
 
   const { childIds, addChild, removeChild } = useSubFolders(notebookId)
-  const contextNotebookIds = getDescendantIds(notebookId)
+  // Use childIds directly so folder names and query indices always align.
+  // getDescendantIds reads from localStorage which may be stale on first render.
+  const contextNotebookIds = childIds
   const contextNotebookIdKey = contextNotebookIds.join('|')
 
   const { data: allNotebooks } = useNotebooks(false)
@@ -65,9 +73,6 @@ export default function NotebookFolderPage() {
     [allNotebooks, allArchivedNotebooks],
   )
   const subFolders = allNotebooksFlat.filter((nb) => childIds.includes(nb.id))
-  const contextFolders = allNotebooksFlat.filter((nb) => contextNotebookIds.includes(nb.id))
-  const contextFolderNames = contextFolders.map((folder) => folder.name).filter(Boolean)
-
   const sourcesQueries = useQueries({
     queries: contextNotebookIds.map((id) => ({
       queryKey: QUERY_KEYS.sources(id),
@@ -132,30 +137,38 @@ export default function NotebookFolderPage() {
   })
   const folderContextsStamp = `${contextNotebookIdKey}::${sourcesDataStamp}::${notesDataStamp}`
   if (folderContextsCacheRef.current.stamp !== folderContextsStamp) {
-    const folderLookup = new Map(allNotebooksFlat.map((folder) => [folder.id, folder]))
+    // subFolders already has correct names from allNotebooksFlat.
+    // Build a lookup: folderId → index in contextNotebookIds (= childIds).
+    const folderIdToIndex = new Map(contextNotebookIds.map((id, i) => [id, i]))
+    // Also build a name lookup from the already-resolved subFolders list.
+    const folderNameLookup = new Map(subFolders.map((sf) => [sf.id, sf.name]))
+    // Fall back to allNotebooksFlat for any folder not yet in subFolders.
+    allNotebooksFlat.forEach((nb) => {
+      if (!folderNameLookup.has(nb.id)) folderNameLookup.set(nb.id, nb.name)
+    })
+
     folderContextsCacheRef.current = {
       stamp: folderContextsStamp,
-      value: contextNotebookIds
-        .map((folderId, index) => {
-          const folder = folderLookup.get(folderId)
-          if (!folder) return null
-
-          return {
-            id: folder.id,
-            name: folder.name,
-            sources: sourcesQueries[index]?.data ?? [],
-            notes: notesQueries[index]?.data ?? [],
-          }
-        })
-        .filter((folder): folder is {
-          id: string
-          name: string
-          sources: SourceListResponse[]
-          notes: NoteResponse[]
-        } => folder !== null),
+      value: contextNotebookIds.map((folderId) => {
+        const index = folderIdToIndex.get(folderId) ?? 0
+        const resolvedName = folderNameLookup.get(folderId) ?? getFolderDisplayName(folderId)
+        return {
+          id: folderId,
+          name: resolvedName,
+          sources: sourcesQueries[index]?.data ?? [],
+          notes: notesQueries[index]?.data ?? [],
+        }
+      }),
     }
   }
   const folderContexts = folderContextsCacheRef.current.value
+  // Show all folders: ones with data use just their name,
+  // empty folders show "FolderName (Not available)" so the AI knows they exist.
+  const contextFolderLabels = folderContexts.map((folder) =>
+    folder.sources.length > 0 || folder.notes.length > 0
+      ? folder.name
+      : `${folder.name} (Not available)`,
+  )
 
   const sourcesLoading = sourcesQueries.some((query) => query.isLoading)
   const notesLoading = notesQueries.some((query) => query.isLoading)
@@ -285,7 +298,7 @@ export default function NotebookFolderPage() {
 
   const ChatPanelWrapper = (
     <div className="h-full">
-      <ChatColumn
+      <SuperChatColumn
         notebookId={notebookId}
         contextSelections={contextSelections}
         sources={sources}
@@ -293,11 +306,7 @@ export default function NotebookFolderPage() {
         notes={notes}
         folderContexts={folderContexts}
         chatTitle={chatTitle}
-        subtitleLine={
-          contextFolderNames.length > 0
-            ? `${contextFolderNames.length} folders: ${contextFolderNames.join(', ')}`
-            : 'No sub-folders'
-        }
+        subtitleLine={`${folderContexts.length} ${folderContexts.length === 1 ? 'folder' : 'folders'}`}
         hideModelSelector
       />
     </div>
