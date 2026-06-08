@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { normalizeUserRole, type UserRole } from '@/lib/auth/roles'
 import { getApiUrl } from '@/lib/config'
 import { issueToken, verifyToken, isTokenExpired, rotateBrowserSecret, decodeToken } from '@/lib/jwt'
 import { queryClient } from '@/lib/api/query-client'
@@ -19,6 +20,7 @@ interface AuthState {
   tokenExpiresAt: number | null
   /** Email of the currently logged-in user */
   currentUserEmail: string | null
+  currentUserRole: UserRole | null
 
   setHasHydrated: (state: boolean) => void
   checkAuthRequired: () => Promise<boolean>
@@ -50,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
       authRequired: null,
       tokenExpiresAt: null,
       currentUserEmail: null,
+      currentUserRole: null,
 
       setHasHydrated: (state: boolean) => {
         set({ hasHydrated: state })
@@ -109,9 +112,10 @@ export const useAuthStore = create<AuthState>()(
             const apiToken: string = data.access_token ?? data.api_token ?? ''
             const verifiedEmail: string = data.email ?? email.trim().toLowerCase()
             const displayName: string = name ?? data.name ?? verifiedEmail.split('@')[0]
+            const userRole = normalizeUserRole(data.role)
 
             // Issue a signed JWT for the local session
-            const jwtToken = await issueToken(verifiedEmail, displayName)
+            const jwtToken = await issueToken(verifiedEmail, displayName, userRole)
 
             if (typeof window !== 'undefined') {
               // Store api_token in sessionStorage — cleared when tab closes
@@ -127,6 +131,7 @@ export const useAuthStore = create<AuthState>()(
               lastAuthCheck: Date.now(),
               tokenExpiresAt: null,
               currentUserEmail: verifiedEmail,
+              currentUserRole: userRole,
               error: null,
             })
             return true
@@ -147,7 +152,15 @@ export const useAuthStore = create<AuthState>()(
               }
             } catch { /* ignore */ }
 
-            set({ error: errorMessage, isLoading: false, isAuthenticated: false, token: null, tokenExpiresAt: null })
+            set({
+              error: errorMessage,
+              isLoading: false,
+              isAuthenticated: false,
+              token: null,
+              tokenExpiresAt: null,
+              currentUserEmail: null,
+              currentUserRole: null,
+            })
             return false
           }
         } catch (error) {
@@ -158,7 +171,15 @@ export const useAuthStore = create<AuthState>()(
               ? `Network error: ${error.message}`
               : 'An unexpected error occurred.'
 
-          set({ error: errorMessage, isLoading: false, isAuthenticated: false, token: null, tokenExpiresAt: null })
+          set({
+            error: errorMessage,
+            isLoading: false,
+            isAuthenticated: false,
+            token: null,
+            tokenExpiresAt: null,
+            currentUserEmail: null,
+            currentUserRole: null,
+          })
           return false
         }
       },
@@ -179,6 +200,7 @@ export const useAuthStore = create<AuthState>()(
           error: null,
           tokenExpiresAt: null,
           currentUserEmail: null,
+          currentUserRole: null,
           lastAuthCheck: null,
         })
       },
@@ -203,6 +225,8 @@ export const useAuthStore = create<AuthState>()(
               tokenExpiresAt: null,
               lastAuthCheck: null,
               isCheckingAuth: false,
+              currentUserEmail: null,
+              currentUserRole: null,
             })
             return false
           }
@@ -221,6 +245,8 @@ export const useAuthStore = create<AuthState>()(
               tokenExpiresAt: null,
               lastAuthCheck: null,
               isCheckingAuth: false,
+              currentUserEmail: null,
+              currentUserRole: null,
             })
             return false
           }
@@ -261,6 +287,8 @@ export const useAuthStore = create<AuthState>()(
               tokenExpiresAt: null,
               lastAuthCheck: null,
               isCheckingAuth: false,
+              currentUserEmail: null,
+              currentUserRole: null,
             })
             return false
           }
@@ -274,6 +302,8 @@ export const useAuthStore = create<AuthState>()(
             tokenExpiresAt: null,
             lastAuthCheck: null,
             isCheckingAuth: false,
+            currentUserEmail: null,
+            currentUserRole: null,
           })
           return false
         }
@@ -286,6 +316,7 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
         currentUserEmail: state.currentUserEmail,
+        currentUserRole: state.currentUserRole,
       }),
       onRehydrateStorage: () => (state) => {
         // On page reload, immediately check if the persisted token is expired
@@ -297,12 +328,14 @@ export const useAuthStore = create<AuthState>()(
             state.isAuthenticated = false
             state.tokenExpiresAt = null
             state.currentUserEmail = null
+            state.currentUserRole = null
           } else if (state.token && state.token !== 'not-required') {
             // Restore currentUserEmail from the persisted JWT token's sub claim
             const payload = decodeToken(state.token)
             if (payload?.sub) {
               state.currentUserEmail = payload.sub
             }
+            state.currentUserRole = normalizeUserRole(payload?.role)
 
             // Restore apiPassword from sessionStorage so API calls work after
             // a page reload within the same tab.  sessionStorage is cleared

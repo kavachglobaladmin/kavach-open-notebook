@@ -22,7 +22,8 @@ from fastapi.responses import FileResponse, Response
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
-from api.auth import get_current_user
+from api.auth import get_current_user, get_current_user_role
+from api.roles import has_elevated_data_access
 
 from api.command_service import CommandService
 from api.models import (
@@ -1398,6 +1399,7 @@ async def get_sources(
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Get sources with pagination and sorting support."""
     try:
@@ -1420,7 +1422,12 @@ async def get_sources(
             notebook = await Notebook.get(notebook_id)
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
-            if current_user and notebook.owner and notebook.owner != current_user:
+            if (
+                current_user
+                and notebook.owner
+                and notebook.owner != current_user
+                and not has_elevated_data_access(current_role)
+            ):
                 raise HTTPException(status_code=403, detail="Access denied")
 
             # Query sources for specific notebook - include command field with FETCH
@@ -1446,7 +1453,7 @@ async def get_sources(
                     "offset": offset,
                 },
             )
-        elif current_user:
+        elif current_user and not has_elevated_data_access(current_role):
             # Return only sources linked to notebooks owned by this user
             # Deduplicate by using array::distinct on the source IDs first
             query = f"""

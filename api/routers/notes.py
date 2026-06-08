@@ -3,12 +3,25 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
-from api.auth import get_current_user
+from api.auth import get_current_user, get_current_user_role
 from api.models import NoteCreate, NoteResponse, NoteUpdate
+from api.roles import has_elevated_data_access
 from open_notebook.domain.notebook import Note
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
+
+
+def _can_access_owner(
+    current_user: Optional[str],
+    current_role: str,
+    owner: Optional[str],
+) -> bool:
+    if has_elevated_data_access(current_role):
+        return True
+    if not current_user or not owner:
+        return True
+    return owner == current_user
 
 
 @router.get("/notes", response_model=List[NoteResponse])
@@ -16,6 +29,7 @@ async def get_notes(
     request: Request,
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Get all notes with optional notebook filtering."""
     try:
@@ -27,10 +41,10 @@ async def get_notes(
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
             # Block access if notebook belongs to a different user
-            if current_user and notebook.owner and notebook.owner != current_user:
+            if not _can_access_owner(current_user, current_role, notebook.owner):
                 raise HTTPException(status_code=403, detail="Access denied")
             notes = await notebook.get_notes()
-        elif current_user:
+        elif current_user and not has_elevated_data_access(current_role):
             # Get notes owned by this user
             from open_notebook.database.repository import repo_query
             result = await repo_query(
@@ -64,6 +78,7 @@ async def get_notes(
 async def create_note(
     note_data: NoteCreate,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Create a new note."""
     try:
@@ -105,6 +120,8 @@ async def create_note(
             notebook = await Notebook.get(note_data.notebook_id)
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
+            if not _can_access_owner(current_user, current_role, notebook.owner):
+                raise HTTPException(status_code=403, detail="Access denied")
             await new_note.add_to_notebook(note_data.notebook_id)
 
         return NoteResponse(
@@ -126,12 +143,18 @@ async def create_note(
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
-async def get_note(note_id: str):
+async def get_note(
+    note_id: str,
+    current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
+):
     """Get a specific note by ID."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
+        if not _can_access_owner(current_user, current_role, getattr(note, "owner", None)):
+            raise HTTPException(status_code=403, detail="Access denied")
 
         return NoteResponse(
             id=note.id or "",
@@ -149,12 +172,19 @@ async def get_note(note_id: str):
 
 
 @router.put("/notes/{note_id}", response_model=NoteResponse)
-async def update_note(note_id: str, note_update: NoteUpdate):
+async def update_note(
+    note_id: str,
+    note_update: NoteUpdate,
+    current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
+):
     """Update a note."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
+        if not _can_access_owner(current_user, current_role, getattr(note, "owner", None)):
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Update only provided fields
         if note_update.title is not None:
@@ -190,12 +220,18 @@ async def update_note(note_id: str, note_update: NoteUpdate):
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: str):
+async def delete_note(
+    note_id: str,
+    current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
+):
     """Delete a note."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
+        if not _can_access_owner(current_user, current_role, getattr(note, "owner", None)):
+            raise HTTPException(status_code=403, detail="Access denied")
 
         await note.delete()
 

@@ -24,6 +24,7 @@ from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from api.roles import UserRole, normalize_user_role, role_in
 from open_notebook.utils.encryption import get_secret_from_env
 
 # ── JWT configuration ─────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ def _jwt_secret() -> str:
     return secret
 
 
-def create_access_token(email: str, name: str = "") -> str:
+def create_access_token(email: str, name: str = "", role: UserRole = "user") -> str:
     """
     Create a signed JWT access token.
 
@@ -59,6 +60,7 @@ def create_access_token(email: str, name: str = "") -> str:
     payload = {
         "sub": email,
         "name": name,
+        "role": normalize_user_role(role),
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
@@ -91,6 +93,28 @@ def get_current_user(request: Request) -> Optional[str]:
         return email
     # Fallback: explicit header (internal / legacy calls)
     return request.headers.get("X-User-Email") or None
+
+
+def get_current_user_role(request: Request) -> UserRole:
+    role = getattr(request.state, "jwt_role", None)
+    if role:
+        return normalize_user_role(role)
+    return normalize_user_role(request.headers.get("X-User-Role"))
+
+
+def require_roles(*allowed_roles: UserRole):
+    async def dependency(request: Request) -> str:
+        current_user = get_current_user(request)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        current_role = get_current_user_role(request)
+        if not role_in(current_role, allowed_roles):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        return current_user
+
+    return dependency
 
 
 # ── JWT Auth Middleware ───────────────────────────────────────────────────────
@@ -163,6 +187,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 
         # Inject email into request state so get_current_user() can read it
         request.state.jwt_email = payload.get("sub", "")
+        request.state.jwt_role = normalize_user_role(payload.get("role"))
 
         return await call_next(request)
 

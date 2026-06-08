@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 
+import { getRoleLabel, hasRoleAccess } from '@/lib/auth/roles'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { LanguageToggle } from '@/components/common/LanguageToggle'
-import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Search,
   LogOut,
@@ -35,22 +34,22 @@ import {
 import { SourcePickerDialog } from '@/components/studio/SourcePickerDialog'
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutGrid, studio: null },
-  { name: 'Sources', href: '/sources', icon: FileText, studio: null },
-  { name: 'Cases', href: '/notebooks', icon: Clipboard, studio: null },
-  { name: 'Ask & Search', href: '/search', icon: Search, studio: null },
-  { name: 'Models', href: '/settings/api-keys', icon: BrainCircuit, studio: null },
-  { name: 'Transformations', href: '/transformations', icon: Scissors, studio: null },
-  { name: 'Settings', href: '/settings', icon: Settings2, studio: null },
-  { name: 'Advanced', href: '/advanced', icon: Sparkles, studio: null },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutGrid, studio: null, minimumRole: 'user' as const },
+  { name: 'Sources', href: '/sources', icon: FileText, studio: null, minimumRole: 'user' as const },
+  { name: 'Cases', href: '/notebooks', icon: Clipboard, studio: null, minimumRole: 'user' as const },
+  { name: 'Ask & Search', href: '/search', icon: Search, studio: null, minimumRole: 'user' as const },
+  { name: 'Models', href: '/settings/api-keys', icon: BrainCircuit, studio: null, minimumRole: 'admin' as const },
+  { name: 'Transformations', href: '/transformations', icon: Scissors, studio: null, minimumRole: 'admin' as const },
+  { name: 'Settings', href: '/settings', icon: Settings2, studio: null, minimumRole: 'admin' as const },
+  { name: 'Advanced', href: '/advanced', icon: Sparkles, studio: null, minimumRole: 'super_admin' as const },
 ]
 
 export function AppSidebar() {
-  const { t } = useTranslation()
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse, setCollapsed } = useSidebarStore()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
 
   const [displayName, setDisplayName] = useState('')
   const [initials, setInitials] = useState('')
@@ -58,6 +57,7 @@ export function AppSidebar() {
   const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false)
   const [infographicPickerOpen, setInfographicPickerOpen] = useState(false)
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false)
+  const visibleNavigation = navigation.filter((item) => hasRoleAccess(currentUserRole, item.minimumRole))
 
   useEffect(() => {
     if (!currentUserEmail) {
@@ -171,13 +171,13 @@ export function AppSidebar() {
             </div>
             <div className="flex flex-col overflow-hidden whitespace-nowrap">
               <span className="font-bold text-slate-800 text-[14px] truncate">{displayName}</span>
-              <span className="text-[12px] text-slate-500 font-medium">Premium Account</span>
+              <span className="text-[12px] text-slate-500 font-medium">{getRoleLabel(currentUserRole)}</span>
             </div>
           </div>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const isActive = 
               item.href === '/' 
                 ? pathname === '/' 

@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from api.auth import get_current_user
+from api.auth import get_current_user, get_current_user_role
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
+from api.roles import has_elevated_data_access
 from open_notebook.ai.models import Model, model_manager
 from open_notebook.database.repository import repo_query
 from open_notebook.domain.notebook import text_search, vector_search
@@ -89,12 +90,12 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
 
 
 async def _filter_results_by_owner(
-    results: List[Dict[str, Any]], current_user: Optional[str]
+    results: List[Dict[str, Any]], current_user: Optional[str], current_role: str
 ) -> List[Dict[str, Any]]:
     """
     Restrict search results to records visible to current authenticated user.
     """
-    if not current_user:
+    if not current_user or has_elevated_data_access(current_role):
         return results
 
     allowed_sources, allowed_notes = await _get_accessible_ids_for_user(current_user)
@@ -123,6 +124,7 @@ async def _filter_results_by_owner(
 async def search_knowledge_base(
     search_request: SearchRequest,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Search the knowledge base using text or vector search."""
     try:
@@ -150,7 +152,7 @@ async def search_knowledge_base(
                 note=search_request.search_notes,
             )
 
-        scoped_results = await _filter_results_by_owner(results or [], current_user)
+        scoped_results = await _filter_results_by_owner(results or [], current_user, current_role)
 
         return SearchResponse(
             results=scoped_results,

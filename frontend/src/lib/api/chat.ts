@@ -70,20 +70,15 @@ export const chatApi = {
     const baseURL = apiUrl ? `${apiUrl}/api` : '/api'
     const url = `${baseURL}/chat/stream-execute`
 
-    // Build auth headers — must match apiClient interceptor exactly.
-    // The backend PasswordAuthMiddleware validates the raw API password,
-    // NOT a JWT. The raw password is stored in sessionStorage as
-    // 'kavach_api_password' (memory-only, survives page reload within tab).
+    // Build auth headers to match apiClient's interceptor behavior.
     const extraHeaders: Record<string, string> = {}
     if (typeof window !== 'undefined') {
       try {
-        // 1. Prefer raw API password from sessionStorage (same as apiClient)
         const apiPassword = sessionStorage.getItem('kavach_api_password')
         if (apiPassword) {
           extraHeaders['Authorization'] = `Bearer ${apiPassword}`
         }
 
-        // 2. Resolve user email for scoping (same fallback chain as apiClient)
         const authStorage = localStorage.getItem('auth-storage')
         if (authStorage) {
           const { state } = JSON.parse(authStorage)
@@ -92,7 +87,9 @@ export const chatApi = {
             extraHeaders['X-User-Email'] = userEmail
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        // Ignore auth header resolution errors.
+      }
     }
 
     const response = await fetch(url, {
@@ -140,40 +137,53 @@ export const chatApi = {
           if (line === ':ping' || line === '') continue
 
           // Look for SSE data format
-          if (line.startsWith('data: ')) {
-            try {
-              const jsonStr = line.slice(6).trim()
-              const eventData = JSON.parse(jsonStr)
+          if (!line.startsWith('data: ')) continue
 
-              // Handle token event
-              if (eventData.token !== undefined && eventData.token !== null) {
-                const token = eventData.token
-                accumulated_response += token
-                onToken(token)
-              }
+          let eventData: {
+            token?: string | null
+            type?: string
+            questions?: string[]
+            done?: boolean
+            error?: string
+            session_id?: string
+          }
 
-              // Handle suggested_questions event
-              if (eventData.type === 'suggested_questions' && eventData.questions && onSuggestedQuestions) {
-                onSuggestedQuestions(eventData.questions)
-              }
+          try {
+            const jsonStr = line.slice(6).trim()
+            eventData = JSON.parse(jsonStr)
+          } catch (parseError) {
+            console.warn('Failed to parse SSE line:', line, 'Error:', parseError)
+            continue
+          }
 
-              // Handle done event
-              if (eventData.done === true) {
-                return {
-                  session_id: eventData.session_id || '',
-                  accumulated_response
-                }
-              }
-              
-              // Handle error event
-              if (eventData.error) {
-                console.error('❌ Stream error event:', eventData.error)
-                throw new Error(eventData.error)
-              }
-            } catch (parseError) {
-              console.warn('⚠️ Failed to parse SSE line:', line, 'Error:', parseError)
-              continue
+          // Handle token event
+          if (eventData.token !== undefined && eventData.token !== null) {
+            const token = eventData.token
+            accumulated_response += token
+            onToken(token)
+          }
+
+          // Handle suggested_questions event
+          if (
+            eventData.type === 'suggested_questions' &&
+            eventData.questions &&
+            onSuggestedQuestions
+          ) {
+            onSuggestedQuestions(eventData.questions)
+          }
+
+          // Handle done event
+          if (eventData.done === true) {
+            return {
+              session_id: eventData.session_id || '',
+              accumulated_response
             }
+          }
+
+          // Handle error event
+          if (eventData.error) {
+            console.error('Stream error event:', eventData.error)
+            throw new Error(eventData.error)
           }
         }
       }

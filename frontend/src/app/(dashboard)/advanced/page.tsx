@@ -5,6 +5,8 @@ import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getConfig } from '@/lib/config'
+import { usersApi, type UserAdminRecord } from '@/lib/api/users'
+import type { UserRole } from '@/lib/auth/roles'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Info, Database, AlertCircle, RefreshCw } from 'lucide-react'
 
@@ -23,6 +25,9 @@ export default function AdvancedPage() {
   const [isConfigLoading, setIsConfigLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
   const [updateMessage, setUpdateMessage] = useState<string | null>(null)
+  const [users, setUsers] = useState<UserAdminRecord[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [updatingRoleFor, setUpdatingRoleFor] = useState<string | null>(null)
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -37,6 +42,21 @@ export default function AdvancedPage() {
     }
 
     loadConfig()
+  }, [])
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const data = await usersApi.listAll()
+        setUsers(data)
+      } catch (error) {
+        console.error('Failed to load users:', error)
+      } finally {
+        setUsersLoading(false)
+      }
+    }
+
+    loadUsers()
   }, [])
 
   const handleUpdate = async () => {
@@ -60,6 +80,22 @@ export default function AdvancedPage() {
       setUpdateMessage('Failed to start update. Please check server logs.')
     } finally {
       setIsUpdating(false)
+    }
+  }
+
+  const handleRoleChange = async (email: string, role: UserRole) => {
+    setUpdatingRoleFor(email)
+    try {
+      const updatedUser = await usersApi.updateRole(email, role)
+      setUsers((current) => current.map((user) => (
+        user.email.toLowerCase() === email.toLowerCase()
+          ? { ...user, role: updatedUser.role }
+          : user
+      )))
+    } catch (error) {
+      console.error('Failed to update user role:', error)
+    } finally {
+      setUpdatingRoleFor(null)
     }
   }
 
@@ -191,6 +227,51 @@ export default function AdvancedPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="w-full bg-white rounded-3xl shadow-sm border border-slate-200/60 p-6 sm:p-8 lg:p-10">
+              <div className="flex items-center justify-between gap-4 mb-8">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">User Access Management</h2>
+                  <p className="text-sm text-slate-500">Set who is a super admin, admin, or regular user.</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 text-xs font-bold uppercase tracking-wide">
+                  Super Admin Only
+                </div>
+              </div>
+
+              {usersLoading ? (
+                <div className="text-sm text-slate-500">Loading users...</div>
+              ) : users.length === 0 ? (
+                <div className="text-sm text-slate-500">No users found.</div>
+              ) : (
+                <div className="space-y-3">
+                  {users.map((user) => (
+                    <div
+                      key={user.id || user.email}
+                      className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_180px] gap-4 items-center border border-slate-100 rounded-2xl p-4"
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{user.name || 'Unnamed user'}</p>
+                        <p className="text-xs text-slate-500 mt-1">{user.email}</p>
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Created: {user.created_at ? new Date(user.created_at).toLocaleString() : 'Unknown'}
+                      </div>
+                      <select
+                        value={user.role}
+                        disabled={updatingRoleFor === user.email}
+                        onChange={(e) => void handleRoleChange(user.email, e.target.value as UserRole)}
+                        className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-[#8A2BE2]/30"
+                      >
+                        <option value="super_admin">Super Admin</option>
+                        <option value="admin">Admin</option>
+                        <option value="user">User</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="w-full bg-white rounded-3xl shadow-sm border border-slate-200/60 p-6 sm:p-8 lg:p-10">

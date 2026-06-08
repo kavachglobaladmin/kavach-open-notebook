@@ -115,39 +115,48 @@ export const superChatApi = {
           const line = lines[i].trim()
           if (line === ':ping' || line === '') continue
 
-          if (line.startsWith('data: ')) {
-            try {
-              const jsonStr = line.slice(6).trim()
-              const eventData = JSON.parse(jsonStr)
+          if (!line.startsWith('data: ')) continue
 
-              if (eventData.token !== undefined && eventData.token !== null) {
-                const token = eventData.token
-                accumulatedResponse += token
-                onToken(token)
-              }
+          let eventData: {
+            token?: string | null
+            type?: string
+            questions?: string[]
+            done?: boolean
+            error?: string
+            session_id?: string
+          }
 
-              if (
-                eventData.type === 'suggested_questions' &&
-                eventData.questions &&
-                onSuggestedQuestions
-              ) {
-                onSuggestedQuestions(eventData.questions)
-              }
+          try {
+            const jsonStr = line.slice(6).trim()
+            eventData = JSON.parse(jsonStr)
+          } catch (parseError) {
+            console.warn('Failed to parse SSE line:', line, parseError)
+            continue
+          }
 
-              if (eventData.done === true) {
-                return {
-                  session_id: eventData.session_id || '',
-                  accumulated_response: accumulatedResponse,
-                }
-              }
+          if (eventData.token !== undefined && eventData.token !== null) {
+            const token = eventData.token
+            accumulatedResponse += token
+            onToken(token)
+          }
 
-              if (eventData.error) {
-                throw new Error(eventData.error)
-              }
-            } catch (parseError) {
-              console.warn('Failed to parse SSE line:', line, parseError)
-              continue
+          if (
+            eventData.type === 'suggested_questions' &&
+            eventData.questions &&
+            onSuggestedQuestions
+          ) {
+            onSuggestedQuestions(eventData.questions)
+          }
+
+          if (eventData.done === true) {
+            return {
+              session_id: eventData.session_id || '',
+              accumulated_response: accumulatedResponse,
             }
+          }
+
+          if (eventData.error) {
+            throw new Error(eventData.error)
           }
         }
       }

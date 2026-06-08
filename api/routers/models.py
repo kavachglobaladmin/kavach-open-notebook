@@ -386,6 +386,8 @@ async def get_provider_availability():
         for provider, env_var in env_var_map.items():
             has_cred = await _check_provider_has_credential(provider)
             has_env = os.environ.get(env_var) is not None
+            if provider == "ollama":
+                has_env = has_env or os.environ.get("OLLAMA_BASE_URL") is not None
             provider_status[provider] = has_cred or has_env
 
         # Google also supports GEMINI_API_KEY

@@ -65,6 +65,21 @@ PROVIDER_CONFIG = {
 }
 
 
+def _get_ollama_env_base() -> Optional[str]:
+    """Support both canonical and legacy Ollama environment variable names."""
+    return os.environ.get("OLLAMA_API_BASE") or os.environ.get("OLLAMA_BASE_URL")
+
+
+def _sync_ollama_env_aliases(base_url: Optional[str] = None) -> None:
+    """Keep Ollama env aliases in sync for older and newer code paths."""
+    resolved = base_url or _get_ollama_env_base()
+    if not resolved:
+        return
+
+    os.environ["OLLAMA_API_BASE"] = resolved
+    os.environ["OLLAMA_BASE_URL"] = resolved
+
+
 async def _get_default_credential(provider: str) -> Optional[Credential]:
     """Get the first credential for a provider from the database."""
     try:
@@ -94,6 +109,13 @@ async def get_api_key(provider: str) -> Optional[str]:
     # Fall back to environment variable
     config_info = PROVIDER_CONFIG.get(provider.lower())
     if config_info:
+        if provider.lower() == "ollama":
+            env_value = _get_ollama_env_base()
+            if env_value:
+                _sync_ollama_env_aliases(env_value)
+                logger.debug("Using ollama base URL from environment variable")
+            return env_value
+
         env_value = os.environ.get(config_info["env_var"])
         if env_value:
             logger.debug(f"Using {provider} API key from environment variable")
@@ -127,9 +149,16 @@ async def _provision_simple_provider(provider: str) -> bool:
 
     # Set base URL if present
     if cred.base_url:
-        provider_upper = provider_lower.upper()
-        os.environ[f"{provider_upper}_API_BASE"] = cred.base_url
-        logger.debug(f"Set {provider_upper}_API_BASE from Credential")
+        if provider_lower == "ollama":
+            _sync_ollama_env_aliases(cred.base_url)
+            logger.debug("Set Ollama base URL env aliases from Credential")
+        else:
+            provider_upper = provider_lower.upper()
+            os.environ[f"{provider_upper}_API_BASE"] = cred.base_url
+            logger.debug(f"Set {provider_upper}_API_BASE from Credential")
+
+    if provider_lower == "ollama":
+        _sync_ollama_env_aliases()
 
     return True
 

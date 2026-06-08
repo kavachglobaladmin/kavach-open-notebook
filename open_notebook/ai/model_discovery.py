@@ -268,7 +268,11 @@ async def discover_google_models() -> List[DiscoveredModel]:
 
 async def discover_ollama_models() -> List[DiscoveredModel]:
     """Fetch available models from local Ollama instance."""
-    base_url = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
+    base_url = (
+        os.environ.get("OLLAMA_API_BASE")
+        or os.environ.get("OLLAMA_BASE_URL")
+        or "http://localhost:11434"
+    )
     if not base_url:
         return []
 

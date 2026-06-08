@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
-from api.auth import get_current_user
+from api.auth import get_current_user, get_current_user_role, require_roles
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -12,11 +12,24 @@ from api.models import (
     NotebookResponse,
     NotebookUpdate,
 )
+from api.roles import has_elevated_data_access
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
+
+
+def _can_access_owner(
+    current_user: Optional[str],
+    current_role: str,
+    owner: Optional[str],
+) -> bool:
+    if has_elevated_data_access(current_role):
+        return True
+    if not current_user or not owner:
+        return True
+    return owner == current_user
 
 
 def _calc_storage_used_mb(nb_id: str, sources: list) -> float:
@@ -51,6 +64,7 @@ async def get_notebooks(
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
     order_by: str = Query("updated desc", description="Order by field and direction"),
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
@@ -66,7 +80,7 @@ async def get_notebooks(
         else:
             archived_condition = ""
 
-        if current_user:
+        if current_user and not has_elevated_data_access(current_role):
             # Return only notebooks owned by this user.
             # Legacy unowned notebooks are handled by the claim-unowned endpoint
             # which runs on page load and assigns them to the current user.
@@ -156,7 +170,7 @@ async def claim_unowned_notebooks(
 
 @router.get("/notebooks/debug-owner")
 async def debug_notebook_owners(
-    current_user: Optional[str] = Depends(get_current_user),
+    current_user: str = Depends(require_roles("super_admin")),
 ):
     """
     Debug endpoint — returns all notebooks with their owner field.
@@ -223,13 +237,14 @@ async def create_notebook(
 async def get_notebook_delete_preview(
     notebook_id: str,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Get a preview of what will be deleted when this notebook is deleted."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if current_user and notebook.owner and notebook.owner != current_user:
+        if not _can_access_owner(current_user, current_role, notebook.owner):
             raise HTTPException(status_code=403, detail="Access denied")
 
         preview = await notebook.get_delete_preview()
@@ -255,6 +270,7 @@ async def get_notebook_delete_preview(
 async def get_notebook(
     notebook_id: str,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Get a specific notebook by ID."""
     try:
@@ -274,7 +290,7 @@ async def get_notebook(
 
         # Owner check — deny access if notebook belongs to a different user
         nb_owner = nb.get("owner")
-        if current_user and nb_owner and nb_owner != current_user:
+        if not _can_access_owner(current_user, current_role, nb_owner):
             raise HTTPException(status_code=403, detail="Access denied")
 
         nb_id = str(nb.get("id", ""))
@@ -305,6 +321,7 @@ async def update_notebook(
     notebook_id: str,
     notebook_update: NotebookUpdate,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Update a notebook."""
     try:
@@ -313,7 +330,7 @@ async def update_notebook(
             raise HTTPException(status_code=404, detail="Notebook not found")
 
         # Owner check
-        if current_user and notebook.owner and notebook.owner != current_user:
+        if not _can_access_owner(current_user, current_role, notebook.owner):
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Update only provided fields
@@ -379,13 +396,14 @@ async def add_source_to_notebook(
     notebook_id: str,
     source_id: str,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Add an existing source to a notebook (create the reference)."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if current_user and notebook.owner and notebook.owner != current_user:
+        if not _can_access_owner(current_user, current_role, notebook.owner):
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Check if source exists
@@ -429,13 +447,14 @@ async def remove_source_from_notebook(
     notebook_id: str,
     source_id: str,
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Remove a source from a notebook (delete the reference)."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if current_user and notebook.owner and notebook.owner != current_user:
+        if not _can_access_owner(current_user, current_role, notebook.owner):
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Delete the reference record linking source to notebook
@@ -464,13 +483,14 @@ async def delete_notebook(
     notebook_id: str,
     delete_exclusive_sources: bool = Query(False),
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Delete a notebook with cascade deletion."""
     try:
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if current_user and notebook.owner and notebook.owner != current_user:
+        if not _can_access_owner(current_user, current_role, notebook.owner):
             raise HTTPException(status_code=403, detail="Access denied")
 
         result = await notebook.delete(delete_exclusive_sources=delete_exclusive_sources)
