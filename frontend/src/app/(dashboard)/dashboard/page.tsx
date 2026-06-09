@@ -1,121 +1,159 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { hasRoleAccess } from '@/lib/auth/roles'
+import { useState, useMemo } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
-import { useAuthStore } from '@/lib/stores/auth-store'
 import { sourcesApi } from '@/lib/api/sources'
 import { useQuery } from '@tanstack/react-query'
-import { motion, Variants } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-  FileText,
-  FolderOpen,
-  Sparkles,
-  Zap,
-  Upload,
-  Search,
-  ArrowUpRight,
-  Clock,
-  TrendingUp,
+  Building2,
+  UserCog,
+  Users,
   Briefcase,
+  CheckCircle,
+  HardDrive,
+  Sparkles,
+  Search,
+  Database,
+  Cloud,
+  FileText,
+  Upload,
+  Shield,
+  MoreHorizontal
 } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
 
-// ── Bar chart for AI Performance ─────────────────────────────────────────────
-const BAR_GRADIENT = 'linear-gradient(180deg, #8B5CF6 0%, #C084FC 100%)'
-
-function AiPerformanceChart({ heights }: { heights: number[] }) {
+// ── SVG Donut Chart for Storage Breakdown ─────────────────────────────────────
+function StorageDonutChart() {
+  // SVG size is 120x120. Radius = 40. Circumference = 2 * PI * r = 251.3
+  // Values: Documents (45% -> 113.1), Media Files (30% -> 75.4), Archives (15% -> 37.7), Other (10% -> 25.1)
   return (
-    <div className="flex items-end gap-[8px] h-[80px] w-full px-2">
-      {heights.map((h, i) => (
-        <motion.div
-          key={i}
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: `${h}%`, opacity: 1 }}
-          transition={{ delay: 0.1 * i, duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
-          className="flex-1 rounded-t-[6px]"
-          style={{ background: BAR_GRADIENT }}
+    <div className="relative w-36 h-36 mx-auto flex items-center justify-center">
+      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
+        {/* Track */}
+        <circle cx="60" cy="60" r="40" fill="transparent" stroke="#F1F5F9" strokeWidth="14" />
+        
+        {/* Documents Segment (purple) - Offset: 0 */}
+        <circle
+          cx="60"
+          cy="60"
+          r="40"
+          fill="transparent"
+          stroke="#8B5CF6"
+          strokeWidth="14"
+          strokeDasharray="251.3"
+          strokeDashoffset="138.2" // 251.3 - 45% = 251.3 - 113.1
         />
-      ))}
+
+        {/* Media Segment (blue) - Offset: 45% of 251.3 = 113.1 */}
+        <circle
+          cx="60"
+          cy="60"
+          r="40"
+          fill="transparent"
+          stroke="#3B82F6"
+          strokeWidth="14"
+          strokeDasharray="251.3"
+          strokeDashoffset="175.9" // 251.3 - 30% = 175.9. (offset start from 113.1 + 75.4 = 188.5? No, offset is strokeDashoffset = Circumference - segmentLength, and offsetStart is strokeDashoffset = strokeDashoffset - offsetLength)
+          style={{ strokeDashoffset: 138.2 - 75.4 }}
+        />
+
+        {/* Archives Segment (green) - Offset: 75% of 251.3 = 188.5 */}
+        <circle
+          cx="60"
+          cy="60"
+          r="40"
+          fill="transparent"
+          stroke="#10B981"
+          strokeWidth="14"
+          strokeDasharray="251.3"
+          style={{ strokeDashoffset: 138.2 - 75.4 - 37.7 }}
+        />
+
+        {/* Other Segment (orange) - Offset: 90% of 251.3 = 226.2 */}
+        <circle
+          cx="60"
+          cy="60"
+          r="40"
+          fill="transparent"
+          stroke="#F59E0B"
+          strokeWidth="14"
+          strokeDasharray="251.3"
+          style={{ strokeDashoffset: 138.2 - 75.4 - 37.7 - 25.1 }}
+        />
+      </svg>
+      {/* Center content */}
+      <div className="absolute flex flex-col items-center">
+        <span className="text-sm font-bold text-slate-400">Used</span>
+        <span className="text-lg font-extrabold text-slate-800">48%</span>
+      </div>
     </div>
   )
 }
 
-// ── Resolve display name from localStorage ────────────────────────────────────
-function resolveDisplayName(email: string | null): string {
-  if (!email) return 'there'
-  try {
-    const users: { email: string; name: string }[] = JSON.parse(
-      localStorage.getItem('kavach_users') ?? '[]'
-    )
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase())
-    if (user?.name?.trim()) {
-      return user.name.trim().split(/\s+/)[0]
-    }
-  } catch { /* ignore */ }
-  return email.includes('@') ? email.split('@')[0] : email
-}
+// ── SVG Double Area Chart for Cases Overview ──────────────────────────────────
+function CasesAreaChart() {
+  return (
+    <div className="w-full h-[180px] relative mt-2 select-none">
+      <svg className="w-full h-full" viewBox="0 0 500 150" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.0" />
+          </linearGradient>
+          <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
 
-function getGreeting(): string {
-  return 'Welcome Back'
-}
+        {/* Grid lines */}
+        <line x1="0" y1="30" x2="500" y2="30" stroke="#F1F5F9" strokeWidth="1" />
+        <line x1="0" y1="70" x2="500" y2="70" stroke="#F1F5F9" strokeWidth="1" />
+        <line x1="0" y1="110" x2="500" y2="110" stroke="#F1F5F9" strokeWidth="1" />
 
-interface ActivityItem {
-  id: string
-  icon: React.ReactNode
-  iconBg: string
-  title: string
-  subtitle: string
-  time: string
-  status: 'done' | 'processing' | 'pending'
-}
+        {/* Completed Cases (Blue) */}
+        <path
+          d="M0,130 C80,110 160,95 250,115 C330,130 410,95 500,85 L500,150 L0,150 Z"
+          fill="url(#blueGrad)"
+        />
+        <path
+          d="M0,130 C80,110 160,95 250,115 C330,130 410,95 500,85"
+          fill="none"
+          stroke="#3B82F6"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
 
-// ── Motion Variants with Explicit Types ─────────────────────────────────────
-const iconVariants: Variants = {
-  initial: { scale: 1, rotate: 0 },
-  hover: { scale: 1.15, rotate: [0, -10, 10, 0], transition: { duration: 0.4 } },
-}
-
-const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.1, duration: 0.5, ease: 'easeOut' },
-  }),
-}
-
-const listItemVariants: Variants = {
-  initial: { x: -20, opacity: 0 },
-  animate: (i: number) => ({
-    x: 0,
-    opacity: 1,
-    transition: { delay: 0.3 + i * 0.08, duration: 0.4 },
-  }),
-  hover: { x: 10, backgroundColor: 'rgba(248, 250, 255, 0.8)', transition: { duration: 0.2 } },
+        {/* Active Cases (Purple) */}
+        <path
+          d="M0,90 C80,82 160,50 250,75 C330,95 410,65 500,50 L500,150 L0,150 Z"
+          fill="url(#purpleGrad)"
+        />
+        <path
+          d="M0,90 C80,82 160,50 250,75 C330,95 410,65 500,50"
+          fill="none"
+          stroke="#8B5CF6"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+      </svg>
+      {/* Month Labels */}
+      <div className="flex justify-between text-[11px] text-slate-400 font-bold px-1 mt-2">
+        <span>Jan</span>
+        <span>Feb</span>
+        <span>Mar</span>
+        <span>Apr</span>
+        <span>May</span>
+        <span>Jun</span>
+      </div>
+    </div>
+  )
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const currentUserEmail = useAuthStore(s => s.currentUserEmail)
-  const currentUserRole = useAuthStore(s => s.currentUserRole)
   const [searchTerm, setSearchTerm] = useState('')
-  const [displayName, setDisplayName] = useState('there')
-  const [aiPerformanceHeights, setAiPerformanceHeights] = useState([0, 0, 0, 0, 0, 0, 0])
-
-  useEffect(() => {
-    setDisplayName(resolveDisplayName(currentUserEmail))
-  }, [currentUserEmail])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setAiPerformanceHeights([40, 60, 35, 85, 55, 75, 95])
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [])
 
   const { data: notebooks } = useNotebooks(false)
   const { data: sources } = useQuery({
@@ -127,212 +165,490 @@ export default function DashboardPage() {
   const stats = useMemo(() => {
     const totalSources = sources?.length ?? 0
     const activeCases = notebooks?.length ?? 0
-    const rawAiQueries = sources?.reduce((acc, s) => acc + (s.insights_count ?? 0), 0) ?? 0
-    const insightsGenerated = sources?.reduce((acc, s) => acc + (s.insights_count ?? 0), 0) ?? 0
-    return { totalSources, activeCases, aiQueries: rawAiQueries.toLocaleString('en-US'), insightsGenerated }
+    return { totalSources, activeCases }
   }, [sources, notebooks])
 
-  const recentActivity = useMemo((): ActivityItem[] => {
-    const items: ActivityItem[] = []
-    const recentSources = (sources ?? []).slice(0, 4)
-    recentSources.forEach(s => {
-      items.push({
-        id: s.id,
-        icon: <FileText className="h-4 w-4 text-[#4F46E5]" />,
-        iconBg: 'bg-[#EEF2FF]',
-        title: s.title || 'Untitled Document',
-        subtitle: s.embedded ? 'Embedded successfully' : 'Processing...',
-        time: formatDistanceToNow(new Date(s.updated ?? s.created), { addSuffix: true }),
-        status: s.embedded ? 'done' : 'processing',
-      })
-    })
-    return items
-  }, [sources])
-
   const statCards = [
-    { label: 'Total Sources', value: stats.totalSources, icon: <FileText className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)' },
-    { label: 'Active Cases', value: stats.activeCases, icon: <Briefcase className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #DB2777 0%, #F43F5E 100%)' },
-    { label: 'AI Queries', value: stats.aiQueries, icon: <Search className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #7C3AED 0%, #9333EA 100%)' },
-    { label: 'Insights Generated', value: stats.insightsGenerated, icon: <Zap className="h-5 w-5 text-white" />, iconGradient: 'linear-gradient(135deg, #0891B2 0%, #10B981 100%)' },
+    {
+      label: 'Total Organizations',
+      value: '248',
+      trend: '↑ 12%',
+      isPositive: true,
+      icon: Building2,
+      iconColor: 'text-[#8B5CF6]',
+      iconBg: 'bg-[#F5F3FF]'
+    },
+    {
+      label: 'Total Admins',
+      value: '156',
+      trend: '↑ 8%',
+      isPositive: true,
+      icon: UserCog,
+      iconColor: 'text-[#3B82F6]',
+      iconBg: 'bg-[#EFF6FF]'
+    },
+    {
+      label: 'Total Users',
+      value: '2,847',
+      trend: '↑ 15%',
+      isPositive: true,
+      icon: Users,
+      iconColor: 'text-[#10B981]',
+      iconBg: 'bg-[#ECFDF5]'
+    },
+    {
+      label: 'Active Cases',
+      value: stats.activeCases || '324',
+      trend: '↑ 5%',
+      isPositive: true,
+      icon: Briefcase,
+      iconColor: 'text-[#F59E0B]',
+      iconBg: 'bg-[#FFFBEB]'
+    },
+    {
+      label: 'Completed Cases',
+      value: '1,563',
+      trend: '↑ 18%',
+      isPositive: true,
+      icon: CheckCircle,
+      iconColor: 'text-[#D946EF]',
+      iconBg: 'bg-[#FDF4FF]'
+    },
+    {
+      label: 'Storage Used',
+      value: '2.4 TB',
+      trend: '↓ 3%',
+      isPositive: false,
+      icon: HardDrive,
+      iconColor: 'text-[#EF4444]',
+      iconBg: 'bg-[#FEF2F2]'
+    }
   ]
 
-  const quickActions = [
-    { label: 'Upload Document', icon: <Upload className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #4F46E5 0%, #3B82F6 100%)', route: '/sources', minimumRole: 'user' as const },
-    { label: 'Create Case', icon: <Briefcase className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #DB2777 0%, #F43F5E 100%)', route: '/notebooks', minimumRole: 'user' as const },
-    { label: 'Ask AI', icon: <Search className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #9333EA 0%, #C084FC 100%)', route: '/search', minimumRole: 'user' as const },
-    { label: 'New Transformation', icon: <Zap className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #0891B2 0%, #10B981 100%)', route: '/transformations', minimumRole: 'admin' as const },
-  ].filter((action) => hasRoleAccess(currentUserRole, action.minimumRole))
+  const healthServices = [
+    {
+      name: 'AI Service',
+      status: 'Operational',
+      uptime: '99.9%',
+      icon: Sparkles,
+      iconBg: 'bg-emerald-50 text-emerald-600'
+    },
+    {
+      name: 'Search Engine',
+      status: 'Operational',
+      uptime: '99.9%',
+      icon: Search,
+      iconBg: 'bg-emerald-50 text-emerald-600'
+    },
+    {
+      name: 'Database',
+      status: 'Operational',
+      uptime: '99.9%',
+      icon: Database,
+      iconBg: 'bg-emerald-50 text-emerald-600'
+    },
+    {
+      name: 'Storage',
+      status: 'Degraded',
+      uptime: '95.2%',
+      icon: Cloud,
+      iconBg: 'bg-amber-50 text-amber-600'
+    }
+  ]
+
+  const orgs = [
+    {
+      name: 'TechCorp Industries',
+      industry: 'Technology',
+      plan: 'Enterprise',
+      users: 245,
+      storage: '1.2 TB',
+      status: 'Active',
+      initial: 'T',
+      color: 'bg-indigo-500 text-white'
+    },
+    {
+      name: 'Global Finance Group',
+      industry: 'Finance',
+      plan: 'Business',
+      users: 156,
+      storage: '850 GB',
+      status: 'Active',
+      initial: 'G',
+      color: 'bg-blue-500 text-white'
+    },
+    {
+      name: 'Healthcare Solutions',
+      industry: 'Healthcare',
+      plan: 'Enterprise',
+      users: 312,
+      storage: '2.1 TB',
+      status: 'Active',
+      initial: 'H',
+      color: 'bg-fuchsia-500 text-white'
+    },
+    {
+      name: 'Legal Partners LLC',
+      industry: 'Legal',
+      plan: 'Professional',
+      users: 89,
+      storage: '420 GB',
+      status: 'Active',
+      initial: 'L',
+      color: 'bg-emerald-500 text-white'
+    },
+    {
+      name: 'Manufacturing Co',
+      industry: 'Manufacturing',
+      plan: 'Business',
+      users: 178,
+      storage: '950 GB',
+      status: 'Trial',
+      initial: 'M',
+      color: 'bg-amber-500 text-white'
+    }
+  ]
+
+  const recentActivities = [
+    {
+      id: 'act-1',
+      title: 'New user registered',
+      desc: 'Sarah Johnson joined Finance Team',
+      time: '5 minutes ago',
+      icon: Users,
+      iconBg: 'bg-blue-50 text-blue-600'
+    },
+    {
+      id: 'act-2',
+      title: 'Organization added',
+      desc: 'TechCorp Industries was added to the platform',
+      time: '1 hour ago',
+      icon: Building2,
+      iconBg: 'bg-purple-50 text-purple-600'
+    },
+    {
+      id: 'act-3',
+      title: 'Case created',
+      desc: 'Investigation #2847 was initiated',
+      time: '2 hours ago',
+      icon: FileText,
+      iconBg: 'bg-emerald-50 text-emerald-600'
+    },
+    {
+      id: 'act-4',
+      title: 'File uploaded',
+      desc: 'Document evidence_report.pdf was uploaded',
+      time: '3 hours ago',
+      icon: Upload,
+      iconBg: 'bg-amber-50 text-amber-600'
+    },
+    {
+      id: 'act-5',
+      title: 'Security audit completed',
+      desc: 'Quarterly security review finished successfully',
+      time: '5 hours ago',
+      icon: Shield,
+      iconBg: 'bg-violet-50 text-violet-600'
+    }
+  ]
 
   return (
     <AppShell>
-      {/* ── BACKGROUND LAYER: Exact Gradient Colors from Image ────────────────── */}
-      <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden bg-[#F9FAFF]">
-        {/* Top Right Indigo Glow */}
-        <div 
-          className="absolute top-[-10%] right-[-5%] w-[65%] h-[75%] rounded-full pointer-events-none z-0 opacity-40"
-          style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.5) 0%, transparent 70%)', filter: 'blur(100px)' }} 
-        />
-        
-        {/* Center-Left Soft Cyan Glow */}
-        <div 
-          className="absolute top-[15%] left-[-10%] w-[45%] h-[55%] rounded-full pointer-events-none z-0 opacity-30"
-          style={{ background: 'radial-gradient(circle, rgba(129,140,248,0.4) 0%, transparent 70%)', filter: 'blur(110px)' }} 
-        />
-
-        {/* Bottom Right Soft Lavender Glow */}
-        <div 
-          className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full pointer-events-none z-0 opacity-30"
-          style={{ background: 'radial-gradient(circle, rgba(216,180,254,0.4) 0%, transparent 75%)', filter: 'blur(90px)' }} 
-        />
+      <div className="flex-1 flex flex-col min-h-0 bg-[#F8FAFC] relative overflow-hidden">
+        {/* Background Glows */}
+        <div className="absolute top-[-10%] right-[-5%] w-[400px] h-[400px] bg-slate-100 rounded-full blur-[100px] opacity-40 pointer-events-none" />
+        <div className="absolute bottom-[10%] left-[-5%] w-[300px] h-[300px] bg-slate-100 rounded-full blur-[80px] opacity-30 pointer-events-none" />
 
         <PageHeader searchValue={searchTerm} onSearchChange={setSearchTerm} newLabel="NOTEBOOK" />
 
         <div className="flex-1 overflow-y-auto relative z-10 custom-scrollbar">
-          <div className="w-full px-4 sm:px-6 lg:px-10 xl:pr-[60px] py-6 sm:py-8 lg:py-10 space-y-6 sm:space-y-8 lg:space-y-10">
+          <div className="w-full px-6 lg:px-8 py-8 lg:py-10 pb-24 space-y-8 text-left">
+            
 
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5, ease: "easeOut" }}>
-              <h1 className="text-[28px] sm:text-[32px] lg:text-[36px] font-bold text-[#4338CA] tracking-tight">
-                {getGreeting()}, <span className="text-[#6366F1]">{displayName}!</span>
-              </h1>
-              <p className="text-[14px] sm:text-[15px] text-slate-500 font-medium mt-1">
-                Here is what&apos;s happening with your knowledge base today.
-              </p>
-            </motion.div>
-
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
-              {statCards.map((card, idx) => (
-                <motion.div
-                  key={card.label}
-                  custom={idx}
-                  initial="hidden"
-                  animate="visible"
-                  variants={cardVariants}
-                  whileHover="hover"
-                  className="bg-white/70 backdrop-blur-xl rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 flex flex-col gap-4 group hover:shadow-xl transition-all duration-300"
-                >
-                  <div className="flex justify-between items-start">
-                    {/* Gradient Icon Background */}
-                    <motion.div 
-                      variants={iconVariants} 
-                      className="w-12 h-12 rounded-[16px] flex items-center justify-center shadow-lg"
-                      style={{ background: card.iconGradient }}
-                    >
-                      {card.icon}
-                    </motion.div>
-                  </div>
-                  <div>
-                    <h3 className="text-[32px] font-bold text-slate-900 tracking-tight">{card.value}</h3>
-                    <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
-                  </div>
-                </motion.div>
-              ))}
+            {/* Row 1: KPI Stats Cards (6 columns) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {statCards.map((card, idx) => {
+                const CardIcon = card.icon
+                return (
+                  <motion.div
+                    key={card.label}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05, duration: 0.4 }}
+                    className="bg-white border border-slate-100/90 rounded-3xl p-5 shadow-[0_2px_8px_rgba(0,0,0,0.003)] flex flex-col justify-between min-h-[140px] hover:shadow-[0_4px_16px_rgba(0,0,0,0.01)] hover:-translate-y-0.5 transition-all duration-200"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${card.iconBg}`}>
+                        <CardIcon className={`h-5 w-5 ${card.iconColor}`} />
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        card.isPositive 
+                          ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                          : 'bg-rose-50 text-rose-600 border border-rose-100'
+                      }`}>
+                        {card.trend}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-[24px] font-extrabold text-slate-800 tracking-tight leading-none mb-1 mt-4">{card.value}</p>
+                      <p className="text-[10.5px] font-bold text-slate-400 leading-tight truncate">{card.label}</p>
+                    </div>
+                  </motion.div>
+                )
+              })}
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6 sm:gap-8">
-              {/* Recent Activity Card */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-                className="bg-white/80 backdrop-blur-2xl rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white"
-              >
-                <div className="flex items-center justify-between mb-6 sm:mb-8 gap-4">
+            {/* Row 2: Charts (Cases Overview & User Growth) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Cases Overview Chart (8 columns) */}
+              <div className="lg:col-span-7 xl:col-span-8 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.003)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                   <div>
-                    <h2 className="text-[18px] sm:text-[20px] font-bold text-slate-900">Recent Activity</h2>
-                    <p className="text-[13px] sm:text-[14px] text-slate-400 font-medium">Latest updates from your knowledge base</p>
+                    <h3 className="font-extrabold text-slate-800 text-[15px]">Cases Overview</h3>
+                    <p className="text-[12px] text-slate-400 font-semibold mt-0.5">Active vs Completed cases</p>
                   </div>
-                  <button className="text-slate-300 hover:text-slate-500 transition-colors text-2xl">···</button>
+                  <div className="flex items-center gap-4 text-xs font-bold">
+                    <span className="flex items-center gap-1.5 text-slate-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]" />
+                      Active
+                    </span>
+                    <span className="flex items-center gap-1.5 text-slate-600">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]" />
+                      Completed
+                    </span>
+                  </div>
                 </div>
+                <CasesAreaChart />
+              </div>
 
-                <div className="space-y-2">
-                  {recentActivity.length === 0 && (
-                    <div className="p-6 text-center text-slate-500 bg-white/60 rounded-[20px] border border-white">
-                      <p className="text-sm font-semibold">No recent activity yet</p>
-                      <p className="text-xs mt-1">Upload a source or create a notebook to get started.</p>
+              {/* User Growth Chart (4 columns) */}
+              <div className="lg:col-span-5 xl:col-span-4 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.003)] flex flex-col justify-between">
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-[15px]">User Growth</h3>
+                  <p className="text-[12px] text-slate-400 font-semibold mt-0.5">Total users over time</p>
+                </div>
+                <div className="flex items-end gap-3 h-[120px] px-2 mt-6">
+                  {/* Columns for Jan - Jun */}
+                  {[
+                    { month: 'Jan', val: '20%' },
+                    { month: 'Feb', val: '35%' },
+                    { month: 'Mar', val: '45%' },
+                    { month: 'Apr', val: '58%' },
+                    { month: 'May', val: '75%' },
+                    { month: 'Jun', val: '90%' }
+                  ].map((item) => (
+                    <div key={item.month} className="flex-1 flex flex-col items-center gap-2">
+                      <div className="w-full bg-[#F1F5F9] rounded-t-lg h-[100px] relative overflow-hidden">
+                        <div 
+                          className="absolute bottom-0 left-0 right-0 bg-[#8B5CF6] rounded-t-lg transition-all duration-500" 
+                          style={{ height: item.val }} 
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">{item.month}</span>
                     </div>
-                  )}
-                  {recentActivity.map((item, idx) => (
-                    <motion.div
-                      key={item.id}
-                      custom={idx}
-                      initial="initial"
-                      animate="animate"
-                      whileHover="hover"
-                      variants={listItemVariants}
-                      onClick={() => {
-                        const shortId = item.id.includes(':') ? item.id.split(':')[1] : item.id
-                        router.push(`/sources/${shortId}`)
-                      }}
-                      className="flex items-center gap-3 sm:gap-5 p-3 sm:p-4 rounded-[16px] sm:rounded-[20px] cursor-pointer group transition-all"
-                    >
-                      <motion.div variants={iconVariants} className={`w-11 h-11 rounded-[14px] flex items-center justify-center shadow-sm ${item.iconBg}`}>
-                        {item.icon}
-                      </motion.div>
-                      <div className="flex-1">
-                        <p className="text-[14px] sm:text-[15px] font-bold text-slate-800 break-words">{item.title}</p>
-                        <p className="text-[13px] text-slate-400 font-medium">{item.subtitle}</p>
-                      </div>
-                      <div className="hidden sm:flex items-center gap-3">
-                        <span className="text-[12px] text-slate-400 font-medium flex items-center gap-1.5">
-                          <Clock className="h-3.5 w-3.5" /> {item.time}
-                        </span>
-                        <div className={`h-2.5 w-2.5 rounded-full ${item.status === 'done' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-amber-400 animate-pulse'}`} />
-                      </div>
-                    </motion.div>
                   ))}
                 </div>
-              </motion.div>
-
-              <div className="flex flex-col gap-6">
-                {/* Quick Actions */}
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.4 }}
-                  className="bg-white/80 backdrop-blur-2xl rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white"
-                >
-                  <h2 className="text-[18px] sm:text-[20px] font-bold text-slate-900 mb-1">Quick Actions</h2>
-                  <p className="text-[14px] text-slate-400 font-medium mb-6">Jump right into your workflow</p>
-                  <div className="space-y-4">
-                    {quickActions.map((action) => (
-                      <motion.button
-                        key={action.label}
-                        whileHover={{ scale: 1.02, filter: 'brightness(1.1)' }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => router.push(action.route)}
-                        className="w-full flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 rounded-[16px] sm:rounded-[20px] text-white font-bold text-[13px] sm:text-[14px] shadow-lg shadow-indigo-200/20 transition-all"
-                        style={{ background: action.gradient }}
-                      >
-                        <span className="flex items-center gap-3">{action.icon}{action.label}</span>
-                        <ArrowUpRight className="h-5 w-5 opacity-80" />
-                      </motion.button>
-                    ))}
-                  </div>
-                </motion.div>
-
-                {/* AI Performance */}
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.5 }}
-                  className="bg-white/80 backdrop-blur-2xl rounded-[24px] sm:rounded-[32px] p-5 sm:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.03)] border border-white flex-1"
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <motion.div variants={iconVariants} whileHover="hover" className="p-2 bg-violet-100 rounded-lg">
-                        <Sparkles className="h-5 w-5 text-[#8B5CF6]" />
-                    </motion.div>
-                    <h2 className="text-[18px] font-bold text-slate-900">AI Performance</h2>
-                  </div>
-                  <AiPerformanceChart heights={aiPerformanceHeights} />
-                  <div className="mt-6 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
-                    <p className="text-[12px] text-slate-500 font-bold text-center leading-relaxed">
-                        Query response times trending <span className="text-violet-600">23% faster</span>
-                    </p>
-                  </div>
-                </motion.div>
               </div>
+
             </div>
+
+            {/* Row 3: System Health & Storage Usage */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* System Health */}
+              <div className="lg:col-span-7 xl:col-span-8 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.003)]">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-[15px]">System Health</h3>
+                    <p className="text-[12px] text-slate-400 font-semibold mt-0.5">Service status overview</p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                    All Systems Operational
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  {healthServices.map((service) => {
+                    const ServiceIcon = service.icon
+                    return (
+                      <div key={service.name} className="flex items-center justify-between p-3.5 bg-slate-50/50 border border-slate-100 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${service.iconBg}`}>
+                            <ServiceIcon className="h-4.5 w-4.5" />
+                          </div>
+                          <span className="text-xs font-bold text-slate-800">{service.name}</span>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${service.status === 'Operational' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                            {service.status}
+                          </span>
+                          <span className={`text-xs font-extrabold ${service.status === 'Operational' ? 'text-[#10B981]' : 'text-amber-600'}`}>
+                            {service.uptime}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Storage Usage (Donut breakdown) */}
+              <div className="lg:col-span-5 xl:col-span-4 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.003)] flex flex-col justify-between">
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-[15px]">Storage Usage</h3>
+                  <p className="text-[12px] text-slate-400 font-semibold mt-0.5">Breakdown by file type</p>
+                </div>
+                
+                <div className="my-4">
+                  <StorageDonutChart />
+                </div>
+
+                {/* Donut Legend */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-bold text-slate-500 border-t border-slate-50 pt-4">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
+                    Documents
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#3B82F6]" />
+                    Media Files
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                    Archives
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#F59E0B]" />
+                    Other
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="border-t border-slate-50 pt-4 mt-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1.5">
+                    <span>Total Storage</span>
+                    <span className="text-slate-700">2.4 TB / 5 TB</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#8B5CF6] rounded-full" style={{ width: '48%' }} />
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Row 4: Organizations Table & Recent Activities */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Organizations Table List */}
+              <div className="lg:col-span-7 xl:col-span-8 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.003)]">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-[15px]">Organizations</h3>
+                    <p className="text-[12px] text-slate-400 font-semibold mt-0.5">Manage all organizations</p>
+                  </div>
+                  <button className="h-9 px-4 bg-[#5D3FD3] hover:bg-[#4b32ac] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm">
+                    Add Organization
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[550px]">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="pb-4 pl-2 font-extrabold">Organization</th>
+                        <th className="pb-4 font-extrabold">Industry</th>
+                        <th className="pb-4 font-extrabold">Plan</th>
+                        <th className="pb-4 font-extrabold">Users</th>
+                        <th className="pb-4 font-extrabold">Storage</th>
+                        <th className="pb-4 font-extrabold">Status</th>
+                        <th className="pb-4 pr-2 font-extrabold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orgs.map((org) => (
+                        <tr key={org.name} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors last:border-b-0">
+                          <td className="py-4 pl-2">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${org.color}`}>
+                                {org.initial}
+                              </div>
+                              <span className="text-xs font-bold text-slate-800 truncate max-w-[140px]">{org.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-xs font-semibold text-slate-500">{org.industry}</td>
+                          <td className="py-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
+                              org.plan === 'Enterprise' 
+                                ? 'bg-purple-50 text-purple-600 border-purple-100' 
+                                : org.plan === 'Business'
+                                ? 'bg-blue-50 text-blue-600 border-blue-100'
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                            }`}>
+                              {org.plan}
+                            </span>
+                          </td>
+                          <td className="py-4 text-xs font-bold text-slate-800">{org.users}</td>
+                          <td className="py-4 text-xs font-semibold text-slate-500 font-mono">{org.storage}</td>
+                          <td className="py-4">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                              org.status === 'Active'
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                : 'bg-amber-50 text-amber-600 border-amber-100'
+                            }`}>
+                              {org.status}
+                            </span>
+                          </td>
+                          <td className="py-4 pr-2 text-right">
+                            <button className="p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 rounded-lg transition-colors cursor-pointer">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Recent Activities List (4 columns) */}
+              <div className="lg:col-span-5 xl:col-span-4 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.003)] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="font-extrabold text-slate-800 text-[15px]">Recent Activities</h3>
+                      <p className="text-[12px] text-slate-400 font-semibold mt-0.5">Latest platform events</p>
+                    </div>
+                    <button className="text-[11px] font-bold text-[#5D3FD3] hover:underline cursor-pointer">
+                      View All
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {recentActivities.map((act) => {
+                      const ActIcon = act.icon
+                      return (
+                        <div key={act.id} className="flex gap-3 text-left">
+                          <div className={`w-8 h-8 rounded-full ${act.iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
+                            <ActIcon className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-slate-800 truncate">{act.title}</p>
+                            <p className="text-[10.5px] font-semibold text-slate-400 mt-0.5 leading-snug line-clamp-1">{act.desc}</p>
+                            <span className="text-[10px] text-slate-450 font-semibold mt-1 block">{act.time}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+
+
           </div>
         </div>
       </div>

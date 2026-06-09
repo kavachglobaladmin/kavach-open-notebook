@@ -247,17 +247,17 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
       <div className="auth-form-panel flex flex-col justify-center bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12 relative w-full md:w-1/2">
         {success ? (
           <div className="flex flex-col items-center text-center gap-6">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-purple-50 flex items-center justify-center border-4 border-white shadow-xl shadow-purple-100">
-              <CheckCircle2 className="h-8 w-8 sm:h-10 sm:w-10 text-[#8B5CF6]" />
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-50 flex items-center justify-center border-4 border-white shadow-xl shadow-blue-100">
+              <CheckCircle2 className="h-8 w-8 sm:h-10 sm:w-10 text-[#1D4BBA]" />
             </div>
             <div>
-              <h2 className="font-black text-slate-900 text-[24px] sm:text-[28px] mb-2 tracking-tight">Success!</h2>
+              <h2 className="font-black text-[#0A1C40] text-[24px] sm:text-[28px] mb-2 tracking-tight">Success!</h2>
               <p className="text-sm text-slate-500 font-medium">Your password has been reset successfully.</p>
             </div>
             <button
               onClick={() => { onClose(); onSignIn() }}
-              className="w-full py-3.5 sm:py-4 rounded-xl text-white text-[14px] sm:text-[15px] font-bold shadow-lg shadow-purple-200 transition-all active:scale-[0.98]"
-              style={{ background: '#8B5CF6' }}
+              className="w-full py-3.5 sm:py-4 rounded-xl text-white text-[14px] sm:text-[15px] font-bold shadow-lg shadow-blue-900/10 transition-all active:scale-[0.98]"
+              style={{ background: 'linear-gradient(90deg, #6A28A3 0%, #1D4BBA 100%)' }}
             >
               BACK TO SIGN IN
             </button>
@@ -267,19 +267,19 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
             
             <div className="flex justify-center mb-6">
               <div className="flex items-center gap-3 relative group">
-                <div className="absolute -left-4 -top-4 w-24 h-24 bg-[#7B3AED] opacity-[0.15] blur-[32px] rounded-full pointer-events-none" />
-                <div className="w-12 h-12 shrink-0 rounded-[14px] bg-gradient-to-br from-[#7B3AED] to-[#9333EA] flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(123,58,237,0.45)] relative overflow-hidden">
+                <div className="absolute -left-4 -top-4 w-24 h-24 bg-[#6A28A3] opacity-[0.12] blur-[32px] rounded-full pointer-events-none" />
+                <div className="w-12 h-12 shrink-0 rounded-[14px] bg-gradient-to-br from-[#6A28A3] to-[#1D4BBA] flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(106,40,163,0.45)] relative overflow-hidden">
                   <BookOpen className="relative z-10 h-6 w-6 text-white transition-transform duration-500 ease-out group-hover:scale-110 group-hover:rotate-3" />
                 </div>
                 <div className="flex flex-col text-left">
-                  <span className="text-[18px] font-bold text-[#7B3AED] uppercase leading-none tracking-tight">NOTEBOOKS</span>
+                  <span className="text-[18px] font-bold text-[#6A28A3] uppercase leading-none tracking-tight">NOTEBOOKS</span>
                   <span className="text-[12px] text-slate-500 font-medium leading-tight">AI Knowledge Base</span>
                 </div>
               </div>
             </div>
 
             <div className="mb-8 sm:mb-10 text-center">
-              <h2 className="font-black text-[#0B101E] text-[26px] sm:text-[34px] tracking-tight mb-2">
+              <h2 className="font-black text-[#0A1C40] text-[26px] sm:text-[34px] tracking-tight mb-2">
                 {step === 'email'       && 'Forgot Password?'}
                 {step === 'otp'         && 'Verify OTP'}
                 {step === 'newPassword' && 'Reset Password'}
@@ -294,7 +294,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
             <div className="space-y-5 sm:space-y-6">
               {step === 'email' && (
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
+                  <label className="text-sm font-bold text-[#0A1C40] ml-1">Email Address</label>
                   <input
                     type="email"
                     placeholder="Enter Your Registered Email"
@@ -302,7 +302,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                     onChange={e => setEmail(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleSendOTP()}
                     disabled={loading}
-                    className="w-full px-4 sm:px-5 py-3.5 sm:py-4 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50/50 transition-all placeholder:text-slate-400 text-[14px] sm:text-[15px]"
+                    className="w-full px-4 sm:px-5 py-3.5 sm:py-4 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-[#1D4BBA] focus:ring-4 focus:ring-blue-50 transition-all placeholder:text-slate-400 text-slate-900 text-[14px] sm:text-[15px]"
                   />
                 </div>
               )}
@@ -324,7 +324,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         disabled={loading}
                         className={[
                           'w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-black rounded-xl border-2 transition-all focus:outline-none bg-white',
-                          digit ? 'border-[#8B5CF6] text-[#8B5CF6]' : 'border-slate-200 focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 text-slate-800',
+                          digit ? 'border-[#1D4BBA] text-[#1D4BBA]' : 'border-slate-200 focus:border-[#1D4BBA] focus:ring-4 focus:ring-blue-50 text-slate-800',
                         ].join(' ')}
                       />
                     ))}
@@ -337,7 +337,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                       type="button"
                       onClick={handleResendOTP}
                       disabled={!canResend || loading}
-                      className="text-[#8B5CF6] font-bold hover:underline disabled:text-slate-300 disabled:no-underline"
+                      className="text-[#1D4BBA] font-bold hover:underline disabled:text-slate-300 disabled:no-underline"
                     >
                       Resend OTP
                     </button>
@@ -348,7 +348,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
               {step === 'newPassword' && (
                 <>
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 ml-1">New Password</label>
+                    <label className="text-sm font-bold text-[#0A1C40] ml-1">New Password</label>
                     <div className="relative">
                       <input
                         type={showNewPassword ? 'text' : 'password'}
@@ -356,7 +356,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
                         disabled={loading}
-                        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 transition-all text-[14px] sm:text-[15px]"
+                        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#1D4BBA] focus:ring-4 focus:ring-blue-50 transition-all text-[14px] sm:text-[15px] text-slate-900"
                       />
                       <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                         {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -365,7 +365,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 ml-1">Confirm Password</label>
+                    <label className="text-sm font-bold text-[#0A1C40] ml-1">Confirm Password</label>
                     <div className="relative">
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
@@ -373,7 +373,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
                         disabled={loading}
-                        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#8B5CF6] focus:ring-4 focus:ring-purple-50 transition-all text-[14px] sm:text-[15px]"
+                        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 pr-10 sm:pr-12 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-[#1D4BBA] focus:ring-4 focus:ring-blue-50 transition-all text-[14px] sm:text-[15px] text-slate-900"
                       />
                       <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                         {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -398,8 +398,8 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                   else handleResetPassword()
                 }}
                 disabled={loading}
-                className="w-full py-3.5 sm:py-4 rounded-xl text-white text-[14px] sm:text-[15px] font-bold shadow-lg shadow-purple-200 transition-all active:scale-[0.98] disabled:opacity-70 mt-2"
-                style={{ background: '#8B5CF6' }}
+                className="w-full py-3.5 sm:py-4 rounded-xl text-white text-[14px] sm:text-[15px] font-bold shadow-lg shadow-blue-900/10 transition-all active:scale-[0.98] disabled:opacity-70 mt-2"
+                style={{ background: 'linear-gradient(90deg, #6A28A3 0%, #1D4BBA 100%)' }}
               >
                 {loading ? <LoadingSpinner /> : (
                   <>
@@ -412,7 +412,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
 
               <p className="text-[13px] sm:text-[14px] text-slate-500 font-semibold text-center pt-2">
                 Remember Your Password?{' '}
-                <button type="button" onClick={() => { onClose(); onSignIn() }} className="text-[#8B5CF6] font-bold hover:underline">
+                <button type="button" onClick={() => { onClose(); onSignIn() }} className="text-[#1D4BBA] font-bold hover:underline">
                   Sign In
                 </button>
               </p>

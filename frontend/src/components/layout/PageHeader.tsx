@@ -1046,9 +1046,9 @@ export function PageHeader({
       </div>
 
       {/* ── Right: Search pill and icons ── */}
-      <div className="flex flex-nowrap items-center gap-4 md:gap-6 lg:gap-8 shrink ml-auto min-w-0">
+      <div className="flex flex-nowrap items-center gap-4 md:gap-8 lg:gap-10 shrink ml-auto min-w-0">
         {!hideSearch && (
-          <div ref={searchWrapperRef} data-kavach-global-search-ignore="true" className="relative hidden w-full min-w-[140px] max-w-[240px] md:max-w-[400px] lg:max-w-[480px] sm:block shrink">
+          <div ref={searchWrapperRef} data-kavach-global-search-ignore="true" className="relative hidden w-full min-w-[180px] sm:block shrink max-w-[320px] md:max-w-[500px] lg:max-w-[640px] xl:max-w-[760px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
             <Input
               value={searchValue}

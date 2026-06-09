@@ -1,19 +1,30 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { getApiUrl } from '@/lib/config'
-import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle, BookOpen } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { toast } from '@/lib/notifications/toast'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import Image from 'next/image'
+import { motion, AnimatePresence } from 'framer-motion'
 
-// Image Imports
+// Logo and Image Imports
+import logoImg from '@/assets/inotes.png'
 import signUpIllustration from '@/assets/Wavy_Gen-01_Single-071.jpg'
+
+// ── Shared Animation Config ───────────────────────────────────────────────────
+// Added "as const" to fix the TypeScript 'AnimationGeneratorType' error
+const smoothLayoutTransition = {
+  type: 'spring',
+  stiffness: 200,
+  damping: 25,
+  mass: 1,
+} as const 
 
 // ── Local user store ──────────────────────────────────────────────────────────
 interface LocalUser { name: string; email: string; password: string }
@@ -86,7 +97,7 @@ function getStrengthLevel(pw: string): 0 | 1 | 2 | 3 | 4 {
   return getPasswordChecks(pw).filter(c => c.pass).length as 0 | 1 | 2 | 3 | 4
 }
 const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong']
-const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#A855F7']
+const STRENGTH_COLOR = ['', '#ef4444', '#f59e0b', '#3b82f6', '#00A896']
 
 function PasswordStrength({
   password,
@@ -142,7 +153,7 @@ function PasswordStrength({
   )
 }
 
-// ── Themed Panel ──────────────────────────────────────────────────────────────
+// ── Themed Panel (Illustration) ───────────────────────────────────────────────
 function ThemedPanel({
   mode,
   onSwitch,
@@ -151,38 +162,44 @@ function ThemedPanel({
   onSwitch: () => void
 }) {
   return (
-    <div className="auth-illustration-panel hidden md:flex flex-col relative overflow-hidden md:w-1/2 flex-shrink-0 p-8 lg:p-10 text-white bg-[#02041A]">
-      <style>{`
-        @keyframes btnFadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .btn-anim {
-          opacity: 0;
-          animation: btnFadeIn 1s ease-out 0.5s forwards;
-        }
-      `}</style>
-
-      <div className="absolute inset-0 z-0 overflow-hidden">
+    <motion.div 
+      layout
+      transition={smoothLayoutTransition}
+      className="auth-illustration-panel hidden md:flex flex-col relative overflow-hidden md:w-[46%] flex-shrink-0 p-8 lg:p-10 bg-white"
+    >
+      <div className="absolute inset-0 z-0 overflow-hidden p-6 flex items-center justify-center">
         <Image
           src={signUpIllustration}
           alt="Background Illustration"
           fill
-          className="object-cover object-center z-0 "
+          className="object-contain object-center z-0 p-4"
           priority
         />
       </div>
 
       <div className="relative z-20 flex flex-col flex-grow justify-end items-center max-w-[80%] mx-auto w-full">
-        <button
+        <motion.button
+          whileHover={{ scale: 1.03, boxShadow: '0 8px 24px rgba(106, 40, 163, 0.3)' }}
+          whileTap={{ scale: 0.97 }}
           onClick={onSwitch}
-          className="px-10 py-4 w-[240px] rounded-xl text-white text-[16px] font-black shadow-lg shadow-violet-900/40 transition-all active:scale-[0.98] btn-anim"
-          style={{ background: 'linear-gradient(90deg, #8B5CF6 0%, #7C3AED 100%)' }}
+          className="px-10 py-4 w-[240px] rounded-xl text-white text-[16px] font-black shadow-lg shadow-blue-900/10 transition-all cursor-pointer relative z-30"
+          style={{ background: 'linear-gradient(90deg, #6A28A3 0%, #1D4BBA 100%)' }} // Darkened gradient
         >
-          {mode === 'signin' ? 'Sign Up' : 'Sign In'}
-        </button>
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={mode}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="block"
+            >
+              {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+            </motion.span>
+          </AnimatePresence>
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -191,7 +208,7 @@ function inputClass(hasError: boolean) {
   return `w-full px-4 py-3 sm:py-4 border rounded-xl bg-slate-50/50 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all ${
     hasError
       ? 'border-red-400 focus:border-red-400 focus:ring-red-50'
-      : 'border-slate-200 focus:border-[#8B5CF6] focus:ring-violet-50'
+      : 'border-slate-200 focus:border-[#1D4BBA] focus:ring-blue-50'
   }`
 }
 
@@ -265,25 +282,29 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
 
   if (!hasHydrated || isCheckingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#EBEFFE]" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
+      <div className="fixed inset-0 flex items-center justify-center bg-[#F2F5FF]" style={{ background: 'linear-gradient(135deg, #F2F5FF 0%, #F8F2FF 100%)' }}>
         <LoadingSpinner />
       </div>
     )
   }
 
+  // Improved switchMode for flawless transitions
   const switchMode = (m: 'signin' | 'signup') => {
     if (animating) return
     setAnimating(true)
+    
+    // Set state immediately so layout animation triggers cleanly without arbitrary timeouts
+    setMode(m)
+    router.replace(m === 'signup' ? '/signup' : '/login')
+    setLocalError('')
+    setName(''); setNameTouched(false)
+    setEmail(''); setEmailTouched(false)
+    setPassword(''); setPasswordTouched(false)
+
+    // Unlock interactions after the layout animation roughly finishes
     setTimeout(() => {
-      setMode(m)
-      // Keep the URL in sync with the active mode
-      router.replace(m === 'signup' ? '/signup' : '/login')
-      setLocalError('')
-      setName(''); setNameTouched(false)
-      setEmail(''); setEmailTouched(false)
-      setPassword(''); setPasswordTouched(false)
       setAnimating(false)
-    }, 200)
+    }, 600)
   }
 
   const handleSignUp = async () => {
@@ -350,35 +371,57 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
   }
 
   return (
-    <div className="auth-shell min-h-screen w-full flex items-center justify-center bg-[#EBEFFE] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #EBEFFE 0%, #F5F1FD 100%)' }}>
-      <div className="auth-card auth-split-layout flex flex-col md:flex-row w-full max-w-[1200px] min-h-[auto] md:min-h-[820px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[40px] shadow-2xl overflow-y-auto border border-white z-10">
+    <div className="auth-shell min-h-screen w-full flex items-center justify-center bg-[#F2F5FF] p-4 sm:p-6 lg:p-8 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #F2F5FF 0%, #F8F2FF 100%)' }}>
+      <motion.div 
+        layout // Added layout here so parent tracks children perfectly
+        initial={{ opacity: 0, scale: 0.97, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={smoothLayoutTransition}
+        className="auth-card auth-split-layout flex flex-col md:flex-row w-full max-w-[1250px] min-h-[auto] md:min-h-[820px] max-h-[95vh] bg-white rounded-[24px] sm:rounded-[40px] shadow-[0_24px_60px_-15px_rgba(39,96,229,0.16)] overflow-y-auto border border-white z-10"
+        style={{ flexDirection: mode === 'signin' ? 'row' : 'row-reverse' } as any}
+      >
+        <ThemedPanel mode={mode} onSwitch={() => switchMode(mode === 'signin' ? 'signup' : 'signin')} />
 
-        {mode === 'signin' && <ThemedPanel mode="signin" onSwitch={() => switchMode('signup')} />}
-
-        <div
-          className={`auth-form-panel flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-1/2 ${mode === 'signup' ? 'order-2 md:order-1' : ''}`}
-          style={{ opacity: animating ? 0 : 1, transition: 'opacity 0.2s ease' }}
+        <motion.div
+          layout
+          transition={smoothLayoutTransition}
+          className="auth-form-panel flex flex-col justify-center bg-white px-6 sm:px-12 lg:px-16 py-10 sm:py-12 relative w-full md:w-[54%]"
         >
           <div className="flex justify-center mb-6">
-            <div className="flex items-center gap-3 relative group">
-              <div className="absolute -left-4 -top-4 w-24 h-24 bg-[#7B3AED] opacity-[0.15] blur-[32px] rounded-full pointer-events-none" />
-              <div className="w-15 h-15 shrink-0 rounded-[14px] bg-gradient-to-br from-[#7B3AED] to-[#9333EA] flex items-center justify-center shadow-[0_8px_24px_-4px_rgba(123,58,237,0.45)] relative overflow-hidden">
-                <BookOpen className="relative z-10 h-8 w-8 text-white transition-transform duration-500 ease-out group-hover:scale-110 group-hover:rotate-3" />
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="text-[25px] font-bold text-[#7B3AED] uppercase leading-none tracking-tight">NOTEBOOKS</span>
-                <span className="text-[16px] text-slate-500 font-medium leading-tight">AI Knowledge Base</span>
+            <div className="relative group flex justify-center">
+              <div className="absolute -left-4 -top-4 w-32 h-32 bg-[#6A28A3] opacity-[0.12] blur-[32px] rounded-full pointer-events-none" />
+              <div className="relative z-10">
+                <Image
+                  src={logoImg}
+                  alt="Logo"
+                  width={300} 
+                  height={300} 
+                  className="object-contain max-h-[150px] w-auto" 
+                  priority
+                />
               </div>
             </div>
           </div>
 
-          <div className="mb-6 sm:mb-10">
-            <h2 className="font-black text-slate-900 text-[24px] sm:text-[32px] tracking-tight text-center mb-2">
-              {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
-            </h2>
-            <p className="text-sm text-[#8B5CF6] font-bold text-center">
-              {mode === 'signin' ? 'Sign In To Get Started' : 'Sign Up To Get Started'}
-            </p>
+          <div className="mb-6 sm:mb-10 overflow-hidden min-h-[70px] flex flex-col items-center justify-center">
+            {/* Added proper fading for text swaps */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={mode}
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -10, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex flex-col items-center"
+              >
+                <h2 className="font-black text-[#0A1C40] text-[24px] sm:text-[32px] tracking-tight text-center mb-2">
+                  {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
+                </h2>
+                <p className="text-sm text-[#0A1C40] font-bold text-center">
+                  {mode === 'signin' ? 'Sign In To Get Started' : 'Sign Up To Get Started'}
+                </p>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5" noValidate>
@@ -388,23 +431,31 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
               </div>
             )}
 
-            {mode === 'signup' && (
-              <div className="space-y-1">
-                <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  onBlur={() => setNameTouched(true)}
-                  className={inputClass(!!nameError)}
-                />
-                {nameError && <p className="text-[12px] text-red-500 font-semibold pl-1">{nameError}</p>}
-              </div>
-            )}
+            <AnimatePresence initial={false}>
+              {mode === 'signup' && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
+                  animate={{ height: 'auto', opacity: 1, marginBottom: 16 }}
+                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  className="space-y-1 overflow-hidden"
+                >
+                  <label className="text-sm font-bold text-[#0A1C40] ml-1">Full Name</label> 
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    onBlur={() => setNameTouched(true)}
+                    className={inputClass(!!nameError)}
+                  />
+                  {nameError && <p className="text-[12px] text-red-500 font-semibold pl-1">{nameError}</p>}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="space-y-1">
-              <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
+              <label className="text-sm font-bold text-[#0A1C40] ml-1">Email Address</label>
               <input
                 type="email"
                 placeholder="Email"
@@ -417,7 +468,7 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
+              <label className="text-sm font-bold text-[#0A1C40] ml-1">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -439,28 +490,46 @@ export function LoginForm({ initialMode = 'signin' }: { initialMode?: 'signin' |
               />
               {mode === 'signin' && (
                 <div className="flex justify-end pt-1">
-                  <button type="button" onClick={() => router.push('/forgot')} className="text-[11px] sm:text-[12px] text-[#8B5CF6] font-bold uppercase">
+                  <button type="button" onClick={() => router.push('/forgot')} className="text-[11px] sm:text-[12px] text-[#0A1C40] font-bold uppercase cursor-pointer hover:text-[#1D4BBA] transition-colors">
                     Forgot Password?
                   </button>
                 </div>
               )}
             </div>
 
-            <button type="submit" disabled={isLoading} className="w-full py-3 sm:py-4 rounded-2xl text-white text-[15px] sm:text-[16px] font-black shadow-xl transition-all active:scale-[0.98] bg-[#8B5CF6]">
-              {isLoading ? <LoadingSpinner /> : (mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT')}
-            </button>
+            <motion.button 
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              type="submit" 
+              disabled={isLoading} 
+              className="w-full py-3 sm:py-4 rounded-2xl text-white text-[15px] sm:text-[16px] font-black shadow-xl transition-all cursor-pointer bg-gradient-to-r from-[#6A28A3] to-[#1D4BBA]"
+            >
+              <AnimatePresence mode="wait">
+                {isLoading ? (
+                  <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <LoadingSpinner />
+                  </motion.div>
+                ) : (
+                  <motion.span key={mode} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                    {mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
           </form>
 
           <p className="text-sm text-slate-400 font-bold text-center pt-6">
             {mode === 'signin' ? 'New to Kavach?' : 'Already have an account?'}{' '}
-            <button onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')} className="text-[#8B5CF6]">
+            <button 
+              type="button"
+              onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')} 
+              className="text-[#0A1C40] hover:text-[#1D4BBA] transition-colors cursor-pointer"
+            >
               {mode === 'signin' ? 'Create an Account' : 'Sign In'}
             </button>
           </p>
-        </div>
-
-        {mode === 'signup' && <ThemedPanel mode="signup" onSwitch={() => switchMode('signin')} />}
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   )
 }

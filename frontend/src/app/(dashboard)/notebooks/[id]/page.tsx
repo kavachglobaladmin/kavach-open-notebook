@@ -18,6 +18,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
 import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
 import { SubFolderCard } from '../components/SubFolderCard'
+import { SuperChatColumn } from '../components/SuperChatColumn'
 
 export type ContextMode = 'off' | 'insights' | 'full'
 

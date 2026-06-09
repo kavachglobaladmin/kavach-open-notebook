@@ -6,7 +6,6 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { 
@@ -236,14 +235,14 @@ export default function SearchPage() {
                   <Search className="h-[18px] w-[18px]" />
                 </div>
 
-                <Textarea
+                <textarea
                   placeholder="Search for cases, documents, people, or ask a question..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   disabled={ask.isStreaming}
                   onKeyDown={handleTextareaKeyDown}
                   rows={1}
-                  className="flex-1 bg-transparent border-0 text-slate-850 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 text-[14.5px] min-h-[44px] py-3 resize-none outline-none"
+                  className="flex-1 bg-transparent border-0 text-slate-850 placeholder:text-slate-400 focus:ring-0 focus:outline-none text-[14.5px] min-h-[44px] py-3 px-2 resize-none outline-none shadow-none field-sizing-content"
                 />
                 
                 {/* Search Button styled in medium dark purple for high legibility */}

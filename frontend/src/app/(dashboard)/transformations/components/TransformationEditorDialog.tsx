@@ -132,16 +132,16 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
             <>
               {/* ── Themed header ── */}
               <div
-                className="px-7 py-5 flex-shrink-0"
+                className="px-7 py-5 flex-shrink-0 text-left"
                 style={{
-                  background: 'linear-gradient(135deg, #EEF0FB 0%, #E8E4F5 50%, #EBF0FB 100%)',
-                  borderBottom: '1px solid #E2E8F0',
+                  background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 50%, #FFFBEB 100%)',
+                  borderBottom: '1px solid #FDE68A',
                 }}
               >
-                <h2 className="text-[20px] font-extrabold text-[#5B21B6] leading-tight">
+                <h2 className="text-[20px] font-extrabold text-[#B45309] leading-tight">
                   {isEditing ? t.common.edit : t.transformations.createNew}
                 </h2>
-                <p className="text-[13px] text-slate-500 font-medium mt-0.5">
+                <p className="text-[13px] text-amber-800/80 font-medium mt-0.5">
                   {isEditing
                     ? 'Update the transformation details and prompt below.'
                     : 'Define a new transformation with a name, title, and system prompt.'}
@@ -164,7 +164,7 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                         {...field}
                         placeholder={t.transformations.namePlaceholder}
                         autoComplete="off"
-                        className="h-[42px] rounded-xl border-slate-200 focus-visible:ring-[#8B5CF6] focus-visible:border-[#8B5CF6] text-slate-900 placeholder:text-slate-400"
+                        className="h-[42px] rounded-xl border-slate-200 focus-visible:ring-[#F59E0B] focus-visible:border-[#F59E0B] text-slate-900 placeholder:text-slate-400"
                       />
                     )}
                   />
@@ -188,7 +188,7 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                           {...field}
                           placeholder={t.transformations.titlePlaceholder}
                           autoComplete="off"
-                          className="h-[42px] rounded-xl border-slate-200 focus-visible:ring-[#8B5CF6] focus-visible:border-[#8B5CF6] text-slate-900 placeholder:text-slate-400"
+                          className="h-[42px] rounded-xl border-slate-200 focus-visible:ring-[#F59E0B] focus-visible:border-[#F59E0B] text-slate-900 placeholder:text-slate-400"
                         />
                       )}
                     />
@@ -202,7 +202,7 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                           id={defaultId}
                           checked={field.value}
                           onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                          className="border-[#8B5CF6] data-[state=checked]:bg-[#8B5CF6] data-[state=checked]:border-[#8B5CF6]"
+                          className="border-[#F59E0B] data-[state=checked]:bg-[#F59E0B] data-[state=checked]:border-[#F59E0B]"
                         />
                       )}
                     />
@@ -227,7 +227,7 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                         placeholder={t.transformations.descriptionPlaceholder}
                         rows={2}
                         autoComplete="off"
-                        className="rounded-xl border-slate-200 focus-visible:ring-[#8B5CF6] focus-visible:border-[#8B5CF6] text-slate-900 placeholder:text-slate-400 resize-none"
+                        className="rounded-xl border-slate-200 focus-visible:ring-[#F59E0B] focus-visible:border-[#F59E0B] text-slate-900 placeholder:text-slate-400 resize-none"
                       />
                     )}
                   />
@@ -282,10 +282,10 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
             <button
               type="submit"
               disabled={isSaving || (isEditing && isLoading)}
-              className="px-6 py-2.5 rounded-xl text-[13px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
+              className="px-6 py-2.5 rounded-xl text-[13px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
               style={{
-                background: 'linear-gradient(90deg, #5B21B6 0%, #7C3AED 100%)',
-                boxShadow: '0 4px 14px 0 rgba(109,40,217,0.28)',
+                background: 'linear-gradient(90deg, #F59E0B 0%, #FBBF24 100%)',
+                boxShadow: '0 4px 14px 0 rgba(245,158,11,0.28)',
               }}
             >
               {isSaving
