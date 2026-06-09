@@ -38,9 +38,9 @@ const navigation = [
   { name: 'Sources', href: '/sources', icon: FileText, studio: null, minimumRole: 'user' as const },
   { name: 'Cases', href: '/notebooks', icon: Clipboard, studio: null, minimumRole: 'user' as const },
   { name: 'Ask & Search', href: '/search', icon: Search, studio: null, minimumRole: 'user' as const },
-  { name: 'Models', href: '/settings/api-keys', icon: BrainCircuit, studio: null, minimumRole: 'admin' as const },
-  { name: 'Transformations', href: '/transformations', icon: Scissors, studio: null, minimumRole: 'admin' as const },
-  { name: 'Settings', href: '/settings', icon: Settings2, studio: null, minimumRole: 'admin' as const },
+  { name: 'Models', href: '/settings/api-keys', icon: BrainCircuit, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Transformations', href: '/transformations', icon: Scissors, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Settings', href: '/settings', icon: Settings2, studio: null, minimumRole: 'super_admin' as const },
   { name: 'Advanced', href: '/advanced', icon: Sparkles, studio: null, minimumRole: 'super_admin' as const },
 ]
 

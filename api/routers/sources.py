@@ -23,6 +23,11 @@ from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
 from api.auth import get_current_user, get_current_user_role
+from api.notebook_access import (
+    can_access_notebook,
+    get_accessible_notebook_ids,
+    normalize_notebook_id,
+)
 from api.roles import has_elevated_data_access
 
 from api.command_service import CommandService
@@ -1419,15 +1424,10 @@ async def get_sources(
         # Build the query
         if notebook_id:
             # Verify notebook exists and belongs to current user
-            notebook = await Notebook.get(notebook_id)
+            notebook = await Notebook.get(normalize_notebook_id(notebook_id))
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
-            if (
-                current_user
-                and notebook.owner
-                and notebook.owner != current_user
-                and not has_elevated_data_access(current_role)
-            ):
+            if not await can_access_notebook(current_user, current_role, notebook_id):
                 raise HTTPException(status_code=403, detail="Access denied")
 
             # Query sources for specific notebook - include command field with FETCH
@@ -1454,8 +1454,40 @@ async def get_sources(
                 },
             )
         elif current_user and not has_elevated_data_access(current_role):
-            # Return only sources linked to notebooks owned by this user
-            # Deduplicate by using array::distinct on the source IDs first
+            accessible_notebook_ids = await get_accessible_notebook_ids(
+                current_user, current_role
+            )
+            if not accessible_notebook_ids:
+                result = []
+            else:
+                # Deduplicate by using array::distinct on the source IDs first
+                query = f"""
+                    SELECT id, asset, created, title, updated, topics, command,
+                    count(array::distinct(
+                        SELECT VALUE string::concat(insight_type, '::', content)
+                        FROM source_insight
+                        WHERE source = $parent.id
+                    )) AS insights_count,
+                    (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
+                    FROM array::distinct((
+                        SELECT VALUE in FROM reference
+                        WHERE out IN $notebook_ids
+                    ))
+                    {order_clause}
+                    LIMIT $limit START $offset
+                    FETCH command
+                """
+                result = await repo_query(
+                    query,
+                    {
+                        "notebook_ids": list(accessible_notebook_ids),
+                        "limit": limit,
+                        "offset": offset,
+                    },
+                )
+        else:
+            # Query only sources linked to any notebook (admin/elevated access)
+            # Sources without a notebook association are excluded
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
                 count(array::distinct(
@@ -1466,27 +1498,7 @@ async def get_sources(
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM array::distinct((
                     SELECT VALUE in FROM reference
-                    WHERE out IN (SELECT VALUE id FROM notebook WHERE owner = $owner)
                 ))
-                {order_clause}
-                LIMIT $limit START $offset
-                FETCH command
-            """
-            result = await repo_query(
-                query,
-                {"owner": current_user, "limit": limit, "offset": offset},
-            )
-        else:
-            # Query all sources - include command field with FETCH
-            query = f"""
-                SELECT id, asset, created, title, updated, topics, command,
-                count(array::distinct(
-                    SELECT VALUE string::concat(insight_type, '::', content)
-                    FROM source_insight
-                    WHERE source = $parent.id
-                )) AS insights_count,
-                (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM source
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command

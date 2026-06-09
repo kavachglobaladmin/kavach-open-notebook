@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
-from api.auth import get_current_user, require_roles
+from api.auth import get_current_user, get_current_user_role, require_roles
 from api.roles import (
     count_users_with_role,
     ensure_user_role,
@@ -148,6 +148,13 @@ class UserAdminRecord(BaseModel):
     created_at: Optional[str] = None
 
 
+class UserDirectoryRecord(BaseModel):
+    id: str
+    email: str
+    name: str
+    role: str
+
+
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 async def _find_user(email: str) -> Optional[dict]:
@@ -260,6 +267,39 @@ async def list_all_users(
             created_at=str(row.get("created_at", "")),
         ))
     return result
+
+
+@router.get("/users/directory", response_model=List[UserDirectoryRecord])
+async def list_user_directory(
+    request: Request,
+    _: str = Depends(require_roles("admin", "super_admin")),
+):
+    """Safe user directory for notebook access management.
+    Admin: returns only 'user' role accounts.
+    Super admin: returns all non-super-admin accounts.
+    """
+    from api.roles import normalize_user_role as _normalize
+    current_role = _normalize(getattr(request.state, "jwt_role", None))
+
+    if current_role == "admin":
+        rows = await repo_query(
+            "SELECT id, email, name, role FROM kavach_user WHERE role = 'user' ORDER BY created_at ASC"
+        )
+    else:
+        # super_admin: all users except super_admins
+        rows = await repo_query(
+            "SELECT id, email, name, role FROM kavach_user WHERE role != 'super_admin' ORDER BY created_at ASC"
+        )
+
+    return [
+        UserDirectoryRecord(
+            id=str(row.get("id", "")),
+            email=row.get("email", ""),
+            name=row.get("name", ""),
+            role=normalize_user_role(row.get("role")),
+        )
+        for row in rows
+    ]
 
 
 @router.get("/users/profile", response_model=UserResponse)

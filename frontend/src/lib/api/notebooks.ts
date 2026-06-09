@@ -60,4 +60,21 @@ export const notebooksApi = {
     const response = await apiClient.delete(`/notebooks/${notebookId}/sources/${sourceId}`)
     return response.data
   },
+
+  // ── Access Management (super admin only) ──────────────────────────────────
+
+  getAccess: async (notebookId: string): Promise<{ notebook_id: string; granted_users: string[] }> => {
+    const response = await apiClient.get(`/notebooks/${notebookId}/access`)
+    return response.data
+  },
+
+  grantAccess: async (notebookId: string, userEmail: string) => {
+    const response = await apiClient.post(`/notebooks/${notebookId}/access`, { user_email: userEmail })
+    return response.data
+  },
+
+  revokeAccess: async (notebookId: string, userEmail: string) => {
+    const response = await apiClient.delete(`/notebooks/${notebookId}/access/${encodeURIComponent(userEmail)}`)
+    return response.data
+  },
 }

@@ -150,13 +150,21 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.excluded_paths:
             return await call_next(request)
 
+        # Build CORS headers for error responses so browsers don't show "Network Error"
+        origin = request.headers.get("origin", "")
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin or "*",
+            "Access-Control-Allow-Credentials": "true",
+            "WWW-Authenticate": "Bearer",
+        }
+
         # Extract Bearer token from Authorization header
         auth_header = request.headers.get("Authorization", "")
         if not auth_header:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing authorization header"},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
 
         parts = auth_header.split(" ", 1)
@@ -164,7 +172,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authorization header format. Expected: Bearer <token>"},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
 
         token = parts[1].strip()
@@ -176,13 +184,13 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Token has expired. Please log in again."},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
         except jwt.InvalidTokenError as exc:
             return JSONResponse(
                 status_code=401,
                 content={"detail": f"Invalid token: {str(exc)}"},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
 
         # Inject email into request state so get_current_user() can read it

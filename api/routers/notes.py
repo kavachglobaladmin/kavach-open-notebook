@@ -4,6 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
 from api.auth import get_current_user, get_current_user_role
+from api.notebook_access import (
+    can_access_notebook,
+    get_accessible_notebook_ids,
+    normalize_notebook_id,
+)
 from api.models import NoteCreate, NoteResponse, NoteUpdate
 from api.roles import has_elevated_data_access
 from open_notebook.domain.notebook import Note
@@ -37,20 +42,35 @@ async def get_notes(
             # Get notes for a specific notebook — verify ownership first
             from open_notebook.domain.notebook import Notebook
 
-            notebook = await Notebook.get(notebook_id)
+            notebook = await Notebook.get(normalize_notebook_id(notebook_id))
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
-            # Block access if notebook belongs to a different user
-            if not _can_access_owner(current_user, current_role, notebook.owner):
+            if not await can_access_notebook(current_user, current_role, notebook_id):
                 raise HTTPException(status_code=403, detail="Access denied")
             notes = await notebook.get_notes()
         elif current_user and not has_elevated_data_access(current_role):
-            # Get notes owned by this user
             from open_notebook.database.repository import repo_query
-            result = await repo_query(
-                "SELECT * FROM note WHERE owner = $owner ORDER BY updated DESC",
+            accessible_notebook_ids = await get_accessible_notebook_ids(
+                current_user, current_role
+            )
+            notebook_note_ids = []
+            if accessible_notebook_ids:
+                notebook_note_ids = await repo_query(
+                    "SELECT VALUE in FROM artifact WHERE out IN $notebook_ids",
+                    {"notebook_ids": list(accessible_notebook_ids)},
+                )
+            direct_note_ids = await repo_query(
+                "SELECT VALUE id FROM note WHERE owner = $owner",
                 {"owner": current_user},
             )
+            note_ids = list({str(note_id) for note_id in notebook_note_ids + direct_note_ids})
+            if note_ids:
+                result = await repo_query(
+                    "SELECT * FROM note WHERE id IN $note_ids ORDER BY updated DESC",
+                    {"note_ids": note_ids},
+                )
+            else:
+                result = []
             notes = [Note(**n) for n in result]
         else:
             # No user context — return all notes (auth disabled / legacy)
@@ -117,10 +137,12 @@ async def create_note(
         if note_data.notebook_id:
             from open_notebook.domain.notebook import Notebook
 
-            notebook = await Notebook.get(note_data.notebook_id)
+            notebook = await Notebook.get(normalize_notebook_id(note_data.notebook_id))
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
-            if not _can_access_owner(current_user, current_role, notebook.owner):
+            if not await can_access_notebook(
+                current_user, current_role, note_data.notebook_id
+            ):
                 raise HTTPException(status_code=403, detail="Access denied")
             await new_note.add_to_notebook(note_data.notebook_id)
 

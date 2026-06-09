@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from api.auth import get_current_user, get_current_user_role
+from api.notebook_access import get_accessible_notebook_ids
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from api.roles import has_elevated_data_access
 from open_notebook.ai.models import Model, model_manager
@@ -46,9 +47,8 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
     Source visibility is determined via notebook references.
     Note visibility supports both note.owner and notebook artifact links.
     """
-    notebook_ids = await repo_query(
-        "SELECT VALUE id FROM notebook WHERE owner = $owner",
-        {"owner": current_user},
+    notebook_ids = list(
+        await get_accessible_notebook_ids(current_user, "user") or []
     )
     if not notebook_ids:
         # No owned notebooks => no visible sources/notes via notebook links.

@@ -1,0 +1,3 @@
+-- Migration 29 rollback
+
+REMOVE TABLE notebook_access;

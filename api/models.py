@@ -31,6 +31,22 @@ class NotebookResponse(BaseModel):
     note_count: int
 
 
+# Notebook access models
+class NotebookAccessGrant(BaseModel):
+    user_email: str = Field(..., description="Email of user to grant access to")
+
+
+class NotebookAccessRecord(BaseModel):
+    user_email: str
+    granted_by: str
+    granted_at: str
+
+
+class NotebookAccessListResponse(BaseModel):
+    notebook_id: str
+    granted_users: List[str]
+
+
 # Search models
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query")

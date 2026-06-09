@@ -5,14 +5,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
 from api.auth import get_current_user, get_current_user_role, require_roles
+from api.notebook_access import (
+    can_access_notebook,
+    get_accessible_notebook_ids,
+    normalize_notebook_id,
+)
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
     NotebookDeleteResponse,
     NotebookResponse,
     NotebookUpdate,
+    NotebookAccessGrant,
+    NotebookAccessListResponse,
 )
-from api.roles import has_elevated_data_access
+from api.roles import is_super_admin_role, normalize_user_role
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError
@@ -25,11 +32,34 @@ def _can_access_owner(
     current_role: str,
     owner: Optional[str],
 ) -> bool:
-    if has_elevated_data_access(current_role):
+    if is_super_admin_role(current_role):
         return True
     if not current_user or not owner:
         return True
     return owner == current_user
+
+
+async def _get_target_user_role(email: str) -> Optional[str]:
+    rows = await repo_query(
+        "SELECT role FROM kavach_user WHERE email = $email LIMIT 1",
+        {"email": email.strip().lower()},
+    )
+    if not rows:
+        return None
+    return normalize_user_role(rows[0].get("role"))
+
+
+def _can_manage_grantee(actor_role: str, target_role: Optional[str]) -> bool:
+    normalized_actor = normalize_user_role(actor_role)
+    normalized_target = normalize_user_role(target_role)
+
+    if normalized_target == "super_admin":
+        return False
+    if normalized_actor == "super_admin":
+        return normalized_target in {"admin", "user"}
+    if normalized_actor == "admin":
+        return normalized_target == "user"
+    return False
 
 
 def _calc_storage_used_mb(nb_id: str, sources: list) -> float:
@@ -80,22 +110,10 @@ async def get_notebooks(
         else:
             archived_condition = ""
 
-        if current_user and not has_elevated_data_access(current_role):
-            # Return only notebooks owned by this user.
-            # Legacy unowned notebooks are handled by the claim-unowned endpoint
-            # which runs on page load and assigns them to the current user.
-            query = f"""
-                SELECT *,
-                count(<-reference.in) as source_count,
-                count(<-artifact.in) as note_count
-                FROM notebook
-                WHERE owner = $owner
-                {archived_condition}
-                ORDER BY `updated` DESC
-            """
-            result = await repo_query(query, {"owner": current_user})
-        else:
-            # No authenticated user (auth disabled) — return all notebooks.
+        accessible_ids = await get_accessible_notebook_ids(current_user, current_role)
+
+        if accessible_ids is None:
+            # Super admin or no auth: return all notebooks
             if archived_condition:
                 where_clause = f"WHERE 1=1 {archived_condition}"
             else:
@@ -109,6 +127,30 @@ async def get_notebooks(
                 ORDER BY `updated` DESC
             """
             result = await repo_query(query)
+        elif not accessible_ids:
+            result = []
+        else:
+            id_conditions = " OR ".join(
+                [f"id = $nb_{i}" for i in range(len(accessible_ids))]
+            )
+            id_params = {
+                f"nb_{i}": ensure_record_id(notebook_id)
+                for i, notebook_id in enumerate(sorted(accessible_ids))
+            }
+
+            where_clause = f"WHERE ({id_conditions})"
+            if archived_condition:
+                where_clause += f" {archived_condition}"
+
+            query = f"""
+                SELECT *,
+                count(<-reference.in) as source_count,
+                count(<-artifact.in) as note_count
+                FROM notebook
+                {where_clause}
+                ORDER BY `updated` DESC
+            """
+            result = await repo_query(query, id_params)
 
         # Build responses — calculate storage_used_mb only for notebooks with a limit
         responses = []
@@ -241,10 +283,10 @@ async def get_notebook_delete_preview(
 ):
     """Get a preview of what will be deleted when this notebook is deleted."""
     try:
-        notebook = await Notebook.get(notebook_id)
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if not _can_access_owner(current_user, current_role, notebook.owner):
+        if not await can_access_notebook(current_user, current_role, notebook_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
         preview = await notebook.get_delete_preview()
@@ -289,8 +331,8 @@ async def get_notebook(
         nb = result[0]
 
         # Owner check — deny access if notebook belongs to a different user
-        nb_owner = nb.get("owner")
-        if not _can_access_owner(current_user, current_role, nb_owner):
+        nb_id_str = str(nb.get("id", ""))
+        if not await can_access_notebook(current_user, current_role, nb_id_str):
             raise HTTPException(status_code=403, detail="Access denied")
 
         nb_id = str(nb.get("id", ""))
@@ -325,12 +367,12 @@ async def update_notebook(
 ):
     """Update a notebook."""
     try:
-        notebook = await Notebook.get(notebook_id)
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
 
         # Owner check
-        if not _can_access_owner(current_user, current_role, notebook.owner):
+        if not await can_access_notebook(current_user, current_role, notebook_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Update only provided fields
@@ -400,10 +442,10 @@ async def add_source_to_notebook(
 ):
     """Add an existing source to a notebook (create the reference)."""
     try:
-        notebook = await Notebook.get(notebook_id)
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if not _can_access_owner(current_user, current_role, notebook.owner):
+        if not await can_access_notebook(current_user, current_role, notebook_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Check if source exists
@@ -451,10 +493,10 @@ async def remove_source_from_notebook(
 ):
     """Remove a source from a notebook (delete the reference)."""
     try:
-        notebook = await Notebook.get(notebook_id)
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if not _can_access_owner(current_user, current_role, notebook.owner):
+        if not await can_access_notebook(current_user, current_role, notebook_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Delete the reference record linking source to notebook
@@ -487,10 +529,10 @@ async def delete_notebook(
 ):
     """Delete a notebook with cascade deletion."""
     try:
-        notebook = await Notebook.get(notebook_id)
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if not _can_access_owner(current_user, current_role, notebook.owner):
+        if not await can_access_notebook(current_user, current_role, notebook_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
         result = await notebook.delete(delete_exclusive_sources=delete_exclusive_sources)
@@ -508,3 +550,134 @@ async def delete_notebook(
         raise HTTPException(
             status_code=500, detail=f"Error deleting notebook: {str(e)}"
         )
+
+
+# ── Notebook Access Management (Super Admin only) ─────────────────────────────
+
+@router.get("/notebooks/{notebook_id}/access", response_model=NotebookAccessListResponse)
+async def get_notebook_access(
+    notebook_id: str,
+    current_user: str = Depends(require_roles("admin", "super_admin")),
+    current_role: str = Depends(get_current_user_role),
+):
+    """Get the list of users granted access to a notebook."""
+    try:
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
+        if not notebook:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+        if not is_super_admin_role(current_role) and not await can_access_notebook(
+            current_user, current_role, notebook_id
+        ):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Use the full notebook ID from the fetched object (includes table prefix)
+        full_notebook_id = ensure_record_id(str(notebook.id))
+
+        result = await repo_query(
+            "SELECT user_email FROM notebook_access WHERE notebook_id = $notebook_id",
+            {"notebook_id": full_notebook_id},
+        )
+        granted_users = [row["user_email"] for row in result] if result else []
+        return NotebookAccessListResponse(
+            notebook_id=notebook_id,
+            granted_users=granted_users,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching notebook access for {notebook_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/notebooks/{notebook_id}/access")
+async def grant_notebook_access(
+    notebook_id: str,
+    body: NotebookAccessGrant,
+    current_user: str = Depends(require_roles("admin", "super_admin")),
+    current_role: str = Depends(get_current_user_role),
+):
+    """Grant a user access to a notebook."""
+    try:
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
+        if not notebook:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        if not is_super_admin_role(current_role) and not await can_access_notebook(
+            current_user, current_role, notebook_id
+        ):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        target_email = body.user_email.strip().lower()
+        target_role = await _get_target_user_role(target_email)
+        if not target_role:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not _can_manage_grantee(current_role, target_role):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        full_notebook_id = ensure_record_id(str(notebook.id))
+
+        # Upsert — avoid duplicates
+        existing = await repo_query(
+            "SELECT id FROM notebook_access WHERE notebook_id = $notebook_id AND user_email = $user_email LIMIT 1",
+            {"notebook_id": full_notebook_id, "user_email": target_email},
+        )
+        if not existing:
+            await repo_query(
+                """
+                CREATE notebook_access SET
+                    notebook_id = $notebook_id,
+                    user_email = $user_email,
+                    granted_by = $granted_by,
+                    granted_at = time::now()
+                """,
+                {
+                    "notebook_id": full_notebook_id,
+                    "user_email": target_email,
+                    "granted_by": current_user,
+                },
+            )
+        return {"message": f"Access granted to {target_email}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error granting notebook access: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/notebooks/{notebook_id}/access/{user_email}")
+async def revoke_notebook_access(
+    notebook_id: str,
+    user_email: str,
+    current_user: str = Depends(require_roles("admin", "super_admin")),
+    current_role: str = Depends(get_current_user_role),
+):
+    """Revoke a user's access to a notebook."""
+    try:
+        notebook = await Notebook.get(normalize_notebook_id(notebook_id))
+        if not notebook:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        if not is_super_admin_role(current_role) and not await can_access_notebook(
+            current_user, current_role, notebook_id
+        ):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        normalized_email = user_email.strip().lower()
+        target_role = await _get_target_user_role(normalized_email)
+        if not target_role:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not _can_manage_grantee(current_role, target_role):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        full_notebook_id = ensure_record_id(str(notebook.id))
+
+        await repo_query(
+            "DELETE notebook_access WHERE notebook_id = $notebook_id AND user_email = $user_email",
+            {"notebook_id": full_notebook_id, "user_email": normalized_email},
+        )
+        return {"message": f"Access revoked for {normalized_email}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error revoking notebook access: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -15,6 +15,8 @@ import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { hasRoleAccess } from '@/lib/auth/roles'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
@@ -73,6 +75,8 @@ export default function SearchPage() {
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
   const { data: availableModels } = useModels()
   const { openModal } = useModalManager()
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
+  const isSuperAdmin = hasRoleAccess(currentUserRole, 'super_admin')
 
   const modelNameById = useMemo(() => {
     if (!availableModels) return new Map<string, string>()
@@ -226,6 +230,7 @@ export default function SearchPage() {
                           </div>
                         ) : (
                           <>
+                            {isSuperAdmin && (
                             <Button
                               variant="outline"
                               onClick={() => setShowAdvancedModels(true)}
@@ -234,6 +239,7 @@ export default function SearchPage() {
                             >
                               Advanced Mode <ChevronDown className="h-4 w-4 ml-2" />
                             </Button>
+                            )}
 
                             {ask.finalAnswer && (
                               <Button
@@ -372,6 +378,7 @@ export default function SearchPage() {
         </div>
       </div>
 
+      {isSuperAdmin && (
       <AdvancedModelsDialog
         open={showAdvancedModels}
         onOpenChange={setShowAdvancedModels}
@@ -382,6 +389,7 @@ export default function SearchPage() {
         }}
         onSave={setCustomModels}
       />
+      )}
     </AppShell>
   )
 }
