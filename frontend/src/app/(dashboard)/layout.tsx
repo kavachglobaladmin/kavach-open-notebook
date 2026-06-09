@@ -1,8 +1,9 @@
 'use client'
 
 import { useAuth } from '@/lib/hooks/use-auth'
+import { canAccessPath, getDefaultRouteForRole } from '@/lib/auth/roles'
 import { useVersionCheck } from '@/lib/hooks/use-version-check'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
@@ -19,7 +20,9 @@ export default function DashboardLayout({
 }) {
   const { isAuthenticated, isLoading, logout } = useAuth()
   const token = useAuthStore(s => s.token)
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
   const router = useRouter()
+  const pathname = usePathname()
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false)
 
   // Check for version updates once per session
@@ -46,9 +49,11 @@ export default function DashboardLayout({
           sessionStorage.removeItem('redirectAfterLogin')
         }
         router.push('/login')
+      } else if (!canAccessPath(currentUserRole, pathname)) {
+        router.replace(getDefaultRouteForRole(currentUserRole))
       }
     }
-  }, [isAuthenticated, isLoading, router])
+  }, [isAuthenticated, isLoading, router, currentUserRole, pathname])
 
   // ── JWT expiry auto-logout ─────────────────────────────────────────────────
   useEffect(() => {
@@ -87,6 +92,10 @@ export default function DashboardLayout({
     : false
 
   if (!isAuthenticated || !hasLocalSession) {
+    return null
+  }
+
+  if (!canAccessPath(currentUserRole, pathname)) {
     return null
   }
 

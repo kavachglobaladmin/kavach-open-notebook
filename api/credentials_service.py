@@ -40,7 +40,7 @@ PROVIDER_ENV_CONFIG: Dict[str, dict] = {
     "openrouter": {"required": ["OPENROUTER_API_KEY"]},
     "voyage": {"required": ["VOYAGE_API_KEY"]},
     "elevenlabs": {"required": ["ELEVENLABS_API_KEY"]},
-    "ollama": {"required": ["OLLAMA_API_BASE"]},
+    "ollama": {"required_any": ["OLLAMA_API_BASE", "OLLAMA_BASE_URL"]},
     "vertex": {
         "required": ["VERTEX_PROJECT", "VERTEX_LOCATION"],
         "optional": ["GOOGLE_APPLICATION_CREDENTIALS"],
@@ -250,7 +250,8 @@ def create_credential_from_env(provider: str) -> Credential:
             name=name,
             provider=provider,
             modalities=modalities,
-            base_url=os.environ.get("OLLAMA_API_BASE"),
+            base_url=os.environ.get("OLLAMA_API_BASE")
+            or os.environ.get("OLLAMA_BASE_URL"),
         )
     elif provider == "vertex":
         return Credential(

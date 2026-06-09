@@ -44,6 +44,7 @@ describe('ChatColumn', () => {
       notes: {}
     },
     sources: [],
+    notes: [],
   }
 
   beforeEach(() => {

@@ -16,7 +16,6 @@ import { getDescendantIds, useSubFolders } from '@/lib/hooks/use-sub-folders'
 import { useSubFolderAggregateData } from '@/lib/hooks/use-sub-folder-aggregate-data'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { cn } from '@/lib/utils'
-import { ChatColumn } from '../components/ChatColumn'
 import { CreateSubFolderDialog } from '../components/CreateSubFolderDialog'
 import { SubFolderCard } from '../components/SubFolderCard'
 
@@ -185,7 +184,7 @@ export default function NotebookFolderPage() {
 
   const ChatPanelWrapper = (
     <div className="h-full">
-      <ChatColumn
+      <SuperChatColumn
         notebookId={notebookId}
         contextSelections={contextSelections}
         sources={sources}
@@ -193,11 +192,7 @@ export default function NotebookFolderPage() {
         notes={notes}
         folderContexts={folderContexts}
         chatTitle={chatTitle}
-        subtitleLine={
-          contextFolderNames.length > 0
-            ? `${contextFolderNames.length} folders: ${contextFolderNames.join(', ')}`
-            : 'No sub-folders'
-        }
+        subtitleLine={`${folderContexts.length} ${folderContexts.length === 1 ? 'folder' : 'folders'}`}
         hideModelSelector
       />
     </div>

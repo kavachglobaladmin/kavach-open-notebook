@@ -24,6 +24,20 @@ function toBareRecordId(value: string | null | undefined, prefix: 'source' | 'no
     : normalized
 }
 
+function getEffectiveSourceMode(
+  source: SourceListResponse,
+  selections: ContextSelections['sources'],
+) {
+  return selections[source.id] ?? (source.insights_count > 0 ? 'insights' : 'full')
+}
+
+function getEffectiveNoteMode(
+  note: NoteResponse,
+  selections: ContextSelections['notes'],
+) {
+  return selections[note.id] ?? 'full'
+}
+
 interface ChatColumnProps {
   notebookId: string
   contextSelections: ContextSelections
@@ -123,19 +137,19 @@ export function ChatColumn({
 
   // Build context indicators for ChatPanel from current user selections.
   const selectedSourceIds = sources
-    .filter((source) => (contextSelections.sources[source.id] ?? 'off') !== 'off')
+    .filter((source) => getEffectiveSourceMode(source, contextSelections.sources) !== 'off')
     .map((source) => source.id)
 
   const selectedInsightSourceIds = sources
-    .filter((source) => contextSelections.sources[source.id] === 'insights')
+    .filter((source) => getEffectiveSourceMode(source, contextSelections.sources) === 'insights')
     .map((source) => source.id)
 
   const selectedFullSourceIds = sources
-    .filter((source) => contextSelections.sources[source.id] === 'full')
+    .filter((source) => getEffectiveSourceMode(source, contextSelections.sources) === 'full')
     .map((source) => source.id)
 
   const selectedNoteIds = notes
-    .filter((note) => (contextSelections.notes[note.id] ?? 'off') !== 'off')
+    .filter((note) => getEffectiveNoteMode(note, contextSelections.notes) !== 'off')
     .map((note) => note.id)
 
   const contextIndicators: SourceChatContextIndicator = {

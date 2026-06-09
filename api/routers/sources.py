@@ -22,7 +22,13 @@ from fastapi.responses import FileResponse, Response
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
-from api.auth import get_current_user
+from api.auth import get_current_user, get_current_user_role
+from api.notebook_access import (
+    can_access_notebook,
+    get_accessible_notebook_ids,
+    normalize_notebook_id,
+)
+from api.roles import has_elevated_data_access
 
 from api.command_service import CommandService
 from api.models import (
@@ -1398,6 +1404,7 @@ async def get_sources(
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
     current_user: Optional[str] = Depends(get_current_user),
+    current_role: str = Depends(get_current_user_role),
 ):
     """Get sources with pagination and sorting support."""
     try:
@@ -1417,10 +1424,10 @@ async def get_sources(
         # Build the query
         if notebook_id:
             # Verify notebook exists and belongs to current user
-            notebook = await Notebook.get(notebook_id)
+            notebook = await Notebook.get(normalize_notebook_id(notebook_id))
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
-            if current_user and notebook.owner and notebook.owner != current_user:
+            if not await can_access_notebook(current_user, current_role, notebook_id):
                 raise HTTPException(status_code=403, detail="Access denied")
 
             # Query sources for specific notebook - include command field with FETCH
@@ -1446,9 +1453,41 @@ async def get_sources(
                     "offset": offset,
                 },
             )
-        elif current_user:
-            # Return only sources linked to notebooks owned by this user
-            # Deduplicate by using array::distinct on the source IDs first
+        elif current_user and not has_elevated_data_access(current_role):
+            accessible_notebook_ids = await get_accessible_notebook_ids(
+                current_user, current_role
+            )
+            if not accessible_notebook_ids:
+                result = []
+            else:
+                # Deduplicate by using array::distinct on the source IDs first
+                query = f"""
+                    SELECT id, asset, created, title, updated, topics, command,
+                    count(array::distinct(
+                        SELECT VALUE string::concat(insight_type, '::', content)
+                        FROM source_insight
+                        WHERE source = $parent.id
+                    )) AS insights_count,
+                    (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
+                    FROM array::distinct((
+                        SELECT VALUE in FROM reference
+                        WHERE out IN $notebook_ids
+                    ))
+                    {order_clause}
+                    LIMIT $limit START $offset
+                    FETCH command
+                """
+                result = await repo_query(
+                    query,
+                    {
+                        "notebook_ids": list(accessible_notebook_ids),
+                        "limit": limit,
+                        "offset": offset,
+                    },
+                )
+        else:
+            # Query only sources linked to any notebook (admin/elevated access)
+            # Sources without a notebook association are excluded
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
                 count(array::distinct(
@@ -1459,27 +1498,7 @@ async def get_sources(
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM array::distinct((
                     SELECT VALUE in FROM reference
-                    WHERE out IN (SELECT VALUE id FROM notebook WHERE owner = $owner)
                 ))
-                {order_clause}
-                LIMIT $limit START $offset
-                FETCH command
-            """
-            result = await repo_query(
-                query,
-                {"owner": current_user, "limit": limit, "offset": offset},
-            )
-        else:
-            # Query all sources - include command field with FETCH
-            query = f"""
-                SELECT id, asset, created, title, updated, topics, command,
-                count(array::distinct(
-                    SELECT VALUE string::concat(insight_type, '::', content)
-                    FROM source_insight
-                    WHERE source = $parent.id
-                )) AS insights_count,
-                (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM source
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -3284,16 +3303,11 @@ def _extract_profile_graph(text: str) -> dict:
 async def get_source(source_id: str, include_text: bool = True):
     """Get a specific source by ID. Pass include_text=false to skip full_text for faster loads."""
     try:
-        # Normalize ID — add table prefix if missing
-        full_source_id = (
-            source_id if source_id.startswith("source:")
-            else f"source:{source_id}"
-        )
-        source = await Source.get(full_source_id)
+        source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        # Get status information if command exists — never let this crash the endpoint
+        # Get status information if command exists
         status = None
         processing_info = None
         if source.command:
@@ -3303,27 +3317,17 @@ async def get_source(source_id: str, include_text: bool = True):
             except Exception as e:
                 logger.warning(f"Failed to get status for source {source_id}: {e}")
                 status = "unknown"
-                processing_info = None
 
-        # Embedded chunk count — default to 0 on failure
-        try:
-            embedded_chunks = await source.get_embedded_chunks()
-        except Exception as e:
-            logger.warning(f"Failed to get embedded chunks for source {source_id}: {e}")
-            embedded_chunks = 0
+        embedded_chunks = await source.get_embedded_chunks()
 
         # Get associated notebooks
-        try:
-            notebooks_query = await repo_query(
-                "SELECT VALUE out FROM reference WHERE in = $source_id",
-                {"source_id": ensure_record_id(source.id or source_id)},
-            )
-            notebook_ids = (
-                [str(nb_id) for nb_id in notebooks_query] if notebooks_query else []
-            )
-        except Exception as e:
-            logger.warning(f"Failed to get notebooks for source {source_id}: {e}")
-            notebook_ids = []
+        notebooks_query = await repo_query(
+            "SELECT VALUE out FROM reference WHERE in = $source_id",
+            {"source_id": ensure_record_id(source.id or source_id)},
+        )
+        notebook_ids = (
+            [str(nb_id) for nb_id in notebooks_query] if notebooks_query else []
+        )
 
         return SourceResponse(
             id=source.id or "",
@@ -3710,19 +3714,13 @@ async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Q
 async def delete_source(source_id: str):
     """Delete a source."""
     try:
-        full_source_id = (
-            source_id if source_id.startswith("source:")
-            else f"source:{source_id}"
-        )
-        source = await Source.get(full_source_id)
+        source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
         await source.delete()
 
         return {"message": "Source deleted successfully"}
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Source not found")
     except HTTPException:
         raise
     except Exception as e:
@@ -3734,38 +3732,22 @@ async def delete_source(source_id: str):
 async def get_source_insights(source_id: str):
     """Get all insights for a specific source."""
     try:
-        # Normalize ID — add table prefix if missing
-        full_source_id = (
-            source_id if source_id.startswith("source:")
-            else f"source:{source_id}"
-        )
-        source = await Source.get(full_source_id)
+        source = await Source.get(source_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
 
-        try:
-            insights = await source.get_insights()
-        except Exception as e:
-            logger.warning(f"Could not fetch insights for source {source_id}: {e}")
-            insights = []
-
-        result = []
-        for insight in insights:
-            try:
-                result.append(
-                    SourceInsightResponse(
-                        id=insight.id or "",
-                        source_id=source_id,
-                        insight_type=insight.insight_type or "",
-                        content=insight.content or "",
-                        created=str(insight.created) if insight.created else "",
-                        updated=str(insight.updated) if insight.updated else "",
-                    )
-                )
-            except Exception as e:
-                logger.warning(f"Skipping malformed insight for source {source_id}: {e}")
-                continue
-        return result
+        insights = await source.get_insights()
+        return [
+            SourceInsightResponse(
+                id=insight.id or "",
+                source_id=source_id,
+                insight_type=insight.insight_type,
+                content=insight.content,
+                created=str(insight.created),
+                updated=str(insight.updated),
+            )
+            for insight in insights
+        ]
     except HTTPException:
         raise
     except Exception as e:
@@ -4039,22 +4021,17 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
                 logger.debug(f"Could not fetch model details: {e}")
                 model_name = model_id_to_use
 
-        # Submit transformation as background job (fire-and-forget).
-        # submit_command uses a synchronous WebSocket connection (blocking I/O)
-        # which must NOT run on the async event loop — wrap it in a thread.
-        def _submit():
-            return submit_command(
-                "open_notebook",
-                "run_transformation",
-                {
-                    "source_id": source_id,
-                    "transformation_id": request.transformation_id,
-                    "model_id": model_id_to_use,
-                    "generation_id": generation_id,
-                },
-            )
-
-        command_id = await asyncio.to_thread(_submit)
+        # Submit transformation as background job (fire-and-forget)
+        command_id = submit_command(
+            "open_notebook",
+            "run_transformation",
+            {
+                "source_id": source_id,
+                "transformation_id": request.transformation_id,
+                "model_id": model_id_to_use,
+                "generation_id": generation_id,
+            },
+        )
         logger.info(
             f"Submitted run_transformation command {command_id} for source {source_id} "
             f"using transformation '{transformation.title}' with model: {model_name}"

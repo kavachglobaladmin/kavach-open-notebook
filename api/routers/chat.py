@@ -25,6 +25,10 @@ from open_notebook.utils.graph_utils import get_session_message_count
 router = APIRouter()
 
 
+def _is_notebook_chat_session(session: ChatSession) -> bool:
+    return getattr(session, "chat_mode", None) in (None, "notebook")
+
+
 def _fallback_suggested_questions(user_message: str, ai_response: str) -> list[str]:
     """Return safe fallback follow-up questions when LLM parsing fails."""
     prompt = (user_message or "").strip().rstrip("?.!")
@@ -302,6 +306,8 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 
         results = []
         for session in sessions_list:
+            if not _is_notebook_chat_session(session):
+                continue
             session_id = str(session.id)
 
             # Get message count from LangGraph state
@@ -343,6 +349,7 @@ async def create_session(request: CreateSessionRequest):
             title=request.title
             or f"Chat Session {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
+            chat_mode="notebook",
         )
         await session.save()
 

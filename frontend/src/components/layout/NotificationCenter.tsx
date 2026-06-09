@@ -211,11 +211,11 @@ export function NotificationCenter() {
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <div className="relative">
-          <button className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+          <button className="p-2 text-slate-500 hover:text-violet-600 hover:bg-violet-50/50 rounded-xl transition-all duration-300 hover:scale-[1.08]">
             <Bell className="h-5 w-5" />
           </button>
           {unreadCount > 0 && (
-            <span className="absolute top-0 right-0 h-5 w-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold pointer-events-none z-50 transform translate-x-1/2 -translate-y-1/2">
+            <span className="absolute -top-0.5 -right-0.5 h-[18px] w-[18px] bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-bold pointer-events-none z-50 border border-white shadow-sm">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { hasRoleAccess } from '@/lib/auth/roles'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
@@ -100,6 +101,7 @@ const listItemVariants: Variants = {
 export default function DashboardPage() {
   const router = useRouter()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
   const [searchTerm, setSearchTerm] = useState('')
   const [displayName, setDisplayName] = useState('there')
   const [aiPerformanceHeights, setAiPerformanceHeights] = useState([0, 0, 0, 0, 0, 0, 0])
@@ -155,11 +157,11 @@ export default function DashboardPage() {
   ]
 
   const quickActions = [
-    { label: 'Upload Document', icon: <Upload className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #4F46E5 0%, #3B82F6 100%)', route: '/sources' },
-    { label: 'Create Case', icon: <Briefcase className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #DB2777 0%, #F43F5E 100%)', route: '/notebooks' },
-    { label: 'Ask AI', icon: <Search className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #9333EA 0%, #C084FC 100%)', route: '/search' },
-    { label: 'New Transformation', icon: <Zap className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #0891B2 0%, #10B981 100%)', route: '/transformations' },
-  ]
+    { label: 'Upload Document', icon: <Upload className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #4F46E5 0%, #3B82F6 100%)', route: '/sources', minimumRole: 'user' as const },
+    { label: 'Create Case', icon: <Briefcase className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #DB2777 0%, #F43F5E 100%)', route: '/notebooks', minimumRole: 'user' as const },
+    { label: 'Ask AI', icon: <Search className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #9333EA 0%, #C084FC 100%)', route: '/search', minimumRole: 'user' as const },
+    { label: 'New Transformation', icon: <Zap className="h-4 w-4" />, gradient: 'linear-gradient(90deg, #0891B2 0%, #10B981 100%)', route: '/transformations', minimumRole: 'admin' as const },
+  ].filter((action) => hasRoleAccess(currentUserRole, action.minimumRole))
 
   return (
     <AppShell>

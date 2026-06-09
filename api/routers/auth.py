@@ -22,6 +22,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import create_access_token
+from api.roles import ensure_user_role
 from open_notebook.database.repository import repo_query
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -76,6 +77,7 @@ class UserLoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     email: str
     name: str
+    role: str
     # Signed JWT — send as:  Authorization: Bearer <access_token>
     access_token: str
     token_type: str = "bearer"
@@ -117,14 +119,16 @@ async def user_login(data: UserLoginRequest):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     name = user.get("name", "")
+    role = await ensure_user_role(email, user.get("role"))
 
     # Generate a signed JWT containing the user's email as the 'sub' claim
-    token = create_access_token(email=email, name=name)
+    token = create_access_token(email=email, name=name, role=role)
 
     logger.info(f"[auth] Successful login, JWT issued for: {email}")
     return LoginResponse(
         email=email,
         name=name,
+        role=role,
         access_token=token,
         token_type="bearer",
     )

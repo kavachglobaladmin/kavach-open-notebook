@@ -3,7 +3,7 @@
 const nextConfig: NextConfig = {
 
 allowedDevOrigins: [
-"192.168.11.214",
+"192.168.11.126",
 "100.73.235.251",
 "192.168.1.43",
 "*"

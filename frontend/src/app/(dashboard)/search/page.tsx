@@ -5,16 +5,30 @@ import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ChevronDown, AlertCircle, Save, Sparkles, Search, SendHorizontal, ArrowRight, Lightbulb, Link2, Brain, Zap } from 'lucide-react'
+import { 
+  ChevronDown, 
+  AlertCircle, 
+  Save, 
+  Sparkles, 
+  Search, 
+  SendHorizontal, 
+  ArrowRight, 
+  Lightbulb, 
+  Link2, 
+  Brain, 
+  Zap,
+  Filter
+} from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { hasRoleAccess } from '@/lib/auth/roles'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
@@ -51,15 +65,13 @@ export default function SearchPage() {
   const rawMode = searchParams?.get('mode')
   const urlMode = rawMode === 'search' ? 'search' : 'ask'
 
-  const [activeTab, setActiveTab] = useState<'ask' | 'search'>(
-    urlMode === 'search' ? 'search' : 'ask'
-  )
+  // We maintain the activeTab internally for compatibility, defaulting to 'ask'
+  const [activeTab, setActiveTab] = useState<'ask' | 'search'>('ask')
 
-  const [searchQuery, setSearchQuery] = useState(urlMode === 'search' ? urlQuery : '')
+  const [query, setQuery] = useState(urlQuery)
   const [searchType, setSearchType] = useState<'text' | 'vector'>('text')
   const [searchSources, setSearchSources] = useState(true)
   const [searchNotes, setSearchNotes] = useState(true)
-  const [askQuestion, setAskQuestion] = useState(urlMode === 'ask' ? urlQuery : '')
   const [showAdvancedModels, setShowAdvancedModels] = useState(false)
   const [customModels, setCustomModels] = useState<{
     strategy: string
@@ -68,11 +80,28 @@ export default function SearchPage() {
   } | null>(null)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
 
+  // Compat getters/setters for legacy triggers in useEffect
+  const searchQuery = query
+  const askQuestion = query
+  const setSearchQuery = (val: string) => setQuery(val)
+  const setAskQuestion = (val: string) => setQuery(val)
+
+  // Local state for recent searches based on mockup
+  const [recentSearches, setRecentSearches] = useState([
+    { id: '1', query: 'Financial fraud cases in Q2 2026', time: '2 hours ago', results: '24 results' },
+    { id: '2', query: 'Employee ID: EMP-4521 background check', time: '5 hours ago', results: '8 results' },
+    { id: '3', query: 'Cyber crime incidents Delhi region', time: '1 day ago', results: '156 results' },
+    { id: '4', query: 'Compliance audit documents 2025-2026', time: '2 days ago', results: '42 results' },
+    { id: '5', query: 'Witness statements Case INV-2847', time: '3 days ago', results: '6 results' },
+  ])
+
   const searchMutation = useSearch()
   const ask = useAsk()
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
   const { data: availableModels } = useModels()
   const { openModal } = useModalManager()
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
+  const isSuperAdmin = hasRoleAccess(currentUserRole, 'super_admin')
 
   const modelNameById = useMemo(() => {
     if (!availableModels) return new Map<string, string>()
@@ -83,34 +112,56 @@ export default function SearchPage() {
   const hasAutoTriggeredRef = useRef(false)
   const lastUrlParamsRef = useRef({ q: '', mode: '' })
 
-  const handleSearch = useCallback(() => {
-    if (!searchQuery.trim()) return
+  const handleSearch = useCallback((queryToUse?: string) => {
+    const q = queryToUse !== undefined ? queryToUse : query
+    if (!q.trim()) return
     searchMutation.mutate({
-      query: searchQuery,
+      query: q,
       type: searchType,
       limit: 100,
       search_sources: searchSources,
       search_notes: searchNotes,
       minimum_score: 0.2
     })
-  }, [searchQuery, searchType, searchSources, searchNotes, searchMutation])
+  }, [query, searchType, searchSources, searchNotes, searchMutation])
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSearch()
-    }
-  }
-
-  const handleAsk = useCallback(() => {
-    if (!askQuestion.trim() || !modelDefaults?.default_chat_model) return
+  const handleAsk = useCallback((questionToUse?: string) => {
+    const q = questionToUse !== undefined ? questionToUse : query
+    if (!q.trim() || !modelDefaults?.default_chat_model) return
     const models = customModels || {
       strategy: modelDefaults.default_chat_model,
       answer: modelDefaults.default_chat_model,
       finalAnswer: modelDefaults.default_chat_model
     }
-    ask.sendAsk(askQuestion, models)
-  }, [askQuestion, modelDefaults, customModels, ask])
+    ask.sendAsk(q, models)
+  }, [query, modelDefaults, customModels, ask])
+
+  // Triggers both search queries (LLM synthesis and document list) concurrently
+  const handleExecute = (queryToUse?: string) => {
+    const targetQuery = queryToUse !== undefined ? queryToUse : query
+    if (!targetQuery.trim()) return
+    handleSearch(targetQuery)
+    handleAsk(targetQuery)
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleExecute()
+    }
+  }
+
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleExecute()
+    }
+  }
+
+  const handleSuggestedQuery = (q: string) => {
+    setQuery(q)
+    handleExecute(q)
+  }
 
   useEffect(() => {
     if (hasAutoTriggeredRef.current || !urlQuery) return
@@ -132,13 +183,7 @@ export default function SearchPage() {
     if (currentQ !== lastUrlParamsRef.current.q || currentMode !== lastUrlParamsRef.current.mode) {
       lastUrlParamsRef.current = { q: currentQ, mode: currentMode }
       if (currentQ) {
-        if (currentMode === 'search') {
-          setSearchQuery(currentQ)
-          setActiveTab('search')
-        } else {
-          setAskQuestion(currentQ)
-          setActiveTab('ask')
-        }
+        setQuery(currentQ)
         hasAutoTriggeredRef.current = false
       }
     }
@@ -147,117 +192,137 @@ export default function SearchPage() {
   return (
     <AppShell>
       <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#FAFBFF]">
-        {/* Background Gradients */}
-        <div className="absolute top-[10%] -left-[10%] w-[50%] h-[60%] rounded-full bg-[#E0F2FE] mix-blend-multiply blur-[120px] opacity-60 pointer-events-none"></div>
-        <div className="absolute -top-[10%] right-[-5%] w-[45%] h-[65%] rounded-full bg-[#F3E8FF] mix-blend-multiply blur-[120px] opacity-80 pointer-events-none"></div>
-
         <PageHeader 
-          searchValue={searchQuery} 
-          onSearchChange={(val) => setSearchQuery(val)}
+          searchValue={query} 
+          onSearchChange={(val) => setQuery(val)}
           newLabel="NOTEBOOK"
         />
         
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-4 md:p-8 pb-20 max-w-[1000px] mx-auto w-full relative z-10 min-h-full">
-            <div className="text-center mb-6">
-              <h1 className="text-3xl md:text-[32px] font-bold text-[#8A2BE2] mb-2 tracking-tight">Ask & Search</h1>
-              <p className="text-[14px] md:text-[15px] text-slate-500 font-medium">Your AI-powered knowledge assistant</p>
+          <div className="p-4 md:p-8 pb-20 w-full relative z-10 min-h-full">
+            
+            {/* Top Heading Block */}
+            <div className="flex items-center gap-3.5 mb-6">
+              <div className="w-12 h-12 rounded-xl bg-violet-600 flex items-center justify-center text-white shadow-[0_8px_20px_-6px_rgba(124,58,237,0.5)]">
+                <Search className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-800 tracking-tight leading-tight">AI-Powered Search</h1>
+                <p className="text-[13px] text-slate-400 font-semibold mt-0.5">Intelligent search across all cases, documents, and data</p>
+              </div>
             </div>
 
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ask' | 'search')} className="w-full">
-              <div className="flex justify-center mb-8 px-1 sm:px-4 sticky top-0 z-20 pt-2 pb-4">
-                <div className="bg-white p-1.5 flex items-center justify-center rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 w-full max-w-[420px] sm:w-fit mx-auto">
-                  <Button 
-                    variant="ghost"
-                    onClick={() => setActiveTab('ask')}
-                    className={cn(
-                      "h-[48px] flex-1 sm:flex-none justify-center rounded-full px-4 sm:px-6 lg:px-10 text-[13px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
-                      activeTab === 'ask' 
-                        ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
-                        : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
-                    )}
-                  >
-                    <Sparkles className="h-[18px] w-[18px]" />
-                    Ask AI (Beta)
-                  </Button>
-                  <Button 
-                    variant="ghost"
-                    onClick={() => setActiveTab('search')}
-                    className={cn(
-                      "h-[48px] flex-1 sm:flex-none justify-center rounded-full px-4 sm:px-6 lg:px-10 text-[13px] sm:text-[15px] font-bold transition-all duration-300 flex items-center gap-2 whitespace-nowrap",
-                      activeTab === 'search' 
-                        ? "bg-gradient-to-r from-[#8A2BE2] to-[#A855F7] text-white shadow-md hover:from-[#7A26C9] hover:to-[#9333EA] hover:text-white" 
-                        : "text-slate-600 bg-transparent hover:bg-slate-50 hover:text-slate-800"
-                    )}
-                  >
-                    <Search className="h-[18px] w-[18px]" />
-                    Search
-                  </Button>
+            {/* KPI Cards Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <KpiCard title="Total Searches" value="12,845" trend="+24.5%" trendType="success" />
+              <KpiCard title="Avg Response Time" value="0.8s" trend="0.2s faster" trendType="success" />
+              <KpiCard title="Success Rate" value="94.2%" trend="Above target" trendType="success" />
+              <KpiCard title="Today's Searches" value="156" trend="32 active users" trendType="info" />
+            </div>
+
+            {/* Main Interactive Transparent White Container */}
+            <div className="bg-white/80 border border-slate-200/80 backdrop-blur-md text-slate-800 rounded-[24px] p-6 md:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.02)] mb-6">
+              
+              {/* Header inside search card */}
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-5 w-5 text-[#7C3AED]" />
+                <h2 className="text-[17px] font-bold text-slate-800">Ask anything about your cases and data</h2>
+              </div>
+
+              {/* Transparent white search input bar container */}
+              <div className="relative flex items-center bg-white/70 border border-slate-200/80 backdrop-blur-sm rounded-2xl p-1.5 focus-within:border-[#7C3AED]/40 focus-within:ring-2 focus-within:ring-[#7C3AED]/10 transition-all">
+                <div className="pl-3.5 pr-1 text-[#7C3AED]/75 flex items-center justify-center shrink-0">
+                  <Search className="h-[18px] w-[18px]" />
+                </div>
+
+                <Textarea
+                  placeholder="Search for cases, documents, people, or ask a question..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  disabled={ask.isStreaming}
+                  onKeyDown={handleTextareaKeyDown}
+                  rows={1}
+                  className="flex-1 bg-transparent border-0 text-slate-850 placeholder:text-slate-400 focus-visible:ring-0 focus-visible:ring-offset-0 text-[14.5px] min-h-[44px] py-3 resize-none outline-none"
+                />
+                
+                {/* Search Button styled in medium dark purple for high legibility */}
+                <Button
+                  onClick={() => handleExecute()}
+                  disabled={ask.isStreaming || searchMutation.isPending || !query.trim()}
+                  className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white h-[40px] rounded-xl px-6 font-bold shadow-md transition-all shrink-0 border border-violet-700"
+                >
+                  {ask.isStreaming || searchMutation.isPending ? (
+                    <LoadingSpinner size="sm" />
+                  ) : (
+                    "Search"
+                  )}
+                </Button>
+              </div>
+
+              {/* Bottom bar of search card: Actions, Configs & Suggestions */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mt-4">
+                
+                {/* Left side actions and configurations */}
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  {!hasEmbeddingModel ? (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg font-medium">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{t.searchPage.noEmbeddingModel}</span>
+                    </div>
+                  ) : (
+                    <>
+                      {isSuperAdmin && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => setShowAdvancedModels(true)}
+                          disabled={ask.isStreaming}
+                          className="bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-violet-100 text-[#7C3AED] font-bold h-9 px-4 rounded-xl text-xs transition-colors gap-1.5"
+                        >
+                          Advanced Mode <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+
+                      {ask.finalAnswer && (
+                        <Button
+                          onClick={() => setShowSaveDialog(true)}
+                          className="bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-violet-100 text-[#7C3AED] h-9 px-4 rounded-xl font-bold text-xs transition-all gap-1.5"
+                        >
+                          <Save className="h-3.5 w-3.5" /> Save
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] text-slate-500 font-bold">Search Type:</span>
+                    <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value as 'text' | 'vector')}
+                      className="bg-[#F5F3FF] border border-violet-100 text-[#7C3AED] text-[12px] font-bold px-3 py-1.5 rounded-xl outline-none cursor-pointer hover:bg-[#EDE9FE] transition-all"
+                    >
+                      <option value="text" className="text-slate-800">All Documents</option>
+                      <option value="vector" className="text-slate-800">Vector Only</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right side try text */}
+                <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400 w-full sm:w-auto justify-start sm:justify-end">
+                  <Lightbulb className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span className="truncate">Try: "Show me all high priority cases..." or "Find documents related..."</span>
                 </div>
               </div>
 
-              <div className="bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-6 md:p-10 w-full mb-10">
+            </div>
+
+            {/* Results Area */}
+            {(ask.isStreaming || ask.finalAnswer || searchMutation.data) && (
+              <div className="mb-6 bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.02)] border border-slate-100 p-6 md:p-8">
                 
-                <TabsContent value="ask" className="mt-0 focus-visible:outline-none">
-                  <div className="text-center mb-8">
-                    <h2 className="text-[20px] md:text-[24px] font-bold text-slate-900 mb-1.5">Ask Your Knowledge Base</h2>
-                    <p className="text-slate-500 text-[14px]">Get AI-powered answers from your documents</p>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div>
-                      <div className="relative mb-5">
-                        <Textarea
-                          placeholder="What are the connections between Project Alpha and the latest market trends?"
-                          value={askQuestion}
-                          onChange={(e) => setAskQuestion(e.target.value)}
-                          disabled={ask.isStreaming}
-                          className="border border-slate-100 shadow-sm transition-all duration-200 focus-visible:ring-1 focus-visible:ring-[#8A2BE2] resize-none text-[15px] min-h-[140px] p-5 pb-12 bg-[#F8F9FE] rounded-[16px] w-full placeholder:text-slate-400"
-                        />
-                        <div className="absolute right-5 bottom-5 w-6 h-6 rounded-full bg-purple-100/50"></div>
-                      </div>
-                      
-                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-                        {!hasEmbeddingModel ? (
-                          <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-4 py-3 rounded-[12px] w-full font-medium">
-                            <AlertCircle className="h-5 w-5" />
-                            <span>{t.searchPage.noEmbeddingModel}</span>
-                          </div>
-                        ) : (
-                          <>
-                            <Button
-                              variant="outline"
-                              onClick={() => setShowAdvancedModels(true)}
-                              disabled={ask.isStreaming}
-                              className="bg-[#F5F3FF] hover:bg-[#EDE9FE] border-none text-[#8A2BE2] font-bold h-[52px] px-6 rounded-[12px] w-full sm:w-auto shrink-0 transition-colors"
-                            >
-                              Advanced Mode <ChevronDown className="h-4 w-4 ml-2" />
-                            </Button>
-
-                            {ask.finalAnswer && (
-                              <Button
-                                onClick={() => setShowSaveDialog(true)}
-                                className="border-[#8A2BE2] text-[#8A2BE2] bg-transparent border-2 hover:bg-[#8A2BE2] hover:text-white h-[52px] px-6 rounded-[12px] font-bold w-full sm:w-auto transition-all"
-                              >
-                                <Save className="h-4 w-4 mr-2" /> Save
-                              </Button>
-                            )}
-                            
-                            <Button
-                              onClick={handleAsk}
-                              disabled={ask.isStreaming || !askQuestion.trim()}
-                              className="bg-[#8A2BE2] hover:bg-[#7A26C9] text-white h-[52px] rounded-[12px] px-8 font-bold flex-1 shadow-md shadow-purple-500/20 w-full sm:w-auto flex items-center justify-center gap-2.5 transition-all"
-                            >
-                              <Sparkles className="h-5 w-5" />
-                              {ask.isStreaming ? <LoadingSpinner size="sm" /> : "Ask AI"}
-                              {!ask.isStreaming && <SendHorizontal className="h-5 w-5" /> }
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
+                {/* AI Answer Section */}
+                {(ask.isStreaming || ask.finalAnswer) && (
+                  <div className="mb-6">
                     <StreamingResponse
                       isStreaming={ask.isStreaming}
                       strategy={ask.strategy}
@@ -265,54 +330,25 @@ export default function SearchPage() {
                       finalAnswer={ask.finalAnswer}
                     />
                   </div>
-                </TabsContent>
+                )}
 
-                <TabsContent value="search" className="mt-0 focus-visible:outline-none">
-                  <div className="text-center mb-8">
-                    <div className="mx-auto w-[60px] h-[60px] rounded-2xl bg-[#8A2BE2] flex items-center justify-center shadow-lg shadow-purple-500/30 mb-5">
-                      <Search className="h-7 w-7 text-white" />
+                {/* Divider between AI overview and standard list */}
+                {(ask.finalAnswer || ask.isStreaming) && searchMutation.data && (
+                  <hr className="my-6 border-slate-100" />
+                )}
+
+                {/* Document search results */}
+                {searchMutation.data && (
+                  <div className="space-y-4 text-left">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <span className="text-[14px] font-bold text-slate-600">Results ({searchMutation.data.total_count})</span>
                     </div>
-                    <h2 className="text-[20px] md:text-[24px] font-bold text-slate-900 mb-1.5">Search Your Knowledge Base</h2>
-                    <p className="text-slate-500 text-[14px]">Find documents or concepts instantly</p>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="space-y-5">
-                      <Input
-                        placeholder="Enter search query..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        className="h-[56px] border border-slate-100 bg-[#F8F9FE] rounded-[16px] px-6 text-[15px] focus-visible:ring-1 focus-visible:ring-[#8A2BE2] shadow-sm"
-                      />
-                      
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <select
-                          value={searchType}
-                          onChange={(e) => setSearchType(e.target.value as 'text' | 'vector')}
-                          className="bg-[#F5F3FF] text-[#8A2BE2] text-[14px] font-bold px-6 py-3 rounded-[12px] outline-none border-none h-[52px] w-full sm:w-48 cursor-pointer"
-                        >
-                          <option value="text">All Documents</option>
-                          <option value="vector">Vector Only</option>
-                        </select>
-
-                        <Button
-                          onClick={handleSearch}
-                          disabled={searchMutation.isPending || !searchQuery.trim()}
-                          className="bg-[#8A2BE2] hover:bg-[#7A26C9] text-white h-[52px] rounded-[12px] px-10 font-bold shadow-md shadow-purple-500/20 flex-1 transition-all"
-                        >
-                          {searchMutation.isPending ? <LoadingSpinner size="sm" /> : "Search"}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {searchMutation.data && (
-                      <div className="mt-8 space-y-4 text-left">
-                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                          <span className="text-[14px] font-bold text-slate-600">Results ({searchMutation.data.total_count})</span>
-                        </div>
+                    {searchMutation.data.results.length === 0 ? (
+                      <p className="text-sm text-slate-400 py-4 text-center font-medium">No results found for your query.</p>
+                    ) : (
+                      <div className="space-y-3">
                         {searchMutation.data.results.map((result, index) => (
-                          <Card key={index} className="border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow rounded-[16px]">
+                          <Card key={index} className="border border-slate-100 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-md transition-shadow rounded-[16px]">
                             <CardContent className="p-5">
                               <button 
                                 onClick={() => {
@@ -320,13 +356,13 @@ export default function SearchPage() {
                                   const modalType = (type === 'source_insight' ? 'insight' : type) as 'source' | 'note' | 'insight'
                                   openModal(modalType, id)
                                 }}
-                                className="text-[#8A2BE2] font-bold text-[16px] hover:underline text-left block w-full"
+                                className="text-[#7C3AED] font-bold text-[16px] hover:underline text-left block w-full"
                               >
-                                {renderHighlighted(result.title, searchQuery)}
+                                {renderHighlighted(result.title, query)}
                               </button>
                               {Array.isArray(result.matches) && result.matches.length > 0 && (
                                 <p className="mt-2 text-[13px] text-slate-600 leading-relaxed">
-                                  {renderHighlighted(result.matches[0], searchQuery)}
+                                  {renderHighlighted(result.matches[0], query)}
                                 </p>
                               )}
                             </CardContent>
@@ -335,68 +371,175 @@ export default function SearchPage() {
                       </div>
                     )}
                   </div>
-                </TabsContent>
+                )}
               </div>
+            )}
 
-              <div className="w-full">
-                <h3 className="text-slate-800 font-bold text-[16px] mb-4 px-1">Quick Actions</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <QuickActionCard 
-                    title="Summarize Sources" 
-                    desc="Get key insights from your entire knowledge base" 
-                    icon={<Lightbulb className="text-white h-[22px] w-[22px]" />} 
-                    iconBg="bg-[#FF8A00]" 
-                  />
-                  <QuickActionCard 
-                    title="Find Connections" 
-                    desc="Discover hidden relationships between documents" 
-                    icon={<Link2 className="text-white h-[22px] w-[22px]" />} 
-                    iconBg="bg-[#3B82F6]" 
-                  />
-                  <QuickActionCard 
-                    title="Deep Analysis" 
-                    desc="Comprehensive analysis across multiple sources" 
-                    icon={<Brain className="text-white h-[22px] w-[22px]" />} 
-                    iconBg="bg-[#E83E8C]" 
-                  />
-                  <QuickActionCard 
-                    title="Quick Insights" 
-                    desc="Fast answers from your knowledge base" 
-                    icon={<Zap className="text-white h-[22px] w-[22px]" />} 
-                    iconBg="bg-[#10B981]" 
-                  />
+            {/* Suggested Queries Card Section */}
+            <div className="mb-6 bg-white border border-slate-100 rounded-[24px] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
+              <div className="flex items-center gap-2 mb-4">
+                <Lightbulb className="h-[20px] w-[20px] text-[#FF8A00]" />
+                <h3 className="text-slate-800 font-bold text-[15.5px]">Suggested Queries</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Recent security incidents",
+                  "High priority open cases",
+                  "Unassigned investigations",
+                  "Documents pending review",
+                  "Cases due this week",
+                  "Failed login attempts today"
+                ].map((queryText, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSuggestedQuery(queryText)}
+                    className="bg-white border border-slate-200/80 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-[12.5px] font-semibold px-4 py-2.5 rounded-xl transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex items-center"
+                  >
+                    {queryText}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Searches */}
+            {recentSearches.length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-[24px] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.01)] mb-6">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+                  <span className="text-slate-800 font-bold text-[15.5px]">Recent Searches</span>
+                  <button 
+                    onClick={() => setRecentSearches([])}
+                    className="text-[13px] font-bold text-[#7C3AED] hover:underline"
+                  >
+                    Clear History
+                  </button>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {recentSearches.map((item) => (
+                    <div key={item.id} className="py-3.5 flex items-center justify-between group first:pt-0 last:pb-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
+                          <Search className="h-4.5 w-4.5" />
+                        </div>
+                        <div>
+                          <p className="text-slate-800 font-bold text-[14.5px]">{item.query}</p>
+                          <p className="text-[12px] text-slate-400 font-medium mt-0.5">{item.time} &nbsp;•&nbsp; {item.results}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleSuggestedQuery(item.query)}
+                        className="text-[13px] font-bold text-[#7C3AED] hover:underline"
+                      >
+                        Search Again
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </Tabs>
+            )}
+
+            {/* Benefits Cards Section */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-8">
+              <BenefitCard 
+                title="Natural Language"
+                desc="Ask questions in plain English. Our AI understands context and intent."
+                icon={<Sparkles className="h-5 w-5 text-[#7C3AED]" />}
+                iconBg="bg-violet-50"
+              />
+              <BenefitCard 
+                title="Smart Filtering"
+                desc="Automatically filters and ranks results by relevance and importance."
+                icon={<Filter className="h-5 w-5 text-[#3B82F6]" />}
+                iconBg="bg-blue-50"
+              />
+              <BenefitCard 
+                title="Lightning Fast"
+                desc="Search across millions of records in under a second with AI optimization."
+                icon={<Zap className="h-5 w-5 text-[#10B981]" />}
+                iconBg="bg-emerald-50"
+              />
+            </div>
+
           </div>
         </div>
       </div>
 
-      <AdvancedModelsDialog
-        open={showAdvancedModels}
-        onOpenChange={setShowAdvancedModels}
-        defaultModels={{
-          strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-          answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-          finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
-        }}
-        onSave={setCustomModels}
-      />
+      {isSuperAdmin && (
+        <AdvancedModelsDialog
+          open={showAdvancedModels}
+          onOpenChange={setShowAdvancedModels}
+          defaultModels={{
+            strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
+            answer: customModels?.answer || modelDefaults?.default_chat_model || '',
+            finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
+          }}
+          onSave={setCustomModels}
+        />
+      )}
+
+      {ask.finalAnswer && (
+        <SaveToNotebooksDialog
+          open={showSaveDialog}
+          onOpenChange={setShowSaveDialog}
+          question={askQuestion}
+          answer={ask.finalAnswer}
+        />
+      )}
     </AppShell>
   )
 }
 
-function QuickActionCard({ title, desc, icon, iconBg }: { title: string, desc: string, icon: React.ReactNode, iconBg: string }) {
+function KpiCard({
+  title,
+  value,
+  trend,
+  trendType
+}: {
+  title: string
+  value: string
+  trend: string
+  trendType: 'success' | 'info'
+}) {
   return (
-    <button className="flex items-center gap-4 p-5 bg-white rounded-[16px] border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all text-left w-full group">
-      <div className={cn("w-[48px] h-[48px] rounded-[14px] flex items-center justify-center shrink-0 shadow-sm", iconBg)}>
+    <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-[0_2px_8px_rgba(0,0,0,0.01)] flex flex-col justify-between h-[115px]">
+      <div>
+        <p className="text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">{title}</p>
+        <p className="text-[26px] font-extrabold text-slate-800 leading-tight">{value}</p>
+      </div>
+      <div className="mt-2 flex items-center">
+        {trendType === 'success' ? (
+          <span className="text-[11px] font-bold text-[#10B981] bg-[#E6FBF3] px-2 py-0.5 rounded-full flex items-center gap-0.5">
+            <span className="inline-block translate-y-[-0.5px]">↑</span> {trend}
+          </span>
+        ) : (
+          <span className="text-[11px] font-bold text-[#3B82F6] bg-[#EFF6FF] px-2 py-0.5 rounded-full">
+            {trend}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function BenefitCard({
+  title,
+  desc,
+  icon,
+  iconBg
+}: {
+  title: string
+  desc: string
+  icon: React.ReactNode
+  iconBg: string
+}) {
+  return (
+    <div className="bg-white border border-slate-100 rounded-[20px] p-6 shadow-[0_2px_8px_rgba(0,0,0,0.01)] flex flex-col items-start gap-4">
+      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm", iconBg)}>
         {icon}
       </div>
-      <div className="flex-1">
-        <h4 className="font-bold text-slate-800 text-[15px] mb-1">{title}</h4>
-        <p className="text-slate-500 text-[13px] leading-snug">{desc}</p>
+      <div>
+        <h4 className="font-bold text-slate-800 text-[15px] mb-1.5">{title}</h4>
+        <p className="text-slate-400 text-[13px] font-medium leading-relaxed">{desc}</p>
       </div>
-      <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" />
-    </button>
+    </div>
   )
 }

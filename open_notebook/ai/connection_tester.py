@@ -209,7 +209,12 @@ async def test_provider_connection(
         # Special handling for URL-based providers (no API key, just connectivity)
         if normalized_provider == "ollama":
             # Use base_url from specific config, or environment variable
-            test_base_url = base_url or os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
+            test_base_url = (
+                base_url
+                or os.environ.get("OLLAMA_API_BASE")
+                or os.environ.get("OLLAMA_BASE_URL")
+                or "http://localhost:11434"
+            )
             return await _test_ollama_connection(test_base_url)
 
         if normalized_provider == "openai_compatible":

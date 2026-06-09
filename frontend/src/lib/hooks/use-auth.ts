@@ -1,5 +1,6 @@
 'use client'
 
+import { canAccessPath, getDefaultRouteForRole } from '@/lib/auth/roles'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
@@ -47,12 +48,14 @@ export function useAuth() {
 
     const success = await login(email, password)
     if (success) {
+      const { currentUserRole } = useAuthStore.getState()
       const redirectPath = sessionStorage.getItem('redirectAfterLogin')
-      if (redirectPath) {
+      if (redirectPath && canAccessPath(currentUserRole, redirectPath)) {
         sessionStorage.removeItem('redirectAfterLogin')
         router.push(redirectPath)
       } else {
-        router.push('/notebooks')
+        sessionStorage.removeItem('redirectAfterLogin')
+        router.push(getDefaultRouteForRole(currentUserRole))
       }
     }
     return success

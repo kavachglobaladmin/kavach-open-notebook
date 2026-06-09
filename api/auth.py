@@ -24,6 +24,7 @@ from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from api.roles import UserRole, normalize_user_role, role_in
 from open_notebook.utils.encryption import get_secret_from_env
 
 # ── JWT configuration ─────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ def _jwt_secret() -> str:
     return secret
 
 
-def create_access_token(email: str, name: str = "") -> str:
+def create_access_token(email: str, name: str = "", role: UserRole = "user") -> str:
     """
     Create a signed JWT access token.
 
@@ -59,6 +60,7 @@ def create_access_token(email: str, name: str = "") -> str:
     payload = {
         "sub": email,
         "name": name,
+        "role": normalize_user_role(role),
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
@@ -91,6 +93,28 @@ def get_current_user(request: Request) -> Optional[str]:
         return email
     # Fallback: explicit header (internal / legacy calls)
     return request.headers.get("X-User-Email") or None
+
+
+def get_current_user_role(request: Request) -> UserRole:
+    role = getattr(request.state, "jwt_role", None)
+    if role:
+        return normalize_user_role(role)
+    return normalize_user_role(request.headers.get("X-User-Role"))
+
+
+def require_roles(*allowed_roles: UserRole):
+    async def dependency(request: Request) -> str:
+        current_user = get_current_user(request)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        current_role = get_current_user_role(request)
+        if not role_in(current_role, allowed_roles):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        return current_user
+
+    return dependency
 
 
 # ── JWT Auth Middleware ───────────────────────────────────────────────────────
@@ -126,13 +150,21 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.excluded_paths:
             return await call_next(request)
 
+        # Build CORS headers for error responses so browsers don't show "Network Error"
+        origin = request.headers.get("origin", "")
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin or "*",
+            "Access-Control-Allow-Credentials": "true",
+            "WWW-Authenticate": "Bearer",
+        }
+
         # Extract Bearer token from Authorization header
         auth_header = request.headers.get("Authorization", "")
         if not auth_header:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing authorization header"},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
 
         parts = auth_header.split(" ", 1)
@@ -140,7 +172,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authorization header format. Expected: Bearer <token>"},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
 
         token = parts[1].strip()
@@ -152,17 +184,18 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Token has expired. Please log in again."},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
         except jwt.InvalidTokenError as exc:
             return JSONResponse(
                 status_code=401,
                 content={"detail": f"Invalid token: {str(exc)}"},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers=cors_headers,
             )
 
         # Inject email into request state so get_current_user() can read it
         request.state.jwt_email = payload.get("sub", "")
+        request.state.jwt_role = normalize_user_role(payload.get("role"))
 
         return await call_next(request)
 

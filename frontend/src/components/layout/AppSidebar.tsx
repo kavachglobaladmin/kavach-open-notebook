@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 
+import { getRoleLabel, hasRoleAccess } from '@/lib/auth/roles'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { LanguageToggle } from '@/components/common/LanguageToggle'
-import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Search,
   LogOut,
@@ -30,27 +29,37 @@ import {
   Sparkles,
   X,
   LayoutGrid,
-  BookOpen, // Added Notebook icon from lucide-react
+  BookOpen,
+  Building2,
+  UserCog,
+  Users,
+  Folder,
+  Database,
+  ArrowRightLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { SourcePickerDialog } from '@/components/studio/SourcePickerDialog'
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutGrid, studio: null },
-  { name: 'Sources', href: '/sources', icon: FileText, studio: null },
-  { name: 'Cases', href: '/notebooks', icon: Clipboard, studio: null },
-  { name: 'Ask & Search', href: '/search', icon: Search, studio: null },
-  { name: 'Models', href: '/settings/api-keys', icon: BrainCircuit, studio: null },
-  { name: 'Transformations', href: '/transformations', icon: Scissors, studio: null },
-  { name: 'Settings', href: '/settings', icon: Settings2, studio: null },
-  { name: 'Advanced', href: '/advanced', icon: Sparkles, studio: null },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutGrid, studio: null, minimumRole: 'user' as const },
+  { name: 'Organizations', href: '/organizations', icon: Building2, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Admins', href: '/admins', icon: UserCog, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Users', href: '/users', icon: Users, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Cases', href: '/notebooks', icon: Folder, studio: null, minimumRole: 'user' as const },
+  { name: 'Sources', href: '/sources', icon: Database, studio: null, minimumRole: 'user' as const },
+  { name: 'AI Search', href: '/search', icon: Search, studio: null, minimumRole: 'user' as const },
+  { name: 'Models', href: '/settings/api-keys', icon: Sparkles, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Transformations', href: '/transformations', icon: ArrowRightLeft, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Settings', href: '/settings', icon: Settings2, studio: null, minimumRole: 'super_admin' as const },
+  { name: 'Audit Logs', href: '/audit-logs', icon: FileText, studio: null, minimumRole: 'super_admin' as const },
 ]
 
 export function AppSidebar() {
-  const { t } = useTranslation()
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse, setCollapsed } = useSidebarStore()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
 
   const [displayName, setDisplayName] = useState('')
   const [initials, setInitials] = useState('')
@@ -58,6 +67,7 @@ export function AppSidebar() {
   const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false)
   const [infographicPickerOpen, setInfographicPickerOpen] = useState(false)
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false)
+  const visibleNavigation = navigation.filter((item) => hasRoleAccess(currentUserRole, item.minimumRole))
 
   useEffect(() => {
     if (!currentUserEmail) {
@@ -158,26 +168,11 @@ export function AppSidebar() {
           )}
         </div>
 
-        <div className={cn(
-          "px-5 mb-6 transition-all duration-300",
-          isCollapsed && "lg:hidden"
-        )}>
-          <div className="flex items-center gap-3 bg-[#F4F6F9] border border-slate-100 shadow-sm p-3 rounded-[16px] transition-all">
-            <div className="relative shrink-0">
-              <div className="w-10 h-10 rounded-[12px] bg-[#7B3AED] flex items-center justify-center font-bold text-white text-[15px]">
-                {initials}
-              </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#10B981] border-2 border-[#F4F6F9]" />
-            </div>
-            <div className="flex flex-col overflow-hidden whitespace-nowrap">
-              <span className="font-bold text-slate-800 text-[14px] truncate">{displayName}</span>
-              <span className="text-[12px] text-slate-500 font-medium">Premium Account</span>
-            </div>
-          </div>
-        </div>
+
+        {/* Top profile card section removed and moved to bottom */}
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const isActive = 
               item.href === '/' 
                 ? pathname === '/' 
@@ -240,31 +235,50 @@ export function AppSidebar() {
           })}
         </nav>
 
-        <div className="mt-auto px-4 pb-6 pt-4 space-y-2 bg-white relative">
+        <div className="mt-auto px-4 pb-6 pt-4 space-y-4 bg-white relative">
           <div className="absolute top-0 left-4 right-4 h-[1px] bg-slate-100" />
           
-          <ThemeToggle 
-            className={cn(
-              "w-full rounded-[14px] text-slate-500 font-medium text-[14.5px] hover:bg-slate-50 hover:text-slate-700 transition-colors",
-              isCollapsed ? "justify-center w-12 h-12 mx-auto p-0 [&_span]:hidden [&_svg]:mx-auto" : "justify-start gap-3.5 p-3"
-            )} 
-          />
-          <LanguageToggle 
-            className={cn(
-              "w-full rounded-[14px] text-slate-500 font-medium text-[14.5px] hover:bg-slate-50 hover:text-slate-700 transition-colors",
-              isCollapsed ? "justify-center w-12 h-12 mx-auto p-0 [&_span]:hidden [&_svg]:mx-auto" : "justify-start gap-3.5 p-3"
-            )} 
-          />
+          {/* User Profile Section at bottom */}
+          {!isCollapsed && (
+            <div className="flex items-center justify-between px-2 py-1 select-none">
+              <div className="flex items-center gap-3">
+                <div className="relative shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#7B3AED] flex items-center justify-center font-bold text-white text-[15px]">
+                    {initials}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#10B981] border-2 border-white" />
+                </div>
+                <div className="flex flex-col text-left overflow-hidden whitespace-nowrap">
+                  <span className="font-bold text-slate-800 text-[14px] truncate">{displayName}</span>
+                  <span className="text-[12px] text-slate-500 font-medium">{getRoleLabel(currentUserRole)}</span>
+                </div>
+              </div>
+              <ChevronRight className="h-4.5 w-4.5 text-slate-400 shrink-0" />
+            </div>
+          )}
+
+          {isCollapsed && (
+            <div className="flex justify-center py-1">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-[#7B3AED] flex items-center justify-center font-bold text-white text-[15px]">
+                  {initials}
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#10B981] border-2 border-white" />
+              </div>
+            </div>
+          )}
+
+          {/* Logout Button */}
           <Button
             variant="ghost"
             className={cn(
-              "w-full rounded-[14px] text-[#EF4444] font-medium text-[14.5px] hover:bg-red-50 hover:text-red-600 transition-colors",
+              "w-full rounded-[14px] text-[#EF4444] hover:bg-red-50 hover:text-red-600 transition-colors font-medium text-[14.5px]",
               isCollapsed ? "justify-center w-12 h-12 mx-auto p-0" : "justify-start gap-3.5 p-3 h-auto"
             )}
             onClick={logout}
           >
-            <LogOut className="h-[22px] w-[22px] shrink-0" />
-            {!isCollapsed && <span className="whitespace-nowrap">Sign Out</span>}
+            <LogOut className="h-[22px] w-[22px] shrink-0 text-[#EF4444]" />
+            {!isCollapsed && <span className="whitespace-nowrap">Logout</span>}
           </Button>
         </div>
       </div>

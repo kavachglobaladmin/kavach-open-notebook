@@ -3,23 +3,26 @@
 import { useRouter } from 'next/navigation'
 import { NotebookResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { MoreVertical, Archive, ArchiveRestore, Trash2, FileText, StickyNote, HardDrive, Clock, Play, Pause } from 'lucide-react'
+import { MoreVertical, Archive, ArchiveRestore, Trash2, FileText, HardDrive, Clock, Play, Pause, Users } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useUpdateNotebook } from '@/lib/hooks/use-notebooks'
 import { NotebookDeleteDialog } from './NotebookDeleteDialog'
+import { NotebookAccessDialog } from './NotebookAccessDialog'
 import { useState, useEffect } from 'react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { useToast } from '@/lib/hooks/use-toast'
 import { takeNotebookStorageToastBand } from '@/lib/utils/notebook-storage-alerts'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { hasRoleAccess } from '@/lib/auth/roles'
 
 interface NotebookCardProps {
   notebook: NotebookResponse
@@ -28,9 +31,12 @@ interface NotebookCardProps {
 export function NotebookCard({ notebook }: NotebookCardProps) {
   const { t, language } = useTranslation()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showAccessDialog, setShowAccessDialog] = useState(false)
   const router = useRouter()
   const updateNotebook = useUpdateNotebook()
   const { toast } = useToast()
+  const currentUserRole = useAuthStore(s => s.currentUserRole)
+  const canManageAccess = hasRoleAccess(currentUserRole, 'admin')
 
   // Storage calculations
   const hasLimit = notebook.storage_limit_mb != null && notebook.storage_limit_mb > 0
@@ -145,6 +151,19 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                   <><Archive className="h-4 w-4 mr-2" />{t.notebooks.archive}</>
                 )}
               </DropdownMenuItem>
+              {canManageAccess && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={(e) => { e.stopPropagation(); setShowAccessDialog(true) }}
+                    className="rounded-lg cursor-pointer text-[#8A2BE2] focus:bg-purple-50 focus:text-[#7A26C9]"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Manage Access
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem
                 onClick={(e) => { e.stopPropagation(); setShowDeleteDialog(true) }}
                 className="text-red-600 focus:bg-red-50 focus:text-red-700 rounded-lg cursor-pointer"
@@ -226,6 +245,15 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
         notebookId={notebook.id}
         notebookName={notebook.name}
       />
+
+      {canManageAccess && (
+        <NotebookAccessDialog
+          open={showAccessDialog}
+          onOpenChange={setShowAccessDialog}
+          notebookId={notebook.id.includes(':') ? notebook.id.split(':')[1] : notebook.id}
+          notebookName={notebook.name}
+        />
+      )}
     </>
   )
 }

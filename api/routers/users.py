@@ -17,10 +17,17 @@ import os
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
+from api.auth import get_current_user, get_current_user_role, require_roles
+from api.roles import (
+    count_users_with_role,
+    ensure_user_role,
+    normalize_user_role,
+    resolve_role_for_new_user,
+)
 from open_notebook.database.repository import repo_query
 from open_notebook.utils.encryption import encrypt_value, decrypt_value
 
@@ -127,6 +134,7 @@ class UserLoginRequest(BaseModel):
 class UserResponse(BaseModel):
     email: str
     name: str
+    role: str
 
 
 class UserAdminRecord(BaseModel):
@@ -134,9 +142,17 @@ class UserAdminRecord(BaseModel):
     id: str
     email: str
     name: str
+    role: str
     password: str          # decrypted plaintext (from password_encrypted field)
     password_encrypted: str  # raw Fernet token stored in DB
     created_at: Optional[str] = None
+
+
+class UserDirectoryRecord(BaseModel):
+    id: str
+    email: str
+    name: str
+    role: str
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -154,6 +170,10 @@ async def _find_user(email: str) -> Optional[dict]:
         if "does not exist" in str(e):
             return None
         raise
+
+
+def _normalize_role_value(value: str) -> str:
+    return normalize_user_role(value)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -175,6 +195,7 @@ async def register_user(data: UserRegisterRequest):
             detail="An account with this email already exists. Please sign in.",
         )
 
+    assigned_role = await resolve_role_for_new_user(email)
     pw_hash = _hash_password(data.password)
     pw_encrypted = encrypt_value(data.password)   # Fernet AES-128-CBC + HMAC
 
@@ -183,6 +204,7 @@ async def register_user(data: UserRegisterRequest):
         CREATE kavach_user SET
             email              = $email,
             name               = $name,
+            role               = $role,
             password_hash      = $pw_hash,
             password_encrypted = $pw_encrypted,
             created_at         = time::now()
@@ -190,12 +212,13 @@ async def register_user(data: UserRegisterRequest):
         {
             "email": email,
             "name": data.name,
+            "role": assigned_role,
             "pw_hash": pw_hash,
             "pw_encrypted": pw_encrypted,
         },
     )
-    logger.info(f"[users] Registered new user: {email}")
-    return UserResponse(email=email, name=data.name)
+    logger.info(f"[users] Registered new user: {email} ({assigned_role})")
+    return UserResponse(email=email, name=data.name, role=assigned_role)
 
 
 @router.post("/users/login", response_model=UserResponse)
@@ -209,11 +232,14 @@ async def login_user(data: UserLoginRequest):
     user = await _find_user(email)
     if not user or not _verify_password(data.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-    return UserResponse(email=email, name=user.get("name", ""))
+    role = await ensure_user_role(email, user.get("role"))
+    return UserResponse(email=email, name=user.get("name", ""), role=role)
 
 
 @router.get("/users/all", response_model=List[UserAdminRecord])
-async def list_all_users(request: Request):
+async def list_all_users(
+    _: str = Depends(require_roles("super_admin")),
+):
     """
     Admin endpoint — returns all kavach_user records with decrypted passwords.
     Requires the API bearer token (same as all other protected endpoints).
@@ -235,6 +261,7 @@ async def list_all_users(request: Request):
             id=str(row.get("id", "")),
             email=row.get("email", ""),
             name=row.get("name", ""),
+            role=normalize_user_role(row.get("role")),
             password=pw_plain,
             password_encrypted=pw_encrypted,
             created_at=str(row.get("created_at", "")),
@@ -242,16 +269,53 @@ async def list_all_users(request: Request):
     return result
 
 
+@router.get("/users/directory", response_model=List[UserDirectoryRecord])
+async def list_user_directory(
+    request: Request,
+    _: str = Depends(require_roles("admin", "super_admin")),
+):
+    """Safe user directory for notebook access management.
+    Admin: returns only 'user' role accounts.
+    Super admin: returns all non-super-admin accounts.
+    """
+    from api.roles import normalize_user_role as _normalize
+    current_role = _normalize(getattr(request.state, "jwt_role", None))
+
+    if current_role == "admin":
+        rows = await repo_query(
+            "SELECT id, email, name, role FROM kavach_user WHERE role = 'user' ORDER BY created_at ASC"
+        )
+    else:
+        # super_admin: all users except super_admins
+        rows = await repo_query(
+            "SELECT id, email, name, role FROM kavach_user WHERE role != 'super_admin' ORDER BY created_at ASC"
+        )
+
+    return [
+        UserDirectoryRecord(
+            id=str(row.get("id", "")),
+            email=row.get("email", ""),
+            name=row.get("name", ""),
+            role=normalize_user_role(row.get("role")),
+        )
+        for row in rows
+    ]
+
+
 @router.get("/users/profile", response_model=UserResponse)
-async def get_profile(request: Request):
-    """Return profile for the currently logged-in user (via X-User-Email header)."""
-    email = request.headers.get("X-User-Email", "").strip()
+async def get_profile(
+    request: Request,
+    current_user: Optional[str] = Depends(get_current_user),
+):
+    """Return profile for the currently logged-in user."""
+    email = (current_user or request.headers.get("X-User-Email", "")).strip().lower()
     if not email:
-        raise HTTPException(status_code=400, detail="X-User-Email header required")
+        raise HTTPException(status_code=401, detail="Authentication required")
     user = await _find_user(email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return UserResponse(email=email, name=user.get("name", ""))
+    role = await ensure_user_role(email, user.get("role"))
+    return UserResponse(email=email, name=user.get("name", ""), role=role)
 
 
 class UserUpsertRequest(BaseModel):
@@ -283,6 +347,7 @@ async def upsert_user(data: UserUpsertRequest):
 
     existing = await _find_user(email)
     if existing:
+        existing_role = await ensure_user_role(email, existing.get("role"))
         if existing.get("name") != name:
             await repo_query(
                 "UPDATE kavach_user SET name = $name WHERE email = $email",
@@ -290,13 +355,15 @@ async def upsert_user(data: UserUpsertRequest):
             )
             logger.info(f"[users] Updated name for: {email}")
     else:
+        assigned_role = await resolve_role_for_new_user(email)
         await repo_query(
-            "CREATE kavach_user SET email = $email, name = $name",
-            {"email": email, "name": name},
+            "CREATE kavach_user SET email = $email, name = $name, role = $role",
+            {"email": email, "name": name, "role": assigned_role},
         )
         logger.info(f"[users] Auto-created user record: {email}")
+        existing_role = assigned_role
 
-    return UserResponse(email=email, name=name)
+    return UserResponse(email=email, name=name, role=existing_role)
 
 
 # ── Reset password (used by forgot-password OTP flow) ─────────────────────────
@@ -314,6 +381,45 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, v: str) -> str:
         return _validate_password_strength(v)
+
+
+class UpdateUserRoleRequest(BaseModel):
+    role: str = Field(...)
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        return _normalize_role_value(v)
+
+
+@router.patch("/users/{user_email}/role", response_model=UserResponse)
+async def update_user_role(
+    user_email: str,
+    data: UpdateUserRoleRequest,
+    current_user: str = Depends(require_roles("super_admin")),
+):
+    email = _validate_email_format(user_email)
+    user = await _find_user(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    current_role = normalize_user_role(user.get("role"))
+    new_role = normalize_user_role(data.role)
+
+    if current_role == "super_admin" and new_role != "super_admin":
+        super_admin_count = await count_users_with_role("super_admin")
+        if super_admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one super admin account is required.",
+            )
+
+    await repo_query(
+        "UPDATE kavach_user SET role = $role WHERE email = $email",
+        {"email": email, "role": new_role},
+    )
+    logger.info(f"[users] {current_user} changed role for {email} to {new_role}")
+    return UserResponse(email=email, name=user.get("name", ""), role=new_role)
 
 
 @router.post("/users/reset-password")

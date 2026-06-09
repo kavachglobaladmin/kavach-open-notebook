@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Search, Sparkles, Menu, HardDrive, X } from 'lucide-react'
+import { Plus, Search, Sparkles, Menu, HardDrive, X, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthStore } from '@/lib/stores/auth-store'
@@ -697,7 +697,7 @@ function mergeRankedResults(
 export function PageHeader({
   searchValue,
   onSearchChange,
-  searchPlaceholder = 'Search any keyword across notebooks, cases, or documents...',
+  searchPlaceholder = 'Search cases, users, organizations...',
   newLabel = 'NOTEBOOK',
   onNew,
   hideNew = false,
@@ -716,6 +716,17 @@ export function PageHeader({
   // User Profile State
   const [displayName, setDisplayName] = useState('')
   const [initials, setInitials] = useState('')
+  const [formattedDate, setFormattedDate] = useState('')
+
+  useEffect(() => {
+    const options: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    }
+    setFormattedDate(new Date().toLocaleDateString('en-US', options))
+  }, [])
 
   // Global Search State
   const [globalResults, setGlobalResults] = useState<GlobalSearchResult[]>([])
@@ -1006,24 +1017,38 @@ export function PageHeader({
   }
 
   return (
-    <header data-kavach-global-search-ignore="true" className="min-h-[88px] h-auto flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 bg-[#FDFDFD] shrink-0 border-b border-[#E2E8F0] relative z-40 overflow-visible">
+    <header data-kavach-global-search-ignore="true" className="h-[88px] min-h-[88px] flex flex-nowrap items-center justify-between gap-4 pl-4 md:pl-5 pr-4 md:pr-8 bg-white/75 backdrop-blur-md shrink-0 border-b border-slate-100/80 shadow-[0_4px_30px_rgba(0,0,0,0.01)] relative z-40 overflow-visible">
 
-      {/* â”€â”€ Left: Toggle & Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:gap-6">
+      {/* ── Left: Welcome message & Current date ── */}
+      <div className="flex items-center gap-3 min-w-0 shrink-0">
         {/* Hamburger Menu Toggle */}
         {isCollapsed && (
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleCollapse}
-            className="text-slate-500 hover:text-slate-800 hover:bg-slate-100/50 rounded-xl transition-colors flex shrink-0"
+            className="text-slate-500 hover:text-slate-800 hover:bg-slate-100/50 rounded-xl transition-colors flex shrink-0 mr-1"
           >
             <Menu className="h-6 w-6" strokeWidth={2} />
           </Button>
         )}
 
+        <div className="flex flex-col text-left justify-center py-1">
+          <h1 className="text-[17px] sm:text-[19px] font-bold text-[#1E293B] leading-tight tracking-tight whitespace-nowrap">
+            Welcome back, <span className="bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 bg-clip-text text-transparent font-extrabold">{displayName || 'Super Admin'}</span>
+          </h1>
+          {formattedDate && (
+            <span className="text-[12px] md:text-[13px] text-slate-400 font-medium mt-1 whitespace-nowrap">
+              {formattedDate}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Right: Search pill and icons ── */}
+      <div className="flex flex-nowrap items-center gap-4 md:gap-6 lg:gap-8 shrink ml-auto min-w-0">
         {!hideSearch && (
-          <div ref={searchWrapperRef} data-kavach-global-search-ignore="true" className="relative hidden w-full max-w-[480px] min-w-0 sm:block">
+          <div ref={searchWrapperRef} data-kavach-global-search-ignore="true" className="relative hidden w-full min-w-[140px] max-w-[240px] md:max-w-[400px] lg:max-w-[480px] sm:block shrink">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
             <Input
               value={searchValue}
@@ -1064,13 +1089,13 @@ export function PageHeader({
                   }
                 }
               }}
-              placeholder={searchPlaceholder}
+              placeholder="Search cases, users, organizations..."
               autoComplete="off"
-              className="pl-12 h-[46px] bg-[#F8FAFC] border-[#E2E8F0] rounded-[13px] text-[15px] placeholder:text-slate-400 text-slate-700 focus-visible:ring-[#8B5CF6] focus-visible:ring-offset-0 focus-visible:border-[#8B5CF6] transition-all hover:border-slate-300"
+              className="pl-12 pr-4 h-[48px] w-full bg-[#F8FAFC] border-[#E2E8F0] rounded-md text-[15px] placeholder:text-slate-400/80 text-slate-700 focus-visible:ring-[#8B5CF6]/30 focus-visible:ring-offset-0 focus-visible:border-[#8B5CF6] transition-all hover:border-slate-300 hover:bg-white hover:shadow-[0_2px_8px_rgba(0,0,0,0.03)] focus:bg-white focus:shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
             />
 
             {showGlobalResults && normalizedSearch && (
-              <div className="absolute left-0 right-0 top-[52px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-0 right-0 top-[54px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
                 {isSearchingGlobal && displayGlobalResults.length === 0 ? (
                   <div className="px-4 py-3 text-sm text-slate-500">Searching across notebooks, cases, files, notes, and content...</div>
                 ) : displayGlobalResults.length === 0 ? (
@@ -1132,25 +1157,16 @@ export function PageHeader({
             )}
           </div>
         )}
-      </div>
+        {/* Icons container */}
+        <div className="flex items-center gap-3 md:gap-4 shrink-0">
+          <NotificationCenter />
 
-      {/* â”€â”€ Right: Bell + New â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="ml-0 flex flex-wrap items-center gap-2 md:gap-3 lg:gap-5 shrink-0">
-
-        {/* Original Notification Center Restored */}
-        <NotificationCenter />
-
-        {/* + NEW Button */}
-        {!hideNew && (
-          <Button
-            onClick={() => onNew ? onNew() : setIsModalOpen(true)}
-            className="bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:from-[#6D28D9] hover:to-[#7C3AED] text-white px-5 md:px-7 rounded-[14px] h-[46px] w-full sm:w-auto font-bold text-[14px] tracking-wide gap-2.5 shadow-[0_8px_20px_-6px_rgba(124,58,237,0.5)] transition-all"
-          >
-            <Plus className="h-5 w-5" strokeWidth={2.5} />
-            <span className="hidden md:inline">{newLabel}</span>
-            <Sparkles className="h-4 w-4 ml-0 md:ml-1 opacity-90" />
-          </Button>
-        )}
+          {/* Chat Bubble Icon */}
+          <button className="p-2 text-slate-500 hover:text-violet-600 hover:bg-violet-50/50 rounded-xl transition-all duration-300 hover:scale-[1.08] relative group">
+            <MessageSquare className="h-5 w-5 transition-transform group-hover:rotate-3" />
+            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white" />
+          </button>
+        </div>
       </div>
 
       {/* â”€â”€ Create New Notebook Modal Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}

@@ -17,12 +17,12 @@ describe('AppSidebar', () => {
   it('renders correctly when expanded', () => {
     render(<AppSidebar />)
     
-    // Check for logo or app name (using actual locale value)
-    expect(screen.getByText(/Open Notebook/i)).toBeDefined()
+    // Check for logo or app name
+    expect(screen.getByText(/NOTEBOOKS/i)).toBeDefined()
     
-    // Check for navigation items (using actual locale values)
+    // Check for navigation items
     expect(screen.getByText(/Sources/i)).toBeDefined()
-    expect(screen.getByText(/Notebooks/i)).toBeDefined()
+    expect(screen.getByText(/Dashboard/i)).toBeDefined()
   })
 
   it('toggles collapse state when clicking handle', () => {
@@ -33,12 +33,6 @@ describe('AppSidebar', () => {
     } as any)
 
     render(<AppSidebar />)
-    
-    // The collapse button has ChevronLeft icon when expanded
-    // The collapse button has ChevronLeft icon when expanded
-    // const toggleButton = screen.getAllByRole('button')[0]
-    // Let's use more specific selector if possible, but AppSidebar has many buttons
-    // Actually, line 147 has the button
     
     // Use data-testid for reliable selection
     fireEvent.click(screen.getByTestId('sidebar-toggle'))
@@ -55,6 +49,6 @@ describe('AppSidebar', () => {
     render(<AppSidebar />)
     
     // In collapsed mode, app name shouldn't be visible (as text)
-    expect(screen.queryByText(/Open Notebook/i)).toBeNull()
+    expect(screen.queryByText(/NOTEBOOKS/i)).toBeNull()
   })
 })

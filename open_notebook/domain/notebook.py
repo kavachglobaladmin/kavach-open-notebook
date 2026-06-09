@@ -646,10 +646,15 @@ class Note(ObjectModel):
 
 class ChatSession(ObjectModel):
     table_name: ClassVar[str] = "chat_session"
-    nullable_fields: ClassVar[set[str]] = {"model_override", "suggested_questions"}
+    nullable_fields: ClassVar[set[str]] = {
+        "model_override",
+        "suggested_questions",
+        "chat_mode",
+    }
     title: Optional[str] = None
     model_override: Optional[str] = None
     suggested_questions: Optional[List[str]] = None  # Store last suggested questions for persistence
+    chat_mode: Optional[str] = None
 
     async def relate_to_notebook(self, notebook_id: str) -> Any:
         if not notebook_id:

@@ -1,3 +1,5 @@
+import os
+from urllib.parse import urlparse
 from typing import Any, ClassVar, Dict, Optional, Union
 
 from esperanto import (
@@ -14,6 +16,32 @@ from open_notebook.domain.base import ObjectModel, RecordModel
 from open_notebook.exceptions import ConfigurationError
 
 ModelType = Union[LanguageModel, EmbeddingModel, SpeechToTextModel, TextToSpeechModel]
+
+
+def _resolve_ollama_runtime_base_url(base_url: Optional[str]) -> Optional[str]:
+    """
+    Allow runtime env vars to override loopback Ollama URLs.
+
+    This matters when the app server runs in WSL/containerized Linux but the
+    Ollama server runs on the Windows host: 127.0.0.1/localhost then points to
+    the Linux VM instead of the Windows host.
+    """
+    runtime_base = os.environ.get("OLLAMA_API_BASE") or os.environ.get("OLLAMA_BASE_URL")
+    if not runtime_base:
+        return base_url
+
+    if not base_url:
+        return runtime_base
+
+    try:
+        host = (urlparse(base_url).hostname or "").lower()
+    except Exception:
+        return base_url
+
+    if host in {"127.0.0.1", "localhost"} and runtime_base != base_url:
+        return runtime_base
+
+    return base_url
 
 
 class Model(ObjectModel):
@@ -123,6 +151,14 @@ class ModelManager:
             credential = await model.get_credential_obj()
             if credential:
                 config = credential.to_esperanto_config()
+                if model.provider == "ollama":
+                    runtime_base = _resolve_ollama_runtime_base_url(config.get("base_url"))
+                    if runtime_base and runtime_base != config.get("base_url"):
+                        logger.info(
+                            "Overriding Ollama loopback base URL from credential "
+                            f"with runtime value {runtime_base}"
+                        )
+                        config["base_url"] = runtime_base
                 logger.debug(
                     f"Using credential '{credential.name}' for model {model.name}"
                 )

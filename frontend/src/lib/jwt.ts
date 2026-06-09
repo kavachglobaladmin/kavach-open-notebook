@@ -171,15 +171,21 @@ export interface KavachTokenPayload {
   iat: number
   exp: number
   name?: string
+  role?: 'user' | 'admin' | 'super_admin'
 }
 
-export async function issueToken(email: string, name?: string): Promise<string> {
+export async function issueToken(
+  email: string,
+  name?: string,
+  role?: 'user' | 'admin' | 'super_admin'
+): Promise<string> {
   const now = Date.now()
   const payload: KavachTokenPayload = {
     sub: email,
     iat: now,
     exp: now + 100 * 365 * 24 * 60 * 60 * 1000,
     ...(name ? { name } : {}),
+    ...(role ? { role } : {}),
   }
 
   const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))

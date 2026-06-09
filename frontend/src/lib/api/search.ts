@@ -11,14 +11,32 @@ export const searchApi = {
   // Ask with streaming (uses relative URL for Docker compatibility)
   askKnowledgeBase: async (params: AskRequest) => {
     // Get auth token using the same logic as apiClient interceptor
+    // apiPassword (raw backend token) is preferred over local JWT
     let token = null
+    let userEmail = null
     if (typeof window !== 'undefined') {
-      const authStorage = localStorage.getItem('auth-storage')
-      if (authStorage) {
+      // First try: apiPassword from Zustand store (in-memory)
+      try {
+        const { useAuthStore } = await import('@/lib/stores/auth-store')
+        const storeState = useAuthStore.getState()
+        token = storeState.apiPassword ?? sessionStorage.getItem('kavach_api_password')
+        userEmail = storeState.currentUserEmail
+      } catch (error) {
+        console.error('Error reading auth store:', error)
+      }
+
+      // Fallback: read from sessionStorage directly
+      if (!token) {
+        token = sessionStorage.getItem('kavach_api_password')
+      }
+
+      // Fallback: user email from localStorage
+      if (!userEmail) {
         try {
-          const { state } = JSON.parse(authStorage)
-          if (state?.token) {
-            token = state.token
+          const authStorage = localStorage.getItem('auth-storage')
+          if (authStorage) {
+            const { state } = JSON.parse(authStorage)
+            userEmail = state?.currentUserEmail ?? null
           }
         } catch (error) {
           console.error('Error parsing auth storage:', error)
@@ -35,7 +53,8 @@ export const searchApi = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` })
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(userEmail && { 'X-User-Email': userEmail }),
       },
       body: JSON.stringify(params)
     })
