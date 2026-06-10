@@ -16,7 +16,7 @@ export const queryClient = new QueryClient({
 
 export const QUERY_KEYS = {
   i_Notes: ['i_Notes'] as const,
-  notebook: (id: string) => ['i_Notes', id] as const,
+  i_NotesItem: (id: string) => ['i_Notes', id] as const,
   notes: (i_NotesId?: string) => ['notes', i_NotesId] as const,
   note: (id: string) => ['notes', id] as const,
   sources: (i_NotesId?: string) => ['sources', i_NotesId] as const,

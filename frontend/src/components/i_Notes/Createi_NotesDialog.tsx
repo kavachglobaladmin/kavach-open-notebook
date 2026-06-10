@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { useCreateNotebook } from '@/lib/hooks/use-i_Notes'
+import { useCreatei_Notes } from '@/lib/hooks/use-i_Notes'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { HardDrive, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,7 +38,7 @@ interface Createi_NotesDialogProps {
 
 export function Createi_NotesDialog({ open, onOpenChange }: Createi_NotesDialogProps) {
   const { t } = useTranslation()
-  const createNotebook = useCreateNotebook()
+  const createi_Notes = useCreatei_Notes()
   const [storageLimitMb, setStorageLimitMb] = useState<number | null>(5) // Defaulted to first option
   const [storageLimitError, setStorageLimitError] = useState<string | null>(null)
 
@@ -60,7 +60,7 @@ export function Createi_NotesDialog({ open, onOpenChange }: Createi_NotesDialogP
       setStorageLimitError(t.i_Notes.storageLimitRequired)
       return
     }
-    await createNotebook.mutateAsync({
+    await createi_Notes.mutateAsync({
       name: data.name,
       description: data.description,
       storage_limit_mb: storageLimitMb,
@@ -182,10 +182,10 @@ export function Createi_NotesDialog({ open, onOpenChange }: Createi_NotesDialogP
             </Button>
             <Button
               type="submit"
-              disabled={!isValid || storageLimitMb == null || createNotebook.isPending}
+              disabled={!isValid || storageLimitMb == null || createi_Notes.isPending}
               className="flex-1 h-12 rounded-[16px] bg-gradient-to-r from-[#A78BFA] to-[#C084FC] hover:opacity-90 text-white font-bold shadow-md transition-all border-none"
             >
-              {createNotebook.isPending ? t.common.creating : t.i_Notes.createNew}
+              {createi_Notes.isPending ? t.common.creating : t.i_Notes.createNew}
             </Button>
           </DialogFooter>
         </form>

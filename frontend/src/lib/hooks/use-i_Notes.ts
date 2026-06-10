@@ -21,7 +21,7 @@ function usei_NotesEnabled(): boolean {
   return currentUserEmail !== null
 }
 
-/** Fetch list of notebooks (active or archived) */
+/** Fetch list of i_Notes (active or archived) */
 export function usei_Notes(archived?: boolean) {
   const userEmail = useCurrentUserEmail()
   const canFetch = usei_NotesEnabled()
@@ -32,18 +32,18 @@ export function usei_Notes(archived?: boolean) {
   })
 }
 
-/** Fetch a single notebook by ID */
-export function useNotebook(id: string) {
+/** Fetch a single i_Notes item by ID */
+export function usei_NotesItem(id: string) {
   const userEmail = useCurrentUserEmail()
   const canFetch = usei_NotesEnabled()
   return useQuery({
-    queryKey: [...QUERY_KEYS.notebook(id), { user: userEmail }],
+    queryKey: [...QUERY_KEYS.i_NotesItem(id), { user: userEmail }],
     queryFn: () => i_NotesApi.get(id),
     enabled: !!id && canFetch,
   })
 }
 
-export function useCreateNotebook() {
+export function useCreatei_Notes() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { t } = useTranslation()
@@ -70,7 +70,7 @@ export function useCreateNotebook() {
   })
 }
 
-export function useUpdateNotebook() {
+export function useUpdatei_Notes() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { t } = useTranslation()
@@ -80,7 +80,7 @@ export function useUpdateNotebook() {
       i_NotesApi.update(id, data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.i_Notes })
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notebook(id) })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.i_NotesItem(id) })
       toast({
         title: t.common.success,
         description: t.i_Notes.updateSuccess,
@@ -96,17 +96,17 @@ export function useUpdateNotebook() {
   })
 }
 
-export function useNotebookDeletePreview(id: string, enabled: boolean = false) {
+export function usei_NotesDeletePreview(id: string, enabled: boolean = false) {
   const userEmail = useCurrentUserEmail()
   const canFetch = usei_NotesEnabled()
   return useQuery({
-    queryKey: [...QUERY_KEYS.notebook(id), 'delete-preview', { user: userEmail }],
+    queryKey: [...QUERY_KEYS.i_NotesItem(id), 'delete-preview', { user: userEmail }],
     queryFn: () => i_NotesApi.deletePreview(id),
     enabled: !!id && enabled && canFetch,
   })
 }
 
-export function useDeleteNotebook() {
+export function useDeletei_Notes() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { t } = useTranslation()

@@ -1165,7 +1165,7 @@ function DefaultModelSelectors({
         <CardHeader className="pb-3 pt-6 px-7">
           <div>
             <CardTitle className="text-xl font-bold text-slate-950">Default Model Assignments</CardTitle>
-            <CardDescription className="text-slate-500 mt-1 text-[13px] font-semibold">Configure which models to use for different purposes across Open Notebook</CardDescription>
+            <CardDescription className="text-slate-500 mt-1 text-[13px] font-semibold">Configure which models to use for different purposes across i_Notes</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="px-7 pb-7 space-y-6">

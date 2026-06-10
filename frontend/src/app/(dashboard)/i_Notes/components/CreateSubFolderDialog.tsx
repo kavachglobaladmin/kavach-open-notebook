@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { useCreateNotebook } from '@/lib/hooks/use-i_Notes'
+import { useCreatei_Notes } from '@/lib/hooks/use-i_Notes'
 import { HardDrive, FolderPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -41,7 +41,7 @@ export function CreateSubFolderDialog({
   onOpenChange,
   onCreated,
 }: CreateSubFolderDialogProps) {
-  const createNotebook = useCreateNotebook()
+  const createi_Notes = useCreatei_Notes()
   const [storageLimitMb, setStorageLimitMb] = useState<number>(5)
 
   const {
@@ -63,7 +63,7 @@ export function CreateSubFolderDialog({
   }, [open, reset])
 
   const onSubmit = async (data: FormData) => {
-    const result = await createNotebook.mutateAsync({
+    const result = await createi_Notes.mutateAsync({
       name: data.name,
       description: data.description,
       storage_limit_mb: storageLimitMb,
@@ -160,13 +160,13 @@ export function CreateSubFolderDialog({
             </Button>
             <Button
               type="submit"
-              disabled={!isValid || createNotebook.isPending}
+              disabled={!isValid || createi_Notes.isPending}
               className="flex-1 h-12 rounded-[16px] text-white font-bold shadow-md transition-all border-none"
               style={{
                 background: 'linear-gradient(135deg, #6149f6 0%, #8b5cf6 100%)',
               }}
             >
-              {createNotebook.isPending ? 'Creating…' : 'Create Sub-folder'}
+              {createi_Notes.isPending ? 'Creating…' : 'Create Sub-folder'}
             </Button>
           </DialogFooter>
         </form>

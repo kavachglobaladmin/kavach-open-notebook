@@ -15,7 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { useNotebookDeletePreview, useDeleteNotebook } from '@/lib/hooks/use-i_Notes'
+import { usei_NotesDeletePreview, useDeletei_Notes } from '@/lib/hooks/use-i_Notes'
 import { useRouter } from 'next/navigation'
 
 interface I_NotesDeleteDialogProps {
@@ -45,15 +45,15 @@ export function I_NotesDeleteDialog({
   }, [open, i_NotesId])
 
   // Fetch delete preview when dialog is open
-  const { data: preview, isLoading: isLoadingPreview, error: previewError } = useNotebookDeletePreview(
+  const { data: preview, isLoading: isLoadingPreview, error: previewError } = usei_NotesDeletePreview(
     i_NotesId,
     open
   )
 
-  const deleteNotebook = useDeleteNotebook()
+  const deletei_Notes = useDeletei_Notes()
 
   const handleConfirm = async () => {
-    await deleteNotebook.mutateAsync({
+    await deletei_Notes.mutateAsync({
       id: i_NotesId,
       deleteExclusiveSources: sourceAction === 'delete',
     })
@@ -63,13 +63,13 @@ export function I_NotesDeleteDialog({
     }
   }
 
-  const isDeleting = deleteNotebook.isPending
+  const isDeleting = deletei_Notes.isPending
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t.i_Notes.deleteNotebook}</AlertDialogTitle>
+          <AlertDialogTitle>{t.i_Notes.deletei_Notes}</AlertDialogTitle>
           <AlertDialogDescription>
             {t.i_Notes.deletei_NotesDesc.replace('{name}', i_NotesName)}
           </AlertDialogDescription>

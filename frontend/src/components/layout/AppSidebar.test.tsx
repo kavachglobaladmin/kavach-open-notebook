@@ -18,7 +18,7 @@ describe('AppSidebar', () => {
     render(<AppSidebar />)
     
     // Check for logo or app name
-    expect(screen.getByText(/NOTEBOOKS/i)).toBeDefined()
+    expect(screen.getByText(/i_Notes/i)).toBeDefined()
     
     // Check for navigation items
     expect(screen.getByText(/Sources/i)).toBeDefined()
@@ -49,6 +49,6 @@ describe('AppSidebar', () => {
     render(<AppSidebar />)
     
     // In collapsed mode, app name shouldn't be visible (as text)
-    expect(screen.queryByText(/NOTEBOOKS/i)).toBeNull()
+    expect(screen.queryByText(/i_Notes/i)).toBeNull()
   })
 })

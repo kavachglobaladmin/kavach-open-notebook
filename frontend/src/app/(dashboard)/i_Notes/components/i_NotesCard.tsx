@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useUpdateNotebook } from '@/lib/hooks/use-i_Notes'
+import { useUpdatei_Notes } from '@/lib/hooks/use-i_Notes'
 import { I_NotesDeleteDialog } from './i_NotesDeleteDialog'
 import { I_NotesAccessDialog } from './i_NotesAccessDialog'
 import { useState, useEffect } from 'react'
@@ -33,7 +33,7 @@ export function I_NotesCard({ i_Notes }: I_NotesCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showAccessDialog, setShowAccessDialog] = useState(false)
   const router = useRouter()
-  const updateNotebook = useUpdateNotebook()
+  const updatei_Notes = useUpdatei_Notes()
   const { toast } = useToast()
   const currentUserRole = useAuthStore(s => s.currentUserRole)
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
@@ -60,7 +60,7 @@ export function I_NotesCard({ i_Notes }: I_NotesCardProps) {
 
   const handleArchiveToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
-    updateNotebook.mutate({ id: i_Notes.id, data: { archived: !i_Notes.archived } })
+    updatei_Notes.mutate({ id: i_Notes.id, data: { archived: !i_Notes.archived } })
   }
 
   const handleCardClick = () => {

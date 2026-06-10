@@ -5,7 +5,7 @@ import { i_NotesResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Archive, ArchiveRestore, Trash2, ChevronLeft } from 'lucide-react'
-import { useUpdateNotebook } from '@/lib/hooks/use-i_Notes'
+import { useUpdatei_Notes } from '@/lib/hooks/use-i_Notes'
 import { I_NotesDeleteDialog } from './i_NotesDeleteDialog'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
@@ -25,7 +25,7 @@ export function I_NotesHeader({ i_Notes, backHref = '/i_Notes', backLabel = 'Bac
   const { t, language } = useTranslation()
   const dfLocale = getDateLocale(language)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const updateNotebook = useUpdateNotebook()
+  const updatei_Notes = useUpdatei_Notes()
 
   return (
     <>
@@ -42,7 +42,7 @@ export function I_NotesHeader({ i_Notes, backHref = '/i_Notes', backLabel = 'Bac
                 id="i_Notes-name"
                 name="i_Notes-name"
                 value={i_Notes.name}
-                onSave={(name) => name && name !== i_Notes.name && updateNotebook.mutate({ id: i_Notes.id, data: { name } })}
+                onSave={(name) => name && name !== i_Notes.name && updatei_Notes.mutate({ id: i_Notes.id, data: { name } })}
                 className="text-[26px] sm:text-[32px] lg:text-[36px] font-extrabold text-slate-900 tracking-tight break-words"
                 inputClassName="text-[26px] sm:text-[32px] lg:text-[36px] font-extrabold"
               />
@@ -53,7 +53,7 @@ export function I_NotesHeader({ i_Notes, backHref = '/i_Notes', backLabel = 'Bac
               id="i_Notes-description"
               name="i_Notes-description"
               value={i_Notes.description || ''}
-              onSave={(description) => description !== i_Notes.description && updateNotebook.mutate({ id: i_Notes.id, data: { description: description || undefined } })}
+              onSave={(description) => description !== i_Notes.description && updatei_Notes.mutate({ id: i_Notes.id, data: { description: description || undefined } })}
               className="text-[15px] text-slate-500 font-medium"
               placeholder="Add description..."
               multiline
@@ -70,7 +70,7 @@ export function I_NotesHeader({ i_Notes, backHref = '/i_Notes', backLabel = 'Bac
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateNotebook.mutate({ id: i_Notes.id, data: { archived: !i_Notes.archived } })}
+              onClick={() => updatei_Notes.mutate({ id: i_Notes.id, data: { archived: !i_Notes.archived } })}
               className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 rounded-[12px] h-[40px] px-4 sm:px-5 font-bold shadow-sm"
             >
               {i_Notes.archived ? <><ArchiveRestore className="h-4 w-4 mr-2" /> Unarchive</> : <><Archive className="h-4 w-4 mr-2" /> Archive</>}

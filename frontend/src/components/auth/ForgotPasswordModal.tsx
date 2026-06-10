@@ -272,7 +272,7 @@ export function ForgotPasswordModal({ open, onClose, onSignIn }: Props) {
                   <BookOpen className="relative z-10 h-6 w-6 text-white transition-transform duration-500 ease-out group-hover:scale-110 group-hover:rotate-3" />
                 </div>
                 <div className="flex flex-col text-left">
-                  <span className="text-[18px] font-bold text-[#6A28A3] uppercase leading-none tracking-tight">NOTEBOOKS</span>
+                  <span className="text-[18px] font-bold text-[#6A28A3] uppercase leading-none tracking-tight">i_Notes</span>
                   <span className="text-[12px] text-slate-500 font-medium leading-tight">AI Knowledge Base</span>
                 </div>
               </div>

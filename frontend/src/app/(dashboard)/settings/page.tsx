@@ -409,7 +409,7 @@ export default function SettingsPage() {
           <DialogHeader className="mb-4">
             <DialogTitle className="text-2xl font-bold text-slate-800">Account Settings</DialogTitle>
             <DialogDescription className="text-slate-500 font-semibold">
-              Manage your notebook preferences, processing engines, and notifications.
+              Manage your i_Notes preferences, processing engines, and notifications.
             </DialogDescription>
           </DialogHeader>
           <div className="pt-2">

@@ -155,7 +155,7 @@ function CasesAreaChart() {
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('')
 
-  const { data: notebooks } = usei_Notes(false)
+  const { data: i_Notes } = usei_Notes(false)
   const { data: sources } = useQuery({
     queryKey: ['sources', 'dashboard'],
     queryFn: () => sourcesApi.list({ limit: 50, sort_by: 'updated', sort_order: 'desc' }),
@@ -164,9 +164,9 @@ export default function DashboardPage() {
 
   const stats = useMemo(() => {
     const totalSources = sources?.length ?? 0
-    const activeCases = notebooks?.length ?? 0
+    const activeCases = i_Notes?.length ?? 0
     return { totalSources, activeCases }
-  }, [sources, notebooks])
+  }, [sources, i_Notes])
 
   const statCards = [
     {
