@@ -2,7 +2,7 @@
 # Re-push all custom files to the container after docker compose up -d
 # Run this from your project root: bash repush.sh
 
-CONTAINER="kavach-open-notebook-open_notebook-1"
+CONTAINER="kavach-open-i_Notes-open_i_Notes-1"
 
 echo "Waiting for container to be ready..."
 sleep 15
@@ -11,9 +11,9 @@ echo "Pushing backend files..."
 docker cp "api/main.py"                "$CONTAINER:/app/api/main.py"
 docker cp "api/routers/mindmap.py"     "$CONTAINER:/app/api/routers/mindmap.py"
 docker cp "api/routers/infographic.py" "$CONTAINER:/app/api/routers/infographic.py"
-docker cp "open_notebook/graphs/summary.py"    "$CONTAINER:/app/open_notebook/graphs/summary.py"
-docker cp "open_notebook/graphs/infographic.py" "$CONTAINER:/app/open_notebook/graphs/infographic.py"
-docker cp "open_notebook/graphs/mind_map.py"   "$CONTAINER:/app/open_notebook/graphs/mind_map.py"
+docker cp "open_i_Notes/graphs/summary.py"    "$CONTAINER:/app/open_i_Notes/graphs/summary.py"
+docker cp "open_i_Notes/graphs/infographic.py" "$CONTAINER:/app/open_i_Notes/graphs/infographic.py"
+docker cp "open_i_Notes/graphs/mind_map.py"   "$CONTAINER:/app/open_i_Notes/graphs/mind_map.py"
 
 echo "Pushing frontend files..."
 docker cp "frontend/src/components/layout/AppSidebar.tsx"        "$CONTAINER:/app/frontend/src/components/layout/AppSidebar.tsx"
@@ -36,17 +36,17 @@ echo "Patching built Next.js output (title + favicon)..."
 docker exec "$CONTAINER" sh -c "
   # Patch RSC payloads (used for client-side navigation)
   for f in /app/frontend/.next/server/app/*.rsc; do
-    sed -i 's|Open Notebook|Notebook|g' \"\$f\"
+    sed -i 's|Open i_Notes|i_Notes|g' \"\$f\"
     sed -i 's|favicon\.ico[^\"]*|logo(1).svg?v=2|g' \"\$f\"
     sed -i 's|/logo(1)\.svg\"|/logo(1).svg?v=2\"|g' \"\$f\"
-    sed -i 's|\"children\":\"Kavach\"|\"children\":\"Notebook\"|g' \"\$f\"
+    sed -i 's|\"children\":\"Kavach\"|\"children\":\"i_Notes\"|g' \"\$f\"
   done
   # Patch HTML files
   for f in /app/frontend/.next/server/app/*.html; do
-    sed -i 's|Open Notebook|Notebook|g' \"\$f\"
+    sed -i 's|Open i_Notes|i_Notes|g' \"\$f\"
     sed -i 's|favicon\.ico[^\"]*|logo(1).svg?v=2|g' \"\$f\"
     sed -i 's|href=\"/logo(1)\.svg\"|href=\"/logo(1).svg?v=2\"|g' \"\$f\"
-    sed -i 's|<title>Kavach</title>|<title>Notebook</title>|g' \"\$f\"
+    sed -i 's|<title>Kavach</title>|<title>i_Notes</title>|g' \"\$f\"
   done
   # Patch JS chunks
   find /app/frontend/.next/static/chunks -name '*.js' | xargs grep -l 'logo(1)' 2>/dev/null | while read f; do

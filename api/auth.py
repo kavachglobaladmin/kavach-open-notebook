@@ -1,5 +1,5 @@
 """
-Authentication helpers for Open Notebook API.
+Authentication helpers for Open i-notes API.
 
 JWT-based authentication:
   - Login  → POST /api/auth/login  → returns a signed JWT (access_token)
@@ -10,7 +10,7 @@ JWT-based authentication:
     via get_current_user() for ownership-scoped queries.
 
 JWT secret is read from the JWT_SECRET_KEY environment variable.
-Falls back to OPEN_NOTEBOOK_ENCRYPTION_KEY if JWT_SECRET_KEY is not set.
+Falls back to i-notes_ENCRYPTION_KEY if JWT_SECRET_KEY is not set.
 """
 
 import os
@@ -25,7 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from api.roles import UserRole, normalize_user_role, role_in
-from open_notebook.utils.encryption import get_secret_from_env
+from i_Notes.utils.encryption import get_secret_from_env
 
 # ── JWT configuration ─────────────────────────────────────────────────────────
 
@@ -36,12 +36,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 def _jwt_secret() -> str:
     """
     Return the secret key used to sign/verify JWTs.
-    Priority: JWT_SECRET_KEY env var → OPEN_NOTEBOOK_ENCRYPTION_KEY → hard fallback.
+    Priority: JWT_SECRET_KEY env var → i_Notes_ENCRYPTION_KEY → hard fallback.
     """
     secret = (
         os.environ.get("JWT_SECRET_KEY")
-        or get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY")
-        or "open-notebook-jwt-secret-change-me"
+        or get_secret_from_env("i_Notes_ENCRYPTION_KEY")
+        or "i_Notes-jwt-secret-change-me"
     )
     return secret
 

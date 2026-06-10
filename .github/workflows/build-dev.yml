@@ -8,7 +8,7 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - 'notebooks/**'
+      - 'i_Notes/**'
       - '.github/workflows/claude*.yml'
   workflow_dispatch:
     inputs:
@@ -27,8 +27,8 @@ permissions:
   packages: write
 
 env:
-  GHCR_IMAGE: ghcr.io/lfnovo/open-notebook
-  DOCKERHUB_IMAGE: lfnovo/open_notebook
+  GHCR_IMAGE: ghcr.io/lfnovo/open-i_Notes
+  DOCKERHUB_IMAGE: lfnovo/open_i_Notes
 
 jobs:
   extract-version:

@@ -8,8 +8,8 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from loguru import logger
 
-from open_notebook.database.repository import repo_query
-from open_notebook.utils.version_utils import (
+from i_Notes.database.repository import repo_query
+from i_Notes.utils.version_utils import (
     compare_versions,
     get_latest_release_version_from_github_async,
 )
@@ -25,12 +25,12 @@ _version_cache: dict = {
 }
 
 # Cache TTL in seconds (24 hours by default)
-VERSION_CACHE_TTL = int(os.getenv("OPEN_NOTEBOOK_VERSION_CACHE_TTL", 24 * 60 * 60))
+VERSION_CACHE_TTL = int(os.getenv("OPEN_i_Notes_VERSION_CACHE_TTL", 24 * 60 * 60))
 
 # GitHub repository used for release/version checks
 VERSION_REPO_URL = os.getenv(
-    "OPEN_NOTEBOOK_VERSION_REPO",
-    "https://github.com/kavachglobaladmin/kavach-open-notebook",
+    "OPEN_i_Notes_VERSION_REPO",
+    "https://github.com/kavachglobaladmin/kavach-open-i_Notes",
 )
 
 
@@ -179,13 +179,13 @@ async def update_app():
         scripts/update-app.sh
 
     You can override it using:
-        OPEN_NOTEBOOK_UPDATE_COMMAND
+        OPEN_i_Notes_UPDATE_COMMAND
     """
     import asyncio
     import os
 
     update_command = os.getenv(
-        "OPEN_NOTEBOOK_UPDATE_COMMAND",
+        "OPEN_i_Notes_UPDATE_COMMAND",
         "scripts/update-app.sh",
     )
 

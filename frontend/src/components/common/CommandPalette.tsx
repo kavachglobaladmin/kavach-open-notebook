@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
-import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { usei_Notes } from '@/lib/hooks/use-i_Notes'
 import { useTheme } from '@/lib/stores/theme-store'
 import {
   CommandDialog,
@@ -34,7 +34,7 @@ import { TranslationKeys } from '@/lib/locales'
 
 const getNavigationItems = (t: TranslationKeys) => [
   { name: t.navigation.sources, href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload'] },
-  { name: t.navigation.notebooks, href: '/notebooks', icon: Book, keywords: ['notes', 'research', 'projects'] },
+  { name: t.navigation.i_Notes, href: '/i_Notes', icon: Book, keywords: ['notes', 'research', 'projects'] },
   { name: t.navigation.askAndSearch, href: '/search', icon: Search, keywords: ['find', 'query'] },
   { name: t.navigation.podcasts, href: '/podcasts', icon: Mic, keywords: ['audio', 'episodes', 'generate'] },
   { name: t.navigation.models, href: '/settings/api-keys', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'] },
@@ -45,7 +45,7 @@ const getNavigationItems = (t: TranslationKeys) => [
 
 const getCreateItems = (t: TranslationKeys) => [
   { name: t.common.newSource, action: 'source', icon: FileText },
-  { name: t.common.newNotebook, action: 'notebook', icon: Book },
+  { name: t.common.newi_Notes, action: 'i_Notes', icon: Book },
   { name: t.common.newPodcast, action: 'podcast', icon: Mic },
 ]
 
@@ -65,9 +65,9 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const router = useRouter()
-  const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
+  const { openSourceDialog, openi_NotesDialog, openPodcastDialog } = useCreateDialogs()
   const { setTheme } = useTheme()
-  const { data: notebooks, isLoading: notebooksLoading } = useNotebooks(false)
+  const { data: i_Notes, isLoading: i_NotesLoading } = usei_Notes(false)
 
   // Global keyboard listener for ⌘K / Ctrl+K
   useEffect(() => {
@@ -125,16 +125,16 @@ export function CommandPalette() {
   const handleCreate = useCallback((action: string) => {
     handleSelect(() => {
       if (action === 'source') openSourceDialog()
-      else if (action === 'notebook') openNotebookDialog()
+      else if (action === 'i_Notes') openi_NotesDialog()
       else if (action === 'podcast') openPodcastDialog()
     })
-  }, [handleSelect, openSourceDialog, openNotebookDialog, openPodcastDialog])
+  }, [handleSelect, openSourceDialog, openi_NotesDialog, openPodcastDialog])
 
   const handleTheme = useCallback((theme: 'light' | 'dark' | 'system') => {
     handleSelect(() => setTheme(theme))
   }, [handleSelect, setTheme])
 
-  // Check if query matches any command (navigation, create, theme, or notebook)
+  // Check if query matches any command (navigation, create, theme, or i_Notes)
   const queryLower = query.toLowerCase().trim()
   const hasCommandMatch = useMemo(() => {
     if (!queryLower) return false
@@ -150,12 +150,12 @@ export function CommandPalette() {
         item.name.toLowerCase().includes(queryLower) ||
         item.keywords.some(k => k.includes(queryLower))
       ) ||
-      (notebooks?.some(nb =>
+      (i_Notes?.some(nb =>
         nb.name.toLowerCase().includes(queryLower) ||
         (nb.description && nb.description.toLowerCase().includes(queryLower))
       ) ?? false)
     )
-  }, [queryLower, notebooks, navigationItems, createItems, themeItems])
+  }, [queryLower, i_Notes, navigationItems, createItems, themeItems])
 
   // Determine if we should show the Search/Ask section at the top
   const showSearchFirst = query.trim() && !hasCommandMatch
@@ -214,26 +214,26 @@ export function CommandPalette() {
           ))}
         </CommandGroup>
 
-        {/* Notebooks */}
-        <CommandGroup heading={t.notebooks.title}>
-          {notebooksLoading ? (
+        {/* i_Notes */}
+        <CommandGroup heading={t.i_Notes.title}>
+          {i_NotesLoading ? (
             <CommandItem disabled>
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>{t.common.loading}</span>
             </CommandItem>
-          ) : notebooks && notebooks.length > 0 ? (
-            notebooks.map((notebook) => (
+          ) : i_Notes && i_Notes.length > 0 ? (
+            i_Notes.map((i_Notes) => (
               <CommandItem
-                key={notebook.id}
-                value={`notebook ${notebook.name} ${notebook.description || ''}`}
+                key={i_Notes.id}
+                value={`i_Notes ${i_Notes.name} ${i_Notes.description || ''}`}
                 onSelect={() => {
                   // Strip the SurrealDB table prefix so the URL never contains a colon
-                  const shortId = notebook.id.includes(':') ? notebook.id.split(':')[1] : notebook.id
-                  handleNavigate(`/notebooks/${shortId}`)
+                  const shortId = i_Notes.id.includes(':') ? i_Notes.id.split(':')[1] : i_Notes.id
+                  handleNavigate(`/i_Notes/${shortId}`)
                 }}
               >
                 <Book className="h-4 w-4" />
-                <span>{notebook.name}</span>
+                <span>{i_Notes.name}</span>
               </CommandItem>
             ))
           ) : null}

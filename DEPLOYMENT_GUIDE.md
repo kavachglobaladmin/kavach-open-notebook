@@ -39,28 +39,28 @@ python -m py_compile api/routers/source_chat.py
 #### Option B: Docker
 ```bash
 # If using Docker, rebuild the image
-docker build -t open-notebook-api:latest .
+docker build -t open-i_Notes-api:latest .
 
 # Stop old container
 docker stop api-container
 
 # Start new container
-docker run -d --name api-container open-notebook-api:latest
+docker run -d --name api-container open-i_Notes-api:latest
 ```
 
 #### Option C: Systemd
 ```bash
 # Stop service
-systemctl stop open-notebook-api
+systemctl stop open-i_Notes-api
 
 # Replace file
 cp /path/to/updated/source_chat.py api/routers/source_chat.py
 
 # Start service
-systemctl start open-notebook-api
+systemctl start open-i_Notes-api
 
 # Check status
-systemctl status open-notebook-api
+systemctl status open-i_Notes-api
 ```
 
 ### Step 2: Frontend Deployment
@@ -85,13 +85,13 @@ yarn dev
 #### Option B: Docker
 ```bash
 # Rebuild frontend image
-docker build -f Dockerfile.frontend -t open-notebook-frontend:latest .
+docker build -f Dockerfile.frontend -t open-i_Notes-frontend:latest .
 
 # Stop old container
 docker stop frontend-container
 
 # Start new container
-docker run -d --name frontend-container open-notebook-frontend:latest
+docker run -d --name frontend-container open-i_Notes-frontend:latest
 ```
 
 #### Option C: Production Build
@@ -115,7 +115,7 @@ npm start
 #### Check Logs
 ```bash
 # Look for [SourceChat] entries
-tail -f /var/log/open-notebook/api.log | grep "\[SourceChat\]"
+tail -f /var/log/open-i_Notes/api.log | grep "\[SourceChat\]"
 
 # Should see:
 # [SourceChat] Context built: XXXX chars, X insights
@@ -175,7 +175,7 @@ ls -la frontend/.next/
 
 ### Test 3: Comparison
 ```
-1. Test Chat with Notebook
+1. Test Chat with i_Notes
    - Send message
    - Verify response streams
    - Verify suggested questions appear
@@ -228,7 +228,7 @@ ls -la frontend/.next/
 
 # 4. Verify API password is set
 # - Check .env file
-# - Verify OPEN_NOTEBOOK_PASSWORD is set
+# - Verify OPEN_i_Notes_PASSWORD is set
 ```
 
 ### Issue: Responses Not Streaming
@@ -238,10 +238,10 @@ ls -la frontend/.next/
 **Solution:**
 ```bash
 # 1. Check backend logs
-tail -f /var/log/open-notebook/api.log
+tail -f /var/log/open-i_Notes/api.log
 
 # 2. Look for errors
-grep "ERROR" /var/log/open-notebook/api.log
+grep "ERROR" /var/log/open-i_Notes/api.log
 
 # 3. Verify API is running
 curl -X GET http://localhost:5055/api/health
@@ -261,7 +261,7 @@ curl -X GET http://localhost:5055/api/health
 **Solution:**
 ```bash
 # 1. Check backend logs for [SourceChat] entries
-grep "\[SourceChat\]" /var/log/open-notebook/api.log
+grep "\[SourceChat\]" /var/log/open-i_Notes/api.log
 
 # 2. Verify context is being built
 # Should see: "Context built: XXXX chars"
@@ -305,7 +305,7 @@ grep "\[SourceChat\]" /var/log/open-notebook/api.log
 - [ ] Verify no 401 errors
 - [ ] Verify responses stream
 - [ ] Verify suggested questions appear
-- [ ] Compare with Chat with Notebook
+- [ ] Compare with Chat with i_Notes
 - [ ] Test with various documents
 - [ ] Test error cases
 
@@ -327,7 +327,7 @@ If issues occur:
 cp api/routers/source_chat.py.backup api/routers/source_chat.py
 
 # Restart API
-systemctl restart open-notebook-api
+systemctl restart open-i_Notes-api
 ```
 
 ### Frontend Rollback
@@ -339,7 +339,7 @@ cp frontend/src/lib/api/source-chat.ts.backup frontend/src/lib/api/source-chat.t
 npm run build
 
 # Restart frontend
-systemctl restart open-notebook-frontend
+systemctl restart open-i_Notes-frontend
 ```
 
 ---
@@ -370,7 +370,7 @@ Testing:
 - [ ] No 401 errors
 - [ ] Responses stream
 - [ ] Suggested questions appear
-- [ ] Chat with Notebook still works
+- [ ] Chat with i_Notes still works
 
 Issues:
 [List any issues encountered]
@@ -392,7 +392,7 @@ Deployment is successful when:
 ✅ Chat with Source works without 401 errors
 ✅ Responses stream in real-time
 ✅ Suggested questions appear
-✅ Chat with Notebook still works
+✅ Chat with i_Notes still works
 ✅ No errors in browser console
 ✅ No errors in server logs
 

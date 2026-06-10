@@ -7,7 +7,7 @@ Each user record stores:
   - password_hash    : SHA-256 + random-salt hash used for login verification
   - password_encrypted: Fernet-encrypted plaintext password (AES-128-CBC + HMAC)
                         used only for admin visibility; decryptable with
-                        OPEN_NOTEBOOK_ENCRYPTION_KEY
+                        OPEN_i_Notes_ENCRYPTION_KEY
   - created_at       : auto-set by SurrealDB on first write
 """
 
@@ -28,8 +28,8 @@ from api.roles import (
     normalize_user_role,
     resolve_role_for_new_user,
 )
-from open_notebook.database.repository import repo_query
-from open_notebook.utils.encryption import encrypt_value, decrypt_value
+from i_Notes.database.repository import repo_query
+from i_Notes.utils.encryption import encrypt_value, decrypt_value
 
 router = APIRouter()
 
@@ -255,7 +255,7 @@ async def list_all_users(
         try:
             pw_plain = decrypt_value(pw_encrypted) if pw_encrypted else "(not set)"
         except Exception:
-            pw_plain = "(decryption failed — check OPEN_NOTEBOOK_ENCRYPTION_KEY)"
+            pw_plain = "(decryption failed — check OPEN_i_Notes_ENCRYPTION_KEY)"
 
         result.append(UserAdminRecord(
             id=str(row.get("id", "")),
@@ -274,7 +274,7 @@ async def list_user_directory(
     request: Request,
     _: str = Depends(require_roles("admin", "super_admin")),
 ):
-    """Safe user directory for notebook access management.
+    """Safe user directory for i_Notes access management.
     Admin: returns only 'user' role accounts.
     Super admin: returns all non-super-admin accounts.
     """
@@ -282,14 +282,19 @@ async def list_user_directory(
     current_role = _normalize(getattr(request.state, "jwt_role", None))
 
     if current_role == "admin":
-        rows = await repo_query(
-            "SELECT id, email, name, role FROM kavach_user WHERE role = 'user' ORDER BY created_at ASC"
-        )
+        # Fetch all then filter in Python to avoid SurrealDB issues with null role fields
+        all_rows = await repo_query("SELECT * FROM kavach_user ORDER BY created_at ASC")
+        rows = [r for r in all_rows if normalize_user_role(r.get("role")) == "user"]
     else:
-        # super_admin: all users except super_admins
-        rows = await repo_query(
-            "SELECT id, email, name, role FROM kavach_user WHERE role != 'super_admin' ORDER BY created_at ASC"
+        # super_admin: fetch all users then filter out super_admins in Python
+        # (avoids SurrealDB issues with != operator on null role fields)
+        all_rows = await repo_query(
+            "SELECT * FROM kavach_user ORDER BY created_at ASC"
         )
+        rows = [
+            r for r in all_rows
+            if normalize_user_role(r.get("role")) != "super_admin"
+        ]
 
     return [
         UserDirectoryRecord(

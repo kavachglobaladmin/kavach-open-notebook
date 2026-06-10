@@ -1,6 +1,0 @@
--- Migration 28: Create command table for surreal_commands worker
--- Required for LIVE query subscription used by the background worker
-
-DEFINE TABLE IF NOT EXISTS command SCHEMALESS;
-DEFINE INDEX IF NOT EXISTS idx_command_status ON TABLE command COLUMNS status;
-DEFINE INDEX IF NOT EXISTS idx_command_app    ON TABLE command COLUMNS app_id;

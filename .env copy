@@ -1,4 +1,4 @@
-# Open Notebook Configuration
+# Open i_Notes Configuration
 # Copy this file to .env and customize as needed
 
 # =============================================================================
@@ -7,18 +7,18 @@
 
 # Encryption key for storing API credentials securely in the database
 # Change this to any secret string (minimum 16 characters recommended)
-OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+OPEN_i_Notes_ENCRYPTION_KEY=change-me-to-a-secret-string
 
 # =============================================================================
 # DATABASE (Default values work with docker-compose.yml)
 # =============================================================================
 
 SURREAL_URL=ws://100.73.235.251:8080/rpc 
-SURREAL_USER=NoteBookUser
-SURREAL_PASSWORD=NoteBook123@#
+SURREAL_USER=i_NotesUser
+SURREAL_PASSWORD=i_Notes123@#
 
-SURREAL_NAMESPACE=NoteBookname
-SURREAL_DATABASE=NoteBookDB
+SURREAL_NAMESPACE=i_Notesname
+SURREAL_DATABASE=i_NotesDB
 KAFKA_BOOTSTRAP_SERVERS=100.73.235.251:9092
 
 # =============================================================================
@@ -73,4 +73,4 @@ SMTP_FROM=bhavesh.kavach@gmail.com
 
    
 # For more configuration options, see:
-# https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/environment-reference.md
+# https://github.com/lfnovo/open-i_Notes/blob/main/docs/5-CONFIGURATION/environment-reference.md

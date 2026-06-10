@@ -296,7 +296,7 @@ export function RebuildEmbeddings() {
               <div className="text-xs text-slate-400 space-y-0.5">
                 <p>{t.common.created.replace('{time}', new Date(status.started_at).toLocaleString())}</p>
                 {status.completed_at && (
-                  <p>{t.notebooks.updated}: {new Date(status.completed_at).toLocaleString()}</p>
+                  <p>{t.i_Notes.updated}: {new Date(status.completed_at).toLocaleString()}</p>
                 )}
               </div>
             )}

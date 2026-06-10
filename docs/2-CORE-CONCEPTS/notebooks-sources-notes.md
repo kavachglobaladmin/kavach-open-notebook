@@ -1,12 +1,12 @@
-# Notebooks, Sources, and Notes - The Container Model
+# i_Notes, Sources, and Notes - The Container Model
 
-Open Notebook organizes research in three connected layers. Understanding this hierarchy is key to using the system effectively.
+Open i_Notes organizes research in three connected layers. Understanding this hierarchy is key to using the system effectively.
 
 ## The Three-Layer Structure
 
 ```
 ┌─────────────────────────────────────┐
-│         NOTEBOOK (The Container)    │
+│         i_Notes (The Container)    │
 │     "My AI Safety Research 2026"   │
 ├─────────────────────────────────────┤
 │                                     │
@@ -26,42 +26,42 @@ Open Notebook organizes research in three connected layers. Understanding this h
 
 ---
 
-## 1. NOTEBOOKS - The Research Container
+## 1. i_Notes - The Research Container
 
-### What Is a Notebook?
+### What Is a i_Notes?
 
-A **notebook** is a *scoped container* for a research project or topic. It's your research workspace.
+A **i_Notes** is a *scoped container* for a research project or topic. It's your research workspace.
 
-Think of it like a physical notebook: everything inside is about the same topic, shares the same context, and builds toward the same goals.
+Think of it like a physical i_Notes: everything inside is about the same topic, shares the same context, and builds toward the same goals.
 
 ### What Goes In?
 
-- **A description** — "This notebook collects research on X topic"
+- **A description** — "This i_Notes collects research on X topic"
 - **Sources** — The raw materials you add
 - **Notes** — Your insights and outputs
 - **Conversation history** — Your chats and questions
 
 ### Why This Matters
 
-**Isolation**: Each notebook is completely separate. Sources in Notebook A never appear in Notebook B. This lets you:
+**Isolation**: Each i_Notes is completely separate. Sources in i_Notes A never appear in i_Notes B. This lets you:
 - Keep different research topics completely isolated
-- Reuse source names across notebooks without conflicts
+- Reuse source names across i_Notes without conflicts
 - Control which AI context applies to which research
 
-**Shared Context**: All sources and notes in a notebook inherit the notebook's context. If your notebook is titled "AI Safety 2026" with description "Focusing on alignment and interpretability," that context applies to all AI interactions within that notebook.
+**Shared Context**: All sources and notes in a i_Notes inherit the i_Notes's context. If your i_Notes is titled "AI Safety 2026" with description "Focusing on alignment and interpretability," that context applies to all AI interactions within that i_Notes.
 
-**Parallel Projects**: You can have 10 notebooks running simultaneously. Each one is its own isolated research environment.
+**Parallel Projects**: You can have 10 i_Notes running simultaneously. Each one is its own isolated research environment.
 
 ### Example
 
 ```
-Notebook: "Customer Research - Product Launch"
+i_Notes: "Customer Research - Product Launch"
 Description: "User interviews and feedback for Q1 2026 launch"
 
-→ All sources added to this notebook are about customer feedback
+→ All sources added to this i_Notes are about customer feedback
 → All notes generated are in that context
 → When you chat, the AI knows you're analyzing product launch feedback
-→ Different from your "Market Analysis - Competitors" notebook
+→ Different from your "Market Analysis - Competitors" i_Notes
 ```
 
 ---
@@ -107,7 +107,7 @@ A **source** is a *single piece of input material* — the raw content you bring
 
 **Indexed**: Sources are automatically indexed for search (both text and semantic).
 
-**Scoped**: A source belongs to exactly one notebook.
+**Scoped**: A source belongs to exactly one i_Notes.
 
 **Referenceable**: Other sources and notes can reference this source by citation.
 
@@ -145,7 +145,7 @@ You write them yourself. They're your original thinking, capturing:
 Created by applying AI processing to sources:
 - **Transformations** — Structured extraction (main points, key concepts, methodology)
 - **Chat Responses** — Answers you saved from conversations
-- **Ask Results** — Comprehensive answers saved to your notebook
+- **Ask Results** — Comprehensive answers saved to your i_Notes
 
 #### Captured Insights
 Notes you explicitly saved from interactions:
@@ -177,7 +177,7 @@ Notes you explicitly saved from interactions:
 ```
 YOU
  │
- ├─→ Create Notebook ("AI Research")
+ ├─→ Create i_Notes ("AI Research")
  │
  ├─→ Add Sources (papers, articles, videos)
  │    └─→ System: Extract, embed, index
@@ -196,7 +196,7 @@ YOU
  │    ├─→ Can save results as Notes
  │    └─→ Notes include citations
  │
- └─→ Generate Podcast (transform notebook into audio)
+ └─→ Generate Podcast (transform i_Notes into audio)
      └─→ Uses all sources + notes for content
 ```
 
@@ -204,12 +204,12 @@ YOU
 
 ## Key Design Decisions
 
-### 1. One Notebook Per Source
+### 1. One i_Notes Per Source
 
-Each source belongs to exactly one notebook. This creates clear boundaries:
+Each source belongs to exactly one i_Notes. This creates clear boundaries:
 - No ambiguity about which research project a source is in
 - Easy to isolate or export a complete project
-- Clean permissions model (if someone gets access to notebook, they get access to all its sources)
+- Clean permissions model (if someone gets access to i_Notes, they get access to all its sources)
 
 ### 2. Immutable Sources, Mutable Notes
 
@@ -230,8 +230,8 @@ This is different from systems that always send everything to AI.
 
 ## Mental Models Explained
 
-### Notebook as Boundaries
-Think of a notebook like a Git repository:
+### i_Notes as Boundaries
+Think of a i_Notes like a Git repository:
 - Everything in it is about the same topic
 - You can clone/fork it (copy to new project)
 - It has clear entry/exit points
@@ -255,17 +255,17 @@ Think of notes like your case brief:
 
 ## Common Questions
 
-### Can I move a source to a different notebook?
-Not directly. Each source is tied to one notebook. If you want it in multiple notebooks, add it again (uploads are fast if it's already processed).
+### Can I move a source to a different i_Notes?
+Not directly. Each source is tied to one i_Notes. If you want it in multiple i_Notes, add it again (uploads are fast if it's already processed).
 
-### Can a note reference sources from a different notebook?
-No. Notes stay within their notebook and reference sources within that notebook. This keeps boundaries clean.
+### Can a note reference sources from a different i_Notes?
+No. Notes stay within their i_Notes and reference sources within that i_Notes. This keeps boundaries clean.
 
-### What if I want to group sources within a notebook?
+### What if I want to group sources within a i_Notes?
 Use tags. You can tag sources ("primary research," "background," "methodology") and filter by tags.
 
-### Can I merge two notebooks?
-Not built-in, but you can manually copy sources from one notebook to another by re-uploading them.
+### Can I merge two i_Notes?
+Not built-in, but you can manually copy sources from one i_Notes to another by re-uploading them.
 
 ---
 
@@ -273,12 +273,12 @@ Not built-in, but you can manually copy sources from one notebook to another by 
 
 | Concept | Purpose | Lifecycle | Scope |
 |---------|---------|-----------|-------|
-| **Notebook** | Container + context | Create once, configure | All its sources + notes |
-| **Source** | Raw material | Add → Process → Store | One notebook |
-| **Note** | Processed output | Create/capture → Edit → Share | One notebook |
+| **i_Notes** | Container + context | Create once, configure | All its sources + notes |
+| **Source** | Raw material | Add → Process → Store | One i_Notes |
+| **Note** | Processed output | Create/capture → Edit → Share | One i_Notes |
 
 This three-layer model gives you:
 - **Clear organization** (everything scoped to projects)
-- **Privacy control** (isolated notebooks)
+- **Privacy control** (isolated i_Notes)
 - **Audit trails** (notes cite sources)
 - **Flexibility** (notes can be manual or AI-generated)

@@ -21,12 +21,12 @@ Unlike sources (which never change), notes are mutable — you edit, refine, and
 ### Method 1: Manual Note (Write Yourself)
 
 ```
-1. In your notebook, go to "Notes" section
+1. In your i_Notes, go to "Notes" section
 2. Click "Create New Note"
 3. Give it a title: "Key insights from source X"
 4. Write your content (markdown supported)
 5. Click "Save"
-6. Done! Note appears in your notebook
+6. Done! Note appears in your i_Notes
 ```
 
 ### Method 2: Save from Chat
@@ -38,7 +38,7 @@ Unlike sources (which never change), notes are mutable — you edit, refine, and
 4. Give the note a title
 5. Add any additional context
 6. Click "Save"
-7. Done! Note appears in your notebook
+7. Done! Note appears in your i_Notes
 ```
 
 ### Method 3: Apply Transformation
@@ -193,7 +193,7 @@ When to use:
 
 ### Built-in Transformations
 
-Open Notebook comes with presets:
+Open i_Notes comes with presets:
 
 **Summary**
 ```
@@ -231,7 +231,7 @@ Best for: Practical/business sources
 3. Click "Apply"
 4. Select which sources (one or many)
 5. Wait for processing (usually 30 seconds - 2 minutes)
-6. New notes appear in your notebook
+6. New notes appear in your i_Notes
 7. Edit if needed
 ```
 
@@ -427,7 +427,7 @@ Good for: Publishing publicly (if desired)
 
 ---
 
-## Organizing Your Notebook's Notes
+## Organizing Your i_Notes's Notes
 
 ### By Research Phase
 
@@ -498,7 +498,7 @@ Example: Transform 5 analysis notes → Create synthesis
 
 ```
 Notes are used to create podcast content:
-1. Generate podcast for notebook
+1. Generate podcast for i_Notes
 2. System includes notes in content selection
 3. Notes become part of episode outline
 ```
@@ -534,7 +534,7 @@ Notes are used to create podcast content:
 
 | Mistake | Problem | Solution |
 |---------|---------|----------|
-| Save every Chat response | Notebook becomes cluttered with low-quality notes | Only save good responses that answer your questions |
+| Save every Chat response | i_Notes becomes cluttered with low-quality notes | Only save good responses that answer your questions |
 | Don't add tags | Can't find notes later | Tag immediately when creating |
 | Poor note titles | Can't remember what's in them | Use descriptive titles, include key concept |
 | Never link notes together | Miss connections between ideas | Add references to related notes |

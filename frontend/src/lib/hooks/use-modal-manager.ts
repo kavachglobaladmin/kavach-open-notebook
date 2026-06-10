@@ -17,12 +17,12 @@ export function useModalManager() {
 
   /**
    * Derive a human-readable back-label from the current pathname.
-   * e.g. /notebooks/abc123  → "Back to Cases"
+   * e.g. /i_Notes/abc123  → "Back to Cases"
    *      /sources            → "Back to Sources"
    *      /dashboard          → "Back to Dashboard"
    */
   const getReturnLabel = (path: string): string => {
-    if (path.startsWith('/notebooks')) return 'Back to Cases'
+    if (path.startsWith('/i_Notes')) return 'Back to Cases'
     if (path.startsWith('/sources')) return 'Back to Sources'
     if (path.startsWith('/dashboard')) return 'Back to Dashboard'
     if (path.startsWith('/search')) return 'Back to Search'

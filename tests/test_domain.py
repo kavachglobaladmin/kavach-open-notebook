@@ -1,5 +1,5 @@
 """
-Unit tests for the open_notebook.domain module.
+Unit tests for the open_i_Notes.domain module.
 
 This test suite focuses on validation logic, business rules, and data structures
 that can be tested without database mocking.
@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import ValidationError
 
-from open_notebook.ai.models import ModelManager
-from open_notebook.domain.base import RecordModel
-from open_notebook.domain.content_settings import ContentSettings
-from open_notebook.domain.notebook import Asset, Note, Notebook, Source
-from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import InvalidInputError
-from open_notebook.podcasts.models import EpisodeProfile, SpeakerProfile
+from i_Notes.ai.models import ModelManager
+from i_Notes.domain.base import RecordModel
+from i_Notes.domain.content_settings import ContentSettings
+from i_Notes.domain.i_Notes import Asset, Note, i_Notes, Source
+from i_Notes.domain.transformation import Transformation
+from i_Notes.exceptions import InvalidInputError
+from i_Notes.podcasts.models import EpisodeProfile, SpeakerProfile
 
 # ============================================================================
 # TEST SUITE 1: RecordModel Singleton Pattern
@@ -70,34 +70,34 @@ class TestModelManager:
 
 
 # ============================================================================
-# TEST SUITE 3: Notebook Domain Logic
+# TEST SUITE 3: i_Notes Domain Logic
 # ============================================================================
 
 
-class TestNotebookDomain:
-    """Test suite for Notebook validation and business rules."""
+class Testi_NotesDomain:
+    """Test suite for i_Notes validation and business rules."""
 
-    def test_notebook_name_validation(self):
+    def test_i_Notes_name_validation(self):
         """Test empty/whitespace names are rejected."""
         # Empty name should raise error
-        with pytest.raises(InvalidInputError, match="Notebook name cannot be empty"):
-            Notebook(name="", description="Test")
+        with pytest.raises(InvalidInputError, match="i_Notes name cannot be empty"):
+            i_Notes(name="", description="Test")
 
         # Whitespace-only name should raise error
-        with pytest.raises(InvalidInputError, match="Notebook name cannot be empty"):
-            Notebook(name="   ", description="Test")
+        with pytest.raises(InvalidInputError, match="i_Notes name cannot be empty"):
+            i_Notes(name="   ", description="Test")
 
         # Valid name should work
-        notebook = Notebook(name="Valid Name", description="Test")
-        assert notebook.name == "Valid Name"
+        i_Notes = i_Notes(name="Valid Name", description="Test")
+        assert i_Notes.name == "Valid Name"
 
-    def test_notebook_archived_flag(self):
+    def test_i_Notes_archived_flag(self):
         """Test archived flag defaults to False."""
-        notebook = Notebook(name="Test", description="Test")
-        assert notebook.archived is False
+        i_Notes = i_Notes(name="Test", description="Test")
+        assert i_Notes.archived is False
 
-        notebook_archived = Notebook(name="Test", description="Test", archived=True)
-        assert notebook_archived.archived is True
+        i_Notes_archived = i_Notes(name="Test", description="Test", archived=True)
+        assert i_Notes_archived.archived is True
 
 
 # ============================================================================
@@ -228,11 +228,11 @@ class TestSourceDomain:
         """Test that vectorize() submits embed_source command when text is valid."""
         source = Source(id="source:test_valid", title="Test", full_text="Real content")
         with patch(
-            "open_notebook.domain.notebook.submit_command", return_value="command:123"
+            "open_i_Notes.domain.i_Notes.submit_command", return_value="command:123"
         ) as mock_submit:
             result = await source.vectorize()
             mock_submit.assert_called_once_with(
-                "open_notebook",
+                "open_i_Notes",
                 "embed_source",
                 {"source_id": "source:test_valid"},
             )
@@ -370,7 +370,7 @@ class TestContentSettings:
         """Test ContentSettings has proper defaults."""
         settings = ContentSettings()
 
-        assert settings.record_id == "open_notebook:content_settings"
+        assert settings.record_id == "open_i_Notes:content_settings"
         assert settings.default_content_processing_engine_doc == "auto"
         assert settings.default_embedding_option == "ask"
         assert settings.auto_delete_files == "yes"

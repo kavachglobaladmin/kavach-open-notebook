@@ -1,6 +1,6 @@
 # Prompts Module
 
-Jinja2 prompt templates for multi-provider AI workflows in Open Notebook.
+Jinja2 prompt templates for multi-provider AI workflows in Open i_Notes.
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Centralized prompt repository using `ai_prompter` library to:
 
 **Template Organization by Workflow**:
 - **`ask/`**: Multi-stage search synthesis (entry → query_process → final_answer)
-- **`chat/`**: Conversational agent with notebook context (system prompt only)
+- **`chat/`**: Conversational agent with i_Notes context (system prompt only)
 - **`source_chat/`**: Source-focused chat with insight injection (system prompt only)
 - **`podcast/`**: Podcast generation pipeline (outline → transcript)
 
@@ -32,7 +32,7 @@ model = await provision_langchain_model(system_prompt, ...)
 response = await model.ainvoke(system_prompt)
 ```
 
-See detailed workflow integration in `open_notebook/graphs/CLAUDE.md` for how each template fits into chat.py, ask.py, source_chat.py.
+See detailed workflow integration in `open_i_Notes/graphs/CLAUDE.md` for how each template fits into chat.py, ask.py, source_chat.py.
 
 ## Prompt Engineering Patterns
 
@@ -55,9 +55,9 @@ final_answer.jinja (synthesize all results into final response)
 Templates accept optional variables for context assembly:
 
 ```jinja
-{% if notebook %}
+{% if i_Notes %}
 # PROJECT INFORMATION
-{{ notebook }}
+{{ i_Notes }}
 {% endif %}
 
 {% if context %}
@@ -66,7 +66,7 @@ Templates accept optional variables for context assembly:
 {% endif %}
 ```
 
-Enabled by Jinja2's conditional blocks. Critical for podcast outline (handles list or string context) and source_chat (injects variable notebook/insight data).
+Enabled by Jinja2's conditional blocks. Critical for podcast outline (handles list or string context) and source_chat (injects variable i_Notes/insight data).
 
 ### 3. Repeated Emphasis on Citation Format (Ask & Chat)
 
@@ -108,10 +108,10 @@ Guides models with extended thinking capability to separate reasoning from outpu
 - **final_answer.jinja**: Combines all sub-answers into coherent final response, enforces source citation
 
 **`chat/` - Conversational Agent**:
-- **system.jinja**: Single system prompt for general chat. Uses conditional blocks for optional notebook context. Emphasizes citation format.
+- **system.jinja**: Single system prompt for general chat. Uses conditional blocks for optional i_Notes context. Emphasizes citation format.
 
 **`source_chat/` - Source-Focused Chat**:
-- **system.jinja**: Single system prompt for source-specific discussion. Injects source metadata (ID, title, topics) + selected context. Conditional blocks for optional notebook/context data.
+- **system.jinja**: Single system prompt for source-specific discussion. Injects source metadata (ID, title, topics) + selected context. Conditional blocks for optional i_Notes/context data.
 
 **`podcast/` - Podcast Generation**:
 - **outline.jinja**: Takes briefing + content + speaker profiles (list support via Jinja2 for-loop). Generates JSON outline with segments (name, description, size).
@@ -181,10 +181,10 @@ prompt = Prompter(prompt_template="ask/entry", parser=parser).render(
 ```
 
 **Integration test** (invoke full graph):
-See `open_notebook/graphs/ask.py` for how entry.jinja is invoked inside ask_graph workflow.
+See `open_i_Notes/graphs/ask.py` for how entry.jinja is invoked inside ask_graph workflow.
 
 ## Reference Documentation
 
 - **Jinja2 syntax guide**: See existing templates for for-loop, if-conditional, variable interpolation patterns
-- **Graph integration**: `open_notebook/graphs/CLAUDE.md` documents which template is used in which workflow
+- **Graph integration**: `open_i_Notes/graphs/CLAUDE.md` documents which template is used in which workflow
 - **Sub-directory CLAUDE.md files**: `ask/CLAUDE.md`, `chat/CLAUDE.md`, `podcast/CLAUDE.md` (if created) provide template-specific implementation notes

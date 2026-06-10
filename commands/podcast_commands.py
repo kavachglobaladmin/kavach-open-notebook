@@ -7,9 +7,9 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
-from open_notebook.config import DATA_FOLDER
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.podcasts.models import (
+from i_Notes.config import DATA_FOLDER
+from i_Notes.database.repository import ensure_record_id, repo_query
+from i_Notes.podcasts.models import (
     EpisodeProfile,
     PodcastEpisode,
     SpeakerProfile,
@@ -66,7 +66,7 @@ class PodcastGenerationOutput(CommandOutput):
     error_message: Optional[str] = None
 
 
-@command("generate_podcast", app="open_notebook", retry={"max_attempts": 1})
+@command("generate_podcast", app="open_i_Notes", retry={"max_attempts": 1})
 async def generate_podcast_command(
     input_data: PodcastGenerationInput,
 ) -> PodcastGenerationOutput:

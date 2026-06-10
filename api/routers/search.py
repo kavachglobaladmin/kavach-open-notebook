@@ -8,11 +8,11 @@ from loguru import logger
 from api.auth import get_current_user, get_current_user_role
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from api.roles import has_elevated_data_access
-from open_notebook.ai.models import Model, model_manager
-from open_notebook.database.repository import repo_query
-from open_notebook.domain.notebook import text_search, vector_search
-from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
-from open_notebook.graphs.ask import graph as ask_graph
+from i_Notes.ai.models import Model, model_manager
+from i_Notes.database.repository import repo_query
+from i_Notes.domain.i_Notes import text_search, vector_search
+from i_Notes.exceptions import DatabaseOperationError, InvalidInputError
+from i_Notes.graphs.ask import graph as ask_graph
 
 router = APIRouter()
 
@@ -43,14 +43,14 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
     """
     Build allowed source and note IDs for the current user.
 
-    Source visibility is determined via notebook references.
-    Note visibility supports both note.owner and notebook artifact links.
+    Source visibility is determined via i_Notes references.
+    Note visibility supports both note.owner and i_Notes artifact links.
     """
-    notebook_ids = list(
-        await get_accessible_notebook_ids(current_user, "user") or []
+    i_Notes_ids = list(
+        await get_accessible_i_Notes_ids(current_user, "user") or []
     )
-    if not notebook_ids:
-        # No owned notebooks => no visible sources/notes via notebook links.
+    if not i_Notes_ids:
+        # No owned i_Notes => no visible sources/notes via i_Notes links.
         direct_notes = await repo_query(
             "SELECT VALUE id FROM note WHERE owner = $owner",
             {"owner": current_user},
@@ -61,18 +61,18 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
         """
         SELECT VALUE in
         FROM reference
-        WHERE out IN $notebook_ids
+        WHERE out IN $i_Notes_ids
         """,
-        {"notebook_ids": notebook_ids},
+        {"i_Notes_ids": i_Notes_ids},
     )
 
-    notebook_note_ids = await repo_query(
+    i_Notes_note_ids = await repo_query(
         """
         SELECT VALUE in
         FROM artifact
-        WHERE out IN $notebook_ids
+        WHERE out IN $i_Notes_ids
         """,
-        {"notebook_ids": notebook_ids},
+        {"i_Notes_ids": i_Notes_ids},
     )
     direct_note_ids = await repo_query(
         "SELECT VALUE id FROM note WHERE owner = $owner",
@@ -82,7 +82,7 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
     allowed_sources = {_id_to_str(sid) for sid in source_ids if _id_to_str(sid)}
     allowed_notes = {
         _id_to_str(nid)
-        for nid in (notebook_note_ids + direct_note_ids)
+        for nid in (i_Notes_note_ids + direct_note_ids)
         if _id_to_str(nid)
     }
     return allowed_sources, allowed_notes
@@ -213,7 +213,7 @@ async def stream_ask_response(
         yield f"data: {json.dumps(completion_data)}\n\n"
 
     except Exception as e:
-        from open_notebook.utils.error_classifier import classify_error
+        from i_Notes.utils.error_classifier import classify_error
 
         _, user_message = classify_error(e)
         logger.error(f"Error in ask streaming: {str(e)}")

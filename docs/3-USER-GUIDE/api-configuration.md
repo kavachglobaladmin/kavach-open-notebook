@@ -2,13 +2,13 @@
 
 Configure AI provider credentials through the Settings UI. No file editing required.
 
-> **Credential System**: Open Notebook uses encrypted credentials stored in the database. Each credential connects to a provider and allows you to discover, register, and test models.
+> **Credential System**: Open i_Notes uses encrypted credentials stored in the database. Each credential connects to a provider and allows you to discover, register, and test models.
 
 ---
 
 ## Overview
 
-Open Notebook manages AI provider access through a **credential-based system**:
+Open i_Notes manages AI provider access through a **credential-based system**:
 
 1. You create a **credential** for each provider (API key + settings)
 2. Credentials are **encrypted** and stored in the database
@@ -24,11 +24,11 @@ Before storing credentials, you must configure an encryption key.
 
 ### Setting the Encryption Key
 
-Add `OPEN_NOTEBOOK_ENCRYPTION_KEY` to your docker-compose.yml:
+Add `OPEN_i_Notes_ENCRYPTION_KEY` to your docker-compose.yml:
 
 ```yaml
 environment:
-  - OPEN_NOTEBOOK_ENCRYPTION_KEY=my-secret-passphrase
+  - OPEN_i_Notes_ENCRYPTION_KEY=my-secret-passphrase
 ```
 
 Any string works as a key — it will be securely derived via SHA-256 internally.
@@ -42,10 +42,10 @@ Both password and encryption key support Docker secrets:
 ```yaml
 # docker-compose.yml
 services:
-  open_notebook:
+  open_i_Notes:
     environment:
-      - OPEN_NOTEBOOK_PASSWORD_FILE=/run/secrets/app_password
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
+      - OPEN_i_Notes_PASSWORD_FILE=/run/secrets/app_password
+      - OPEN_i_Notes_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
     secrets:
       - app_password
       - encryption_key
@@ -145,7 +145,7 @@ Navigation: Settings → API Keys
 
 1. Select the models you want to use
 2. Click **Register Models**
-3. The models are now available throughout Open Notebook
+3. The models are now available throughout Open i_Notes
 
 ---
 
@@ -269,7 +269,7 @@ If you have existing API keys in environment variables (from a previous version)
 
 - Database credentials are used for all operations
 - You can remove the API key environment variables from your docker-compose.yml
-- Keep `OPEN_NOTEBOOK_ENCRYPTION_KEY` — it's still required
+- Keep `OPEN_i_Notes_ENCRYPTION_KEY` — it's still required
 
 ### Migration Banner Visibility
 
@@ -306,8 +306,8 @@ API keys stored in the database are encrypted using Fernet (AES-128-CBC + HMAC-S
 
 | Setting | Default Value | Production Recommendation |
 |---------|---------------|---------------------------|
-| Password | `open-notebook-change-me` | Set `OPEN_NOTEBOOK_PASSWORD` |
-| Encryption Key | None (must be set) | Set `OPEN_NOTEBOOK_ENCRYPTION_KEY` to any secret string |
+| Password | `open-i_Notes-change-me` | Set `OPEN_i_Notes_PASSWORD` |
+| Encryption Key | None (must be set) | Set `OPEN_i_Notes_ENCRYPTION_KEY` to any secret string |
 
 **For production deployments, always set custom credentials.**
 
@@ -328,7 +328,7 @@ API keys stored in the database are encrypted using Fernet (AES-128-CBC + HMAC-S
 | Symptom | Cause | Solution |
 |---------|-------|----------|
 | Save button disabled | Empty or invalid input | Enter a valid key |
-| Error on save | Encryption key not set | Set `OPEN_NOTEBOOK_ENCRYPTION_KEY` in docker-compose.yml |
+| Error on save | Encryption key not set | Set `OPEN_i_Notes_ENCRYPTION_KEY` in docker-compose.yml |
 | Error on save | Database connection issue | Check database status |
 
 ### Test Connection Fails

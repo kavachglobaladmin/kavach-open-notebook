@@ -7,7 +7,7 @@ from typing import List, Optional
 from loguru import logger
 
 from api.client import api_client
-from open_notebook.domain.notebook import Note
+from i_Notes.domain.i_Notes import Note
 
 
 class NotesService:
@@ -16,9 +16,9 @@ class NotesService:
     def __init__(self):
         logger.info("Using API for notes operations")
 
-    def get_all_notes(self, notebook_id: Optional[str] = None) -> List[Note]:
-        """Get all notes with optional notebook filtering."""
-        notes_data = api_client.get_notes(notebook_id=notebook_id)
+    def get_all_notes(self, i_Notes_id: Optional[str] = None) -> List[Note]:
+        """Get all notes with optional i_Notes_id filtering."""
+        notes_data = api_client.get_notes(i_Notes_id=i_Notes_id)
         # Convert API response to Note objects
         notes = []
         for note_data in notes_data:
@@ -54,11 +54,11 @@ class NotesService:
         content: str,
         title: Optional[str] = None,
         note_type: str = "human",
-        notebook_id: Optional[str] = None,
+        i_Notes_id: Optional[str] = None,
     ) -> Note:
         """Create a new note."""
         note_response = api_client.create_note(
-            content=content, title=title, note_type=note_type, notebook_id=notebook_id
+            content=content, title=title, note_type=note_type, i_Notes_id=i_Notes_id
         )
         note_data = (
             note_response if isinstance(note_response, dict) else note_response[0]

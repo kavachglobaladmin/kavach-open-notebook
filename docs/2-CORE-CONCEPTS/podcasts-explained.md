@@ -1,6 +1,6 @@
 # Podcasts Explained - Research as Audio Dialogue
 
-Podcasts are Open Notebook's highest-level transformation: converting your research into audio dialogue for a different consumption pattern.
+Podcasts are Open i_Notes's highest-level transformation: converting your research into audio dialogue for a different consumption pattern.
 
 ---
 
@@ -40,15 +40,15 @@ After (Podcast):
 
 ---
 
-## What Makes It Special: Open Notebook vs. Competitors
+## What Makes It Special: Open i_Notes vs. Competitors
 
-### Google Notebook LM Podcasts
+### Google i_Notes LM Podcasts
 - **Fixed format**: 2 hosts, always conversational
 - **Limited customization**: You can't choose who the "hosts" are
 - **One TTS voice per speaker**: Can't customize voices
 - **Only uses cloud services**: No local options
 
-### Open Notebook Podcasts
+### Open i_Notes Podcasts
 - **Customizable format**: 1-4 speakers, you design them
 - **Rich speaker profiles**: Create personas with backstories and expertise
 - **Multiple TTS options**:
@@ -67,7 +67,7 @@ After (Podcast):
 
 You choose what goes into the podcast:
 ```
-Notebook content → Which sources? → Which notes?
+i_Notes content → Which sources? → Which notes?
                 → Which topics to focus on?
                 → Depth of coverage?
 ```
@@ -196,7 +196,7 @@ Podcasts are generated in the background. You upload → system processes → yo
 **Why?** Podcast generation takes time (10+ minutes for a 30-minute episode). Blocking would lock up your interface.
 
 ### 2. Multi-Speaker Support
-Unlike Google Notebook LM (always 2 hosts), you choose 1-4 speakers.
+Unlike Google i_Notes LM (always 2 hosts), you choose 1-4 speakers.
 
 **Why?** Different discussions work better with different formats:
 - Expert monologue (1 speaker)
@@ -232,7 +232,7 @@ Can generate podcasts entirely offline with local text-to-speech.
 Traditional: Academic paper → PDF
 Problem: Hard to consume, linear reading required
 
-Open Notebook:
+Open i_Notes:
 Research materials → Podcast (expert explaining methodology)
                   → Podcast (debate format: different interpretations)
                   → Different consumption for different audiences
@@ -306,7 +306,7 @@ New team member listens, gets context faster than reading 100 documents
 ## How Podcasts Fit Into Your Workflow
 
 ```
-1. Build notebook (add sources)
+1. Build i_Notes (add sources)
    ↓
 2. Apply transformations (extract insights)
    ↓
@@ -361,7 +361,7 @@ Each tells the same story from different angles.
 ```
 Your outline → API call to TTS provider
             → Audio returned
-            → Stored in your notebook
+            → Stored in your i_Notes
 
 Provider sees: Your outlined script (not raw sources)
 Privacy level: Medium (outline is shared, sources aren't)
@@ -371,7 +371,7 @@ Privacy level: Medium (outline is shared, sources aren't)
 ```
 Your outline → Local TTS engine (runs on your machine)
             → Audio generated locally
-            → Stored in your notebook
+            → Stored in your i_Notes
 
 Provider sees: Nothing
 Privacy level: Maximum (everything local)
@@ -416,7 +416,7 @@ A 30-minute podcast costs:
 | **Engagement** | Academic | Conversational |
 | **Accessibility** | Text-based | Audio-based |
 
-**In Open Notebook specifically:**
+**In Open i_Notes specifically:**
 - **Full customization** — you create speakers and format
 - **Privacy options** — local TTS for sensitive content
 - **Cost control** — choose TTS provider based on budget

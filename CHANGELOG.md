@@ -111,9 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Environment variable API keys deprecated in favor of Settings UI
 
 - **Security Enhancements**
-  - Docker secrets support via `_FILE` suffix pattern (e.g., `OPEN_NOTEBOOK_PASSWORD_FILE`)
+  - Docker secrets support via `_FILE` suffix pattern (e.g., `OPEN_i_Notes_PASSWORD_FILE`)
   - Default encryption key derived from "0p3n-N0t3b0ok" for easy setup (change in production!)
-  - Default password "open-notebook-change-me" for out-of-box experience (change in production!)
+  - Default password "open-i_Notes-change-me" for out-of-box experience (change in production!)
   - URL validation for SSRF protection - blocks private IPs and localhost (except for Ollama which runs locally)
   - Security warnings logged when using default credentials
 
@@ -186,7 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content-type aware text chunking with automatic HTML, Markdown, and plain text detection (#350, #142)
 - Unified embedding generation with mean pooling for large content that exceeds model context limits
 - Dedicated embedding commands: `embed_note`, `embed_insight`, `embed_source`
-- New utility modules: `chunking.py` and `embedding.py` in `open_notebook/utils/`
+- New utility modules: `chunking.py` and `embedding.py` in `open_i_Notes/utils/`
 - Japanese (ja-JP) language support (#450)
 
 ### Changed
@@ -243,7 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] - 2026-01-14
 
 ### Added
-- CTA button to empty state notebook list for better onboarding (#408)
+- CTA button to empty state i_Notes list for better onboarding (#408)
 - Offline deployment support for Docker containers (#414)
 
 ### Fixed
@@ -267,7 +267,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.4] - 2025-12-14
 
 ### Added
-- Infinite scroll for notebook sources - no more 50 source limit (#325)
+- Infinite scroll for i_Notes sources - no more 50 source limit (#325)
 - Markdown table rendering in chat responses, search results, and insights (#325)
 
 ### Fixed

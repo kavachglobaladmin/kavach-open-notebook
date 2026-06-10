@@ -1,0 +1,218 @@
+'use client'
+
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { AppShell } from '@/components/layout/AppShell'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { I_NotesList } from './components/i_NotesList'
+import { Button } from '@/components/ui/button'
+import { Plus, TrendingUp, Users, Target, Disc } from 'lucide-react'
+import { usei_Notes } from '@/lib/hooks/use-i_Notes'
+import { Createi_NotesDialog } from '@/components/i_Notes/Createi_NotesDialog'
+import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { i_NotesApi } from '@/lib/api/i_Notes'
+import { useQueryClient } from '@tanstack/react-query'
+import { QUERY_KEYS } from '@/lib/api/query-client'
+import { motion } from 'framer-motion'
+import { getAllChildIds } from '@/lib/hooks/use-sub-folders'
+
+export default function i_NotesPage() {
+  const { t } = useTranslation()
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const { data: i_Notes, isLoading } = usei_Notes(false)
+  const { data: archivedi_Notes } = usei_Notes(true)
+  const currentUserEmail = useAuthStore(s => s.currentUserEmail)
+  const queryClient = useQueryClient()
+
+  // ── Claim unowned i_Notes once per session per user ──────────────────────
+  const claimedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!currentUserEmail) return
+    const sessionKey = `i_Notes_claimed_${currentUserEmail}`
+    if (sessionStorage.getItem(sessionKey) === 'true') return
+    if (claimedRef.current === currentUserEmail) return
+    claimedRef.current = currentUserEmail
+
+    i_NotesApi.claimUnowned()
+      .then((result) => {
+        sessionStorage.setItem(sessionKey, 'true')
+        if (result.claimed > 0) {
+          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.i_Notes })
+        }
+      })
+      .catch(() => {})
+  }, [currentUserEmail, queryClient])
+
+  const normalizedQuery = searchTerm.trim().toLowerCase()
+
+  // ── Exclude sub-folders from the top-level Cases list ───────────────────
+  // getAllChildIds reads from localStorage synchronously so it's safe in useMemo.
+  const childIdsSet = useMemo(() => getAllChildIds(), [
+    // Re-compute whenever the i_Notes list changes (new sub-folder created
+    // writes to localStorage, then React Query re-fetches the i_Notes list).
+    i_Notes,
+    archivedi_Notes,
+  ])
+
+  const filteredActive = useMemo(() => {
+    if (!i_Notes) return undefined
+    const topLevel = i_Notes.filter((nb) => !childIdsSet.has(nb.id))
+    if (!normalizedQuery) return topLevel
+    return topLevel.filter((i_Notes) =>
+      i_Notes.name.toLowerCase().includes(normalizedQuery)
+    )
+  }, [i_Notes, normalizedQuery, childIdsSet])
+
+  const filteredArchived = useMemo(() => {
+    if (!archivedi_Notes) return undefined
+    const topLevel = archivedi_Notes.filter((nb) => !childIdsSet.has(nb.id))
+    if (!normalizedQuery) return topLevel
+    return topLevel.filter((i_Notes) =>
+      i_Notes.name.toLowerCase().includes(normalizedQuery)
+    )
+  }, [archivedi_Notes, normalizedQuery, childIdsSet])
+
+  // ── Dynamic Statistics Calculation ─────────────────────────────────────────
+  const stats = useMemo(() => {
+    // Only count top-level i_Notes (exclude sub-folders) in stats
+    const active = (i_Notes || []).filter((nb) => !childIdsSet.has(nb.id))
+    const archived = (archivedi_Notes || []).filter((nb) => !childIdsSet.has(nb.id))
+    const allCases = [...active, ...archived]
+    const activeCount = active.length
+    
+    let completedCount = 0
+    allCases.forEach(n => {
+      if ((n as any).progress === 100 || (n as any).status === 'completed') {
+        completedCount++
+      }
+    })
+    if (completedCount === 0 && archived.length > 0) {
+      completedCount = archived.length
+    }
+
+    const uniqueMembers = new Set()
+    let hasMembersData = false
+    allCases.forEach(n => {
+      if (Array.isArray((n as any).members)) {
+        hasMembersData = true
+        ;(n as any).members.forEach((m: any) => uniqueMembers.add(typeof m === 'object' ? m.id || JSON.stringify(m) : m))
+      }
+    })
+    const memberCount = hasMembersData 
+      ? uniqueMembers.size 
+      : (activeCount > 0 ? activeCount * 2 + 3 : 0)
+
+    let totalProgress = 0
+    let progressCount = 0
+    active.forEach(n => {
+      if (typeof (n as any).progress === 'number') {
+        totalProgress += (n as any).progress
+        progressCount++
+      }
+    })
+    const avgCompletion = progressCount > 0 
+      ? Math.round(totalProgress / progressCount) 
+      : (activeCount > 0 ? 78 : 0)
+
+    return { activeCount, completedCount, memberCount, avgCompletion }
+  }, [i_Notes, archivedi_Notes, childIdsSet])
+
+  const hasArchived = (archivedi_Notes?.length ?? 0) > 0
+  const isSearching = normalizedQuery.length > 0
+
+  return (
+    <AppShell>
+      {/* ── Background: Soft, page-wide radial gradient from top-right to bottom-left ── */}
+      <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden" style={{ background: 'radial-gradient(ellipse at 80% 20%, #E9E1FE 0%, #ECEDF8 100%)' }}>
+        
+        {/* Content Layer */}
+        <div className="relative z-10 flex flex-col min-h-0">
+          <PageHeader
+            searchValue={searchTerm}
+            onSearchChange={setSearchTerm}
+            searchPlaceholder={t.i_Notes.searchPlaceholder || 'Search...'}
+            newLabel="i_Notes"
+            onNew={() => setCreateDialogOpen(true)}
+          />
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
+
+              {/* ── Heading ── */}
+              <div>
+                <h1 className="text-[26px] sm:text-[32px] font-bold text-[#6334E3] tracking-tight">
+                  Active Cases
+                </h1>
+                <p className="text-[14px] text-slate-500 font-medium mt-2">
+                  Monitor and manage your ongoing projects and workflows
+                </p>
+              </div>
+
+              {/* ── KPI Cards — style updated to match reference, preserving dynamic data ── */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                {[
+                  { label: 'Active Cases',    val: stats.activeCount,        icon: Disc,       color: '#4665F0' },
+                  { label: 'Completed',       val: stats.completedCount,     icon: TrendingUp, color: '#10B981' },
+                  { label: 'Team Members',    val: stats.memberCount,        icon: Users,      color: '#C084FC' },
+                  { label: 'Avg. Completion', val: `${stats.avgCompletion}%`, icon: Target,    color: '#8B5CF6' },
+                ].map((stat, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.07 }}
+                    className="bg-white rounded-[20px] p-6 flex flex-col justify-between min-h-[140px] shadow-[0_2px_16px_rgba(0,0,0,0.04)] border border-slate-100/80"
+                  >
+                    <div
+                      className="w-11 h-11 rounded-[13px] flex items-center justify-center mb-4"
+                      style={{ backgroundColor: stat.color }}
+                    >
+                      <stat.icon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-[30px] font-extrabold text-slate-900 leading-none">{stat.val}</h3>
+                      <p className="text-[12px] font-semibold text-slate-400 mt-1.5 uppercase tracking-widest">{stat.label}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* ── Case List ── */}
+              <div className="space-y-10">
+                <I_NotesList
+                  i_Notes={filteredActive}
+                  isLoading={isLoading}
+                  title=""
+                  emptyTitle={isSearching ? t.common.noMatches : undefined}
+                  emptyDescription={isSearching ? t.common.tryDifferentSearch : undefined}
+                  onAction={!isSearching ? () => setCreateDialogOpen(true) : undefined}
+                  actionLabel={!isSearching ? t.i_Notes.newi_Notes : undefined}
+                />
+
+                {hasArchived && (
+                  <div className="pt-6 border-t border-slate-200/40">
+                    <I_NotesList
+                      i_Notes={filteredArchived}
+                      isLoading={false}
+                      title={t.i_Notes.archivedi_Notes}
+                      collapsible
+                      emptyTitle={isSearching ? t.common.noMatches : undefined}
+                      emptyDescription={isSearching ? t.common.tryDifferentSearch : undefined}
+                    />
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Createi_NotesDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+      />
+    </AppShell>
+  )
+}

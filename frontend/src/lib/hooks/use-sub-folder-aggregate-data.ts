@@ -6,7 +6,7 @@ import { useQueries } from '@tanstack/react-query'
 import { notesApi } from '@/lib/api/notes'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import { sourcesApi } from '@/lib/api/sources'
-import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { usei_Notes } from '@/lib/hooks/use-i_Notes'
 import type { NoteResponse, SourceListResponse } from '@/lib/types/api'
 
 export interface SubFolderAggregateContext {
@@ -33,17 +33,17 @@ function mergeById<T extends { id: string }>(collections: T[][]): T[] {
   return Array.from(deduped.values())
 }
 
-function useNotebookLookup() {
-  const { data: activeNotebooks, isLoading: loadingActive } = useNotebooks(false)
-  const { data: archivedNotebooks, isLoading: loadingArchived } = useNotebooks(true)
+function usei_NotesLookup() {
+  const { data: activei_Notess, isLoading: loadingActive } = usei_Notes(false)
+  const { data: archivedi_Notess, isLoading: loadingArchived } = usei_Notes(true)
 
   const lookup = useMemo(() => {
     const lookup = new Map<string, { id: string; name: string }>()
-    ;[...(activeNotebooks ?? []), ...(archivedNotebooks ?? [])].forEach((notebook) => {
-      lookup.set(notebook.id, { id: notebook.id, name: notebook.name })
+    ;[...(activei_Notess ?? []), ...(archivedi_Notess ?? [])].forEach((i_Notes) => {
+      lookup.set(i_Notes.id, { id: i_Notes.id, name: i_Notes.name })
     })
     return lookup
-  }, [activeNotebooks, archivedNotebooks])
+  }, [activei_Notess, archivedi_Notess])
 
   return {
     lookup,
@@ -51,18 +51,18 @@ function useNotebookLookup() {
   }
 }
 
-export function useSubFolderAggregateData(notebookIds: string[]): AggregateResult {
-  const childNotebookIds = useMemo(
-    () => Array.from(new Set((notebookIds ?? []).filter(Boolean))),
-    [notebookIds],
+export function useSubFolderAggregateData(i_NotesIds: string[]): AggregateResult {
+  const childi_NotesIds = useMemo(
+    () => Array.from(new Set((i_NotesIds ?? []).filter(Boolean))),
+    [i_NotesIds],
   )
 
   const sourcesQueries = useQueries({
-    queries: childNotebookIds.map((id) => ({
+    queries: childi_NotesIds.map((id) => ({
       queryKey: QUERY_KEYS.sources(id),
       queryFn: () =>
         sourcesApi.list({
-          notebook_id: id,
+          i_Notes_id: id,
           limit: 500,
           offset: 0,
           sort_by: 'updated',
@@ -73,19 +73,19 @@ export function useSubFolderAggregateData(notebookIds: string[]): AggregateResul
   })
 
   const notesQueries = useQueries({
-    queries: childNotebookIds.map((id) => ({
+    queries: childi_NotesIds.map((id) => ({
       queryKey: QUERY_KEYS.notes(id),
-      queryFn: () => notesApi.list({ notebook_id: id }),
+      queryFn: () => notesApi.list({ i_Notes_id: id }),
       enabled: !!id,
     })),
   })
 
-  const { lookup: notebookLookup, loading: notebookLoading } = useNotebookLookup()
+  const { lookup: i_NotesLookup, loading: i_NotesLoading } = usei_NotesLookup()
 
   const sourcesDataStamp = sourcesQueries.map((query) => query.dataUpdatedAt).join('|')
   const notesDataStamp = notesQueries.map((query) => query.dataUpdatedAt).join('|')
-  const notebookStamp = Array.from(notebookLookup.values())
-    .map((notebook) => `${notebook.id}:${notebook.name}`)
+  const i_NotesStamp = Array.from(i_NotesLookup.values())
+    .map((i_Notes) => `${i_Notes.id}:${i_Notes.name}`)
     .join('|')
 
   const sourcesCacheRef = useRef<{ stamp: string; value: SourceListResponse[] }>({
@@ -117,15 +117,15 @@ export function useSubFolderAggregateData(notebookIds: string[]): AggregateResul
     stamp: '',
     value: [],
   })
-  const folderContextsStamp = `${childNotebookIds.join('|')}::${sourcesDataStamp}::${notesDataStamp}::${notebookStamp}`
+  const folderContextsStamp = `${childi_NotesIds.join('|')}::${sourcesDataStamp}::${notesDataStamp}::${i_NotesStamp}`
   if (folderContextsCacheRef.current.stamp !== folderContextsStamp) {
     folderContextsCacheRef.current = {
       stamp: folderContextsStamp,
-      value: childNotebookIds.map((notebookId, index) => {
-        const notebook = notebookLookup.get(notebookId)
+      value: childi_NotesIds.map((i_NotesId, index) => {
+        const i_Notes = i_NotesLookup.get(i_NotesId)
         return {
-          id: notebookId,
-          name: notebook?.name ?? notebookId,
+          id: i_NotesId,
+          name: i_Notes?.name ?? i_NotesId,
           sources: sourcesQueries[index]?.data ?? [],
           notes: notesQueries[index]?.data ?? [],
         }
@@ -136,7 +136,7 @@ export function useSubFolderAggregateData(notebookIds: string[]): AggregateResul
   const loading =
     sourcesQueries.some((query) => query.isLoading) ||
     notesQueries.some((query) => query.isLoading) ||
-    notebookLoading
+    i_NotesLoading
 
   return {
     sources: sourcesCacheRef.current.value,

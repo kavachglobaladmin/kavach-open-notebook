@@ -1,4 +1,0 @@
--- Migration 24 rollback: Remove translated_content and content_language fields
-
-REMOVE FIELD translated_content ON TABLE source;
-REMOVE FIELD content_language ON TABLE source;

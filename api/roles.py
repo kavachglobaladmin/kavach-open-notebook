@@ -1,7 +1,7 @@
 import os
 from typing import Literal, Sequence
 
-from open_notebook.database.repository import repo_query
+from i_Notes.database.repository import repo_query
 
 UserRole = Literal["user", "admin", "super_admin"]
 

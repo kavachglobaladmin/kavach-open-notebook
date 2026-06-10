@@ -215,7 +215,7 @@ export function TransformationEditorDialog({ open, onOpenChange, transformation 
                 {/* Description */}
                 <div className="space-y-1.5">
                   <Label htmlFor={descriptionId} className="text-[13px] font-bold text-slate-700">
-                    {t.notebooks.addDescription.replace('...', '')}
+                    {t.i_Notes.addDescription.replace('...', '')}
                   </Label>
                   <Controller
                     control={control}

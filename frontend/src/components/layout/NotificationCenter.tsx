@@ -19,7 +19,7 @@ export interface Notification {
   showInNotificationCenter?: boolean
 }
 
-const NOTIFICATIONS_STORAGE_KEY = 'open_notebook_notifications_v1'
+const NOTIFICATIONS_STORAGE_KEY = 'open_i_Notes_notifications_v1'
 
 type StoredNotification = Omit<Notification, 'timestamp'> & {
   timestamp: string

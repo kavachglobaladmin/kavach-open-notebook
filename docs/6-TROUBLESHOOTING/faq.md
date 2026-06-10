@@ -1,28 +1,28 @@
 # Frequently Asked Questions
 
-Common questions about Open Notebook usage, configuration, and best practices.
+Common questions about Open i_Notes usage, configuration, and best practices.
 
 ---
 
 ## General Usage
 
-### What is Open Notebook?
+### What is Open i_Notes?
 
-Open Notebook is an open-source, privacy-focused alternative to Google's Notebook LM. It allows you to:
-- Create and manage research notebooks
+Open i_Notes is an open-source, privacy-focused alternative to Google's i_Notes LM. It allows you to:
+- Create and manage research i_Notes
 - Chat with your documents using AI
 - Generate podcasts from your content
 - Search across all your sources with semantic search
 - Transform and analyze your content
 
-### How is it different from Google Notebook LM?
+### How is it different from Google i_Notes LM?
 
 **Privacy**: Your data stays local by default. Only your chosen AI providers receive queries.
 **Flexibility**: Support for 15+ AI providers (OpenAI, Anthropic, Google, local models, etc.)
 **Customization**: Open source, so you can modify and extend functionality
 **Control**: You control your data, models, and processing
 
-### Can I use Open Notebook offline?
+### Can I use Open i_Notes offline?
 
 **Partially**: The application runs locally, but requires internet for:
 - AI model API calls (unless using local models like Ollama)
@@ -122,22 +122,22 @@ tar -xzf backup-20240101.tar.gz
 - Use shared network storage for data directories
 - Manual backup/restore between devices
 
-### What happens if I delete a notebook?
+### What happens if I delete a i_Notes?
 
-**Soft deletion**: Notebooks are marked as archived, not permanently deleted.
-**Recovery**: Archived notebooks can be restored from the database.
+**Soft deletion**: i_Notes are marked as archived, not permanently deleted.
+**Recovery**: Archived i_Notes can be restored from the database.
 
 ---
 
 ## Best Practices
 
-### How should I organize my notebooks?
+### How should I organize my i_Notes?
 
-- **By topic**: Separate notebooks for different research areas
-- **By project**: One notebook per project or course
-- **By time period**: Monthly or quarterly notebooks
+- **By topic**: Separate i_Notes for different research areas
+- **By project**: One i_Notes per project or course
+- **By time period**: Monthly or quarterly i_Notes
 
-**Recommended size**: 20-100 sources per notebook for best performance.
+**Recommended size**: 20-100 sources per i_Notes for best performance.
 
 ### How do I get the best search results?
 
@@ -156,7 +156,7 @@ tar -xzf backup-20240101.tar.gz
 ### What are the security best practices?
 
 - Never share API keys publicly
-- Use `OPEN_NOTEBOOK_PASSWORD` for public deployments
+- Use `OPEN_i_Notes_PASSWORD` for public deployments
 - Use HTTPS for production (via reverse proxy)
 - Keep Docker images updated
 - Encrypt backups if they contain sensitive data
@@ -165,14 +165,14 @@ tar -xzf backup-20240101.tar.gz
 
 ## Technical Questions
 
-### Can I use Open Notebook programmatically?
+### Can I use Open i_Notes programmatically?
 
-**Yes**: Open Notebook provides a REST API:
+**Yes**: Open i_Notes provides a REST API:
 - Full API documentation at `http://localhost:5055/docs`
 - Support for all UI functionality
 - Authentication via password header
 
-### Can I run Open Notebook in production?
+### Can I run Open i_Notes in production?
 
 **Yes**: Designed for production use with:
 - Docker deployment
@@ -241,7 +241,7 @@ Include:
 - System information
 - Configuration details (without API keys)
 
-Submit to: [GitHub Issues](https://github.com/lfnovo/open-notebook/issues)
+Submit to: [GitHub Issues](https://github.com/lfnovo/open-i_Notes/issues)
 
 ### Where can I get help?
 

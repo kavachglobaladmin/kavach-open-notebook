@@ -42,9 +42,9 @@ export const enUS = {
     delete: 'Delete',
     // ...
   },
-  notebooks: {
-    title: 'Notebooks',
-    createNew: 'Create Notebook',
+  i_Notes: {
+    title: 'i_Notes',
+    createNew: 'Create i_Notes',
     // ...
   },
   // ... other sections
@@ -53,7 +53,7 @@ export const enUS = {
 
 **Sections**:
 - `common`: Shared UI elements (buttons, labels, actions)
-- `notebooks`, `sources`, `notes`: Feature-specific strings
+- `i_Notes`, `sources`, `notes`: Feature-specific strings
 - `chat`, `search`, `podcasts`: Module-specific strings
 - `models`, `transformations`, `settings`: Configuration UI
 - `advanced`: System administration strings
@@ -68,7 +68,7 @@ function MyComponent() {
   const { t, language, setLanguage } = useTranslation()
 
   // Nested property access (Proxy-based)
-  return <h1>{t.notebooks.title}</h1>
+  return <h1>{t.i_Notes.title}</h1>
 
   // With interpolation
   return <p>{t.common.updated.replace('{time}', timeAgo)}</p>

@@ -82,7 +82,7 @@ import { toast } from '@/lib/notifications/toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
 import { FormattedViewDialog } from '@/components/source/FormattedViewDialog'
-import { NotebookAssociations } from '@/components/source/NotebookAssociations'
+import { i_NotesAssociations } from '@/components/source/i_NotesAssociations'
 
 // Safe paginated content renderer — avoids browser crash on large documents
 const PAGE = 3000
@@ -1487,9 +1487,9 @@ export function SourceDetailContent({
               </CardContent>
             </Card>
 
-            <NotebookAssociations
+            <i_NotesAssociations
               sourceId={sourceId}
-              currentNotebookIds={source.notebooks || []}
+              currenti_NotesIds={source.i_Notes || []}
               onSave={fetchSource}
             />
           </TabsContent>

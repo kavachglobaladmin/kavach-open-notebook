@@ -31,7 +31,7 @@ import { hasRoleAccess } from '@/lib/auth/roles'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
-import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
+import { SaveToi_NotesDialog } from '@/components/search/SaveToi_NotesDialog'
 import { cn } from '@/lib/utils'
 
 function escapeRegExp(value: string): string {
@@ -194,7 +194,7 @@ export default function SearchPage() {
         <PageHeader 
           searchValue={query} 
           onSearchChange={(val) => setQuery(val)}
-          newLabel="NOTEBOOK"
+          newLabel="i_Notes"
         />
         
         {/* Scrollable Content Area */}
@@ -476,7 +476,7 @@ export default function SearchPage() {
       )}
 
       {ask.finalAnswer && (
-        <SaveToNotebooksDialog
+        <SaveToi_NotessDialog
           open={showSaveDialog}
           onOpenChange={setShowSaveDialog}
           question={askQuestion}

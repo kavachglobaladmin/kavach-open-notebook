@@ -61,7 +61,7 @@ export default function SourceDetailPage() {
     //       <PageHeader
     //         searchValue={searchTerm}
     //         onSearchChange={(val) => setSearchTerm(val)}
-    //         newLabel="NOTEBOOK"
+    //         newLabel="i_Notes"
     //       />
 
 
@@ -155,7 +155,7 @@ export default function SourceDetailPage() {
           <PageHeader
             searchValue={searchTerm}
             onSearchChange={(val) => setSearchTerm(val)}
-            newLabel="NOTEBOOK"
+            newLabel="i_Notes"
           />
         </div>
 

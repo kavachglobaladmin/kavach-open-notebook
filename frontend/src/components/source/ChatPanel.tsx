@@ -25,7 +25,7 @@ import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { toast } from '@/lib/notifications/toast'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
-interface NotebookContextStats {
+interface i_NotesContextStats {
   sourcesInsights: number
   sourcesFull: number
   notesCount: number
@@ -52,11 +52,11 @@ interface ChatPanelProps {
   title?: string
   subtitle?: string
   headerActions?: React.ReactNode
-  contextType?: 'source' | 'notebook'
-  // Notebook context stats (for notebook chat)
-  notebookContextStats?: NotebookContextStats
-  // Notebook ID for saving notes
-  notebookId?: string
+  contextType?: 'source' | 'i_Notes'
+  // i_Notes context stats (for i_Notes chat)
+  i_NotesContextStats?: i_NotesContextStats
+  // i_Notes ID for saving notes
+  i_NotesId?: string
   // Suggested follow-up questions
   suggestedQuestions?: string[]
   // Source title for source chat context display
@@ -72,7 +72,7 @@ interface ChatPanelProps {
     type: ReferenceType
     id: string
     title?: string | null
-    notebookNames?: string[]
+    i_NotesNames?: string[]
   }>
 }
 
@@ -94,8 +94,8 @@ export function ChatPanel({
   subtitle,
   headerActions,
   contextType = 'source',
-  notebookContextStats,
-  notebookId,
+  i_NotesContextStats,
+  i_NotesId,
   suggestedQuestions = [],
   sourceTitle,
   sourceInsightsCount,
@@ -171,15 +171,15 @@ export function ChatPanel({
   const keyHint = 'Enter'
 
   const connectedSourcesCount = useMemo(() => {
-    if (contextType === 'notebook') {
-      const statsCount = notebookContextStats
-        ? (notebookContextStats.sourcesInsights + notebookContextStats.sourcesFull)
+    if (contextType === 'i_Notes') {
+      const statsCount = i_NotesContextStats
+        ? (i_NotesContextStats.sourcesInsights + i_NotesContextStats.sourcesFull)
         : 0
       return statsCount || (contextIndicators?.sources?.length ?? 0)
     }
     // For source chat, the "connected sources" is at least the current source.
     return contextIndicators?.sources?.length ?? 1
-  }, [contextType, notebookContextStats, contextIndicators?.sources?.length])
+  }, [contextType, i_NotesContextStats, contextIndicators?.sources?.length])
 
   const lastMessage = messages[messages.length - 1]
   const hasPendingAiMessage = Boolean(
@@ -214,7 +214,7 @@ export function ChatPanel({
             <span className="text-[15px] font-bold text-slate-900 leading-none">
               {title || (contextType === 'source'
                 ? t.chat.chatWith.replace('{name}', t.navigation.sources)
-                : t.chat.chatWith.replace('{name}', t.common.notebook))}
+                : t.chat.chatWith.replace('{name}', t.common.i_Notes))}
             </span>
             {subtitle && (
               <span className="text-[11px] font-medium text-slate-400 mt-0.5">
@@ -272,7 +272,7 @@ export function ChatPanel({
                 <Bot className="h-7 w-7 text-slate-400" />
               </div>
               <p className="text-[13px] font-medium text-slate-500">
-                {t.chat.startConversation.replace('{type}', contextType === 'source' ? t.navigation.sources : t.common.notebook)}
+                {t.chat.startConversation.replace('{type}', contextType === 'source' ? t.navigation.sources : t.common.i_Notes)}
               </p>
               <p className="text-[11px] text-slate-400 mt-1">{t.chat.askQuestions}</p>
             </div>
@@ -320,7 +320,7 @@ export function ChatPanel({
                   {message.type === 'ai' && message.content?.trim() && (
                     <MessageActions
                       content={message.content}
-                      notebookId={notebookId}
+                      i_NotesId={i_NotesId}
                     />
                   )}
                 </div>
@@ -366,7 +366,7 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* ── Context bar — source chat uses ContextIndicator same as notebook ── */}
+      {/* ── Context bar — source chat uses ContextIndicator same as i_Notes ── */}
       {contextType === 'source' && (contextIndicators || sourceInsightsCount !== undefined) && (
         <ContextIndicator
           sourcesInsights={
@@ -394,14 +394,14 @@ export function ChatPanel({
         />
       )}
 
-      {/* Notebook context indicator — single row with source+insight counts + token/char stats */}
-      {notebookContextStats && (
+      {/* i_Notes context indicator — single row with source+insight counts + token/char stats */}
+      {i_NotesContextStats && (
         <ContextIndicator
-          sourcesInsights={notebookContextStats.sourcesInsights}
-          sourcesFull={notebookContextStats.sourcesFull}
-          notesCount={notebookContextStats.notesCount}
-          tokenCount={notebookContextStats.tokenCount}
-          charCount={notebookContextStats.charCount}
+          sourcesInsights={i_NotesContextStats.sourcesInsights}
+          sourcesFull={i_NotesContextStats.sourcesFull}
+          notesCount={i_NotesContextStats.notesCount}
+          tokenCount={i_NotesContextStats.tokenCount}
+          charCount={i_NotesContextStats.charCount}
         />
       )}
 
@@ -446,7 +446,7 @@ const AIMessageContent = React.memo(function AIMessageContentComponent({
     type: ReferenceType
     id: string
     title?: string | null
-    notebookNames?: string[]
+    i_NotesNames?: string[]
   }>
 }) {
   const { t } = useTranslation()
@@ -469,7 +469,7 @@ const AIMessageContent = React.memo(function AIMessageContentComponent({
         return {
           ...ref,
           title: catalogEntry?.title ?? null,
-          notebookNames: catalogEntry?.notebookNames ?? [],
+          i_NotesNames: catalogEntry?.i_NotesNames ?? [],
         }
       })
   }, [content, referenceCatalog])

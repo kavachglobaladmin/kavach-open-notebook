@@ -1,6 +1,6 @@
 """
 Mobile / CDR / SMS dump analysis endpoint.
-Parses telecom-style CSV or text exports via open_notebook.mobile_data.pipeline.
+Parses telecom-style CSV or text exports via open_i_Notes.mobile_data.pipeline.
 Results are cached in the analysis_cache table — subsequent calls return the cached
 result unless force_refresh=true is passed.
 """
@@ -9,7 +9,7 @@ from loguru import logger
 from pprint import pprint
 import traceback
 
-from open_notebook.domain.notebook import Source
+from i_Notes.domain.i_Notes import Source
 from api.routers.bank_analysis import _load_cached_analysis, _save_cached_analysis
 
 router = APIRouter()
@@ -140,7 +140,7 @@ async def analyze_mobile_data(
         blob = ""
 
         import asyncio
-        from open_notebook.mobile_data.pipeline import (
+        from i_Notes.mobile_data.pipeline import (
             build_searchable_text,
             read_file_text,
             run_pipeline_from_text,

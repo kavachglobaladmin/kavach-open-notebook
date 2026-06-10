@@ -8,14 +8,14 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { superChatApi } from '@/lib/api/super-chat'
 import { QUERY_KEYS } from '@/lib/api/query-client'
 import {
-  NotebookChatMessage,
-  CreateNotebookChatSessionRequest,
-  UpdateNotebookChatSessionRequest,
+  i_NotesChatMessage,
+  Createi_NotesChatSessionRequest,
+  Updatei_NotesChatSessionRequest,
   SourceListResponse,
   NoteResponse,
   BuildContextResponse,
 } from '@/lib/types/api'
-import { ContextSelections } from '@/app/(dashboard)/notebooks/[id]/page'
+import { ContextSelections } from '@/app/(dashboard)/i_Notes/[id]/page'
 
 function getEffectiveSourceMode(
   source: SourceListResponse,
@@ -39,8 +39,8 @@ type FolderContext = {
 }
 
 function mergeSessionMessages(
-  previousMessages: NotebookChatMessage[],
-  serverMessages: NotebookChatMessage[],
+  previousMessages: i_NotesChatMessage[],
+  serverMessages: i_NotesChatMessage[],
 ) {
   const getTimestamp = (timestamp?: string | null) => {
     if (!timestamp) return null
@@ -115,7 +115,7 @@ function mergeSessionMessages(
 }
 
 interface UseSuperChatParams {
-  notebookId: string
+  i_NotesId: string
   sources: SourceListResponse[]
   notes: NoteResponse[]
   contextSelections: ContextSelections
@@ -123,7 +123,7 @@ interface UseSuperChatParams {
 }
 
 export function useSuperChat({
-  notebookId,
+  i_NotesId,
   sources,
   notes,
   contextSelections,
@@ -132,7 +132,7 @@ export function useSuperChat({
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<NotebookChatMessage[]>([])
+  const [messages, setMessages] = useState<i_NotesChatMessage[]>([])
   const [isSending, setIsSending] = useState(false)
   const isSendingRef = useRef(false)
   const [tokenCount, setTokenCount] = useState<number>(0)
@@ -144,9 +144,9 @@ export function useSuperChat({
     data: sessions = [],
     isLoading: loadingSessions,
   } = useQuery({
-    queryKey: QUERY_KEYS.superChatSessions(notebookId),
-    queryFn: () => superChatApi.listSessions(notebookId),
-    enabled: !!notebookId,
+    queryKey: QUERY_KEYS.superChatSessions(i_NotesId),
+    queryFn: () => superChatApi.listSessions(i_NotesId),
+    enabled: !!i_NotesId,
   })
 
   const {
@@ -155,7 +155,7 @@ export function useSuperChat({
   } = useQuery({
     queryKey: QUERY_KEYS.superChatSession(currentSessionId!),
     queryFn: () => superChatApi.getSession(currentSessionId!),
-    enabled: !!notebookId && !!currentSessionId,
+    enabled: !!i_NotesId && !!currentSessionId,
   })
 
   useEffect(() => {
@@ -190,10 +190,10 @@ export function useSuperChat({
   }, [sessions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const createSessionMutation = useMutation({
-    mutationFn: (data: CreateNotebookChatSessionRequest) => superChatApi.createSession(data),
+    mutationFn: (data: Createi_NotesChatSessionRequest) => superChatApi.createSession(data),
     onSuccess: (newSession) => {
       queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.superChatSessions(notebookId),
+        queryKey: QUERY_KEYS.superChatSessions(i_NotesId),
       })
       setCurrentSessionId(newSession.id)
       toast.success(t.chat.sessionCreated)
@@ -216,11 +216,11 @@ export function useSuperChat({
       data,
     }: {
       sessionId: string
-      data: UpdateNotebookChatSessionRequest
+      data: Updatei_NotesChatSessionRequest
     }) => superChatApi.updateSession(sessionId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.superChatSessions(notebookId),
+        queryKey: QUERY_KEYS.superChatSessions(i_NotesId),
       })
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.superChatSession(currentSessionId!),
@@ -246,7 +246,7 @@ export function useSuperChat({
         queryKey: QUERY_KEYS.superChatSession(deletedId),
       })
       queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.superChatSessions(notebookId),
+        queryKey: QUERY_KEYS.superChatSessions(i_NotesId),
       })
       if (currentSessionId === deletedId) {
         setCurrentSessionId(null)
@@ -317,7 +317,7 @@ export function useSuperChat({
     })
 
     const response: BuildContextResponse = await superChatApi.buildContext({
-      notebook_id: notebookId,
+      i_Notes_id: i_NotesId,
       context_config,
       folder_structure: folderContexts.map((folder) => {
         const selectedSources = folder.sources
@@ -370,7 +370,7 @@ export function useSuperChat({
       ...response.context,
       folder_structure,
     }
-  }, [notebookId, sources, notes, contextSelections, folderContexts])
+  }, [i_NotesId, sources, notes, contextSelections, folderContexts])
 
   const sendMessage = useCallback(
     async (message: string, modelOverride?: string) => {
@@ -381,7 +381,7 @@ export function useSuperChat({
           const defaultTitle =
             message.length > 30 ? `${message.substring(0, 30)}...` : message
           const newSession = await superChatApi.createSession({
-            notebook_id: notebookId,
+            i_Notes_id: i_NotesId,
             title: defaultTitle,
             model_override: pendingModelOverride ?? undefined,
           })
@@ -389,7 +389,7 @@ export function useSuperChat({
           setCurrentSessionId(sessionId)
           setPendingModelOverride(null)
           queryClient.invalidateQueries({
-            queryKey: QUERY_KEYS.superChatSessions(notebookId),
+            queryKey: QUERY_KEYS.superChatSessions(i_NotesId),
           })
         } catch (err: unknown) {
           const error = err as {
@@ -407,7 +407,7 @@ export function useSuperChat({
         }
       }
 
-      const userMessage: NotebookChatMessage = {
+      const userMessage: i_NotesChatMessage = {
         id: `temp-${Date.now()}`,
         type: 'human',
         content: message,
@@ -419,7 +419,7 @@ export function useSuperChat({
       setSuggestedQuestions([])
 
       const aiMessageId = `ai-${Date.now()}`
-      const aiMessage: NotebookChatMessage = {
+      const aiMessage: i_NotesChatMessage = {
         id: aiMessageId,
         type: 'ai',
         content: '',
@@ -481,7 +481,7 @@ export function useSuperChat({
       }
     },
     [
-      notebookId,
+      i_NotesId,
       currentSessionId,
       currentSession,
       pendingModelOverride,
@@ -499,15 +499,15 @@ export function useSuperChat({
   const createSession = useCallback(
     (title?: string) => {
       return createSessionMutation.mutate({
-        notebook_id: notebookId,
+        i_Notes_id: i_NotesId,
         title,
       })
     },
-    [createSessionMutation, notebookId],
+    [createSessionMutation, i_NotesId],
   )
 
   const updateSession = useCallback(
-    (sessionId: string, data: UpdateNotebookChatSessionRequest) => {
+    (sessionId: string, data: Updatei_NotesChatSessionRequest) => {
       return updateSessionMutation.mutate({
         sessionId,
         data,

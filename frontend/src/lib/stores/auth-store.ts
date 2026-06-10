@@ -266,7 +266,7 @@ export const useAuthStore = create<AuthState>()(
           // 'not-required' mode or legacy sessions
           const bearerToken = state.apiPassword ?? token
 
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
+          const response = await fetch(`${apiUrl}/api/i_Notes`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${bearerToken}`,

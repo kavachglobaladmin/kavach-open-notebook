@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document provides guidelines for writing tests in Open Notebook. Testing is critical to maintaining code quality and preventing regressions.
+This document provides guidelines for writing tests in Open i_Notes. Testing is critical to maintaining code quality and preventing regressions.
 
 ## Testing Philosophy
 
@@ -30,29 +30,29 @@ We use **pytest** with async support for all Python tests:
 ```python
 import pytest
 from httpx import AsyncClient
-from open_notebook.domain.notebook import Notebook
+from open_i_Notes.domain.i_Notes import i_Notes
 
 @pytest.mark.asyncio
-async def test_create_notebook():
-    """Test notebook creation."""
-    notebook = Notebook(name="Test Notebook", description="Test description")
-    await notebook.save()
+async def test_create_i_Notes():
+    """Test i_Notes creation."""
+    i_Notes = i_Notes(name="Test i_Notes", description="Test description")
+    await i_Notes.save()
 
-    assert notebook.id is not None
-    assert notebook.name == "Test Notebook"
-    assert notebook.created is not None
+    assert i_Notes.id is not None
+    assert i_Notes.name == "Test i_Notes"
+    assert i_Notes.created is not None
 
 @pytest.mark.asyncio
-async def test_api_create_notebook():
-    """Test notebook creation via API."""
+async def test_api_create_i_Notes():
+    """Test i_Notes creation via API."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.post(
-            "/api/notebooks",
-            json={"name": "Test Notebook", "description": "Test description"}
+            "/api/i_Notes",
+            json={"name": "Test i_Notes", "description": "Test description"}
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["name"] == "Test Notebook"
+        assert data["name"] == "Test i_Notes"
 ```
 
 ## Test Categories
@@ -63,17 +63,17 @@ Test individual functions and methods in isolation:
 
 ```python
 @pytest.mark.asyncio
-async def test_notebook_validation():
-    """Test that notebook name validation works."""
+async def test_i_Notes_validation():
+    """Test that i_Notes name validation works."""
     with pytest.raises(InvalidInputError):
-        Notebook(name="", description="test")
+        i_Notes(name="", description="test")
 
 @pytest.mark.asyncio
-async def test_notebook_archive():
-    """Test notebook archiving."""
-    notebook = Notebook(name="Test", description="")
-    notebook.archive()
-    assert notebook.archived is True
+async def test_i_Notes_archive():
+    """Test i_Notes archiving."""
+    i_Notes = i_Notes(name="Test", description="")
+    i_Notes.archive()
+    assert i_Notes.archived is True
 ```
 
 **Location**: `tests/unit/`
@@ -84,12 +84,12 @@ Test component interactions and database operations:
 
 ```python
 @pytest.mark.asyncio
-async def test_create_notebook_with_sources():
-    """Test creating a notebook and adding sources."""
-    notebook = await create_notebook(name="Research", description="")
-    source = await add_source(notebook_id=notebook.id, url="https://example.com")
+async def test_create_i_Notes_with_sources():
+    """Test creating a i_Notes and adding sources."""
+    i_Notes = await create_i_Notes(name="Research", description="")
+    source = await add_source(i_Notes_id=i_Notes.id, url="https://example.com")
 
-    retrieved = await get_notebook_with_sources(notebook.id)
+    retrieved = await get_i_Notes_with_sources(i_Notes.id)
     assert len(retrieved.sources) == 1
     assert retrieved.sources[0].id == source.id
 ```
@@ -102,20 +102,20 @@ Test HTTP endpoints and error responses:
 
 ```python
 @pytest.mark.asyncio
-async def test_get_notebooks_endpoint():
-    """Test GET /notebooks endpoint."""
+async def test_get_i_Notes_endpoint():
+    """Test GET /i_Notes endpoint."""
     async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get("/api/notebooks")
+        response = await client.get("/api/i_Notes")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
 
 @pytest.mark.asyncio
-async def test_create_notebook_validation():
+async def test_create_i_Notes_validation():
     """Test that invalid input is rejected."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         response = await client.post(
-            "/api/notebooks",
+            "/api/i_Notes",
             json={"name": "", "description": ""}
         )
         assert response.status_code == 400
@@ -129,23 +129,23 @@ Test data persistence and query correctness:
 
 ```python
 @pytest.mark.asyncio
-async def test_save_and_retrieve_notebook():
-    """Test saving and retrieving a notebook from database."""
-    notebook = Notebook(name="Test", description="desc")
-    await notebook.save()
+async def test_save_and_retrieve_i_Notes():
+    """Test saving and retrieving a i_Notes from database."""
+    i_Notes = i_Notes(name="Test", description="desc")
+    await i_Notes.save()
 
-    retrieved = await Notebook.get(notebook.id)
+    retrieved = await i_Notes.get(i_Notes.id)
     assert retrieved.name == "Test"
     assert retrieved.description == "desc"
 
 @pytest.mark.asyncio
 async def test_query_by_criteria():
-    """Test querying notebooks by criteria."""
-    await create_notebook("Active", "")
-    await create_notebook("Archived", "")
+    """Test querying i_Notes by criteria."""
+    await create_i_Notes("Active", "")
+    await create_i_Notes("Archived", "")
 
     active = await repo_query(
-        "SELECT * FROM notebook WHERE archived = false"
+        "SELECT * FROM i_Notes WHERE archived = false"
     )
     assert len(active) >= 1
 ```
@@ -163,19 +163,19 @@ uv run pytest
 ### Run Specific Test File
 
 ```bash
-uv run pytest tests/test_notebooks.py
+uv run pytest tests/test_i_Notes.py
 ```
 
 ### Run Specific Test Function
 
 ```bash
-uv run pytest tests/test_notebooks.py::test_create_notebook
+uv run pytest tests/test_i_Notes.py::test_create_i_Notes
 ```
 
 ### Run with Coverage Report
 
 ```bash
-uv run pytest --cov=open_notebook
+uv run pytest --cov=open_i_Notes
 ```
 
 ### Run Only Unit Tests
@@ -210,12 +210,12 @@ Use pytest fixtures for common setup and teardown:
 import pytest
 
 @pytest.fixture
-async def test_notebook():
-    """Create a test notebook."""
-    notebook = Notebook(name="Test Notebook", description="Test description")
-    await notebook.save()
-    yield notebook
-    await notebook.delete()
+async def test_i_Notes():
+    """Create a test i_Notes."""
+    i_Notes = i_Notes(name="Test i_Notes", description="Test description")
+    await i_Notes.save()
+    yield i_Notes
+    await i_Notes.delete()
 
 @pytest.fixture
 async def api_client():
@@ -224,15 +224,15 @@ async def api_client():
         yield client
 
 @pytest.fixture
-async def test_notebook_with_sources(test_notebook):
-    """Create a test notebook with sample sources."""
-    source1 = Source(notebook_id=test_notebook.id, url="https://example.com")
-    source2 = Source(notebook_id=test_notebook.id, url="https://example.org")
+async def test_i_Notes_with_sources(test_i_Notes):
+    """Create a test i_Notes with sample sources."""
+    source1 = Source(i_Notes_id=test_i_Notes.id, url="https://example.com")
+    source2 = Source(i_Notes_id=test_i_Notes.id, url="https://example.org")
     await source1.save()
     await source2.save()
 
-    test_notebook.sources = [source1, source2]
-    yield test_notebook
+    test_i_Notes.sources = [source1, source2]
+    yield test_i_Notes
 
     # Cleanup
     await source1.delete()
@@ -245,11 +245,11 @@ async def test_notebook_with_sources(test_notebook):
 
 ```python
 # Good - clearly describes what is being tested
-async def test_create_notebook_with_valid_name_succeeds():
+async def test_create_i_Notes_with_valid_name_succeeds():
     ...
 
 # Bad - vague about what's being tested
-async def test_notebook():
+async def test_i_Notes():
     ...
 ```
 
@@ -289,37 +289,37 @@ async def test_search_with_special_characters():
 
 ```python
 # Good - specific assertions
-assert notebook.name == "Test"
-assert len(notebook.sources) == 3
-assert notebook.created is not None
+assert i_Notes.name == "Test"
+assert len(i_Notes.sources) == 3
+assert i_Notes.created is not None
 
 # Less good - too broad
-assert notebook is not None
-assert notebook  # ambiguous what's being tested
+assert i_Notes is not None
+assert i_Notes  # ambiguous what's being tested
 ```
 
 ### 5. Test Both Success and Failure Cases
 
 ```python
 @pytest.mark.asyncio
-async def test_create_notebook_success():
-    """Test successful notebook creation."""
-    notebook = await create_notebook(name="Research", description="AI")
-    assert notebook.id is not None
-    assert notebook.name == "Research"
+async def test_create_i_Notes_success():
+    """Test successful i_Notes creation."""
+    i_Notes = await create_i_Notes(name="Research", description="AI")
+    assert i_Notes.id is not None
+    assert i_Notes.name == "Research"
 
 @pytest.mark.asyncio
-async def test_create_notebook_empty_name_fails():
+async def test_create_i_Notes_empty_name_fails():
     """Test that empty name raises error."""
     with pytest.raises(InvalidInputError):
-        await create_notebook(name="", description="")
+        await create_i_Notes(name="", description="")
 
 @pytest.mark.asyncio
-async def test_create_notebook_duplicate_fails():
+async def test_create_i_Notes_duplicate_fails():
     """Test that duplicate names are handled."""
-    await create_notebook(name="Research", description="")
+    await create_i_Notes(name="Research", description="")
     with pytest.raises(DuplicateError):
-        await create_notebook(name="Research", description="")
+        await create_i_Notes(name="Research", description="")
 ```
 
 ### 6. Keep Tests Independent
@@ -327,17 +327,17 @@ async def test_create_notebook_duplicate_fails():
 ```python
 # Good - test is self-contained
 @pytest.mark.asyncio
-async def test_archive_notebook():
-    notebook = Notebook(name="Test", description="")
-    await notebook.save()
-    await notebook.archive()
-    assert notebook.archived is True
+async def test_archive_i_Notes():
+    i_Notes = i_Notes(name="Test", description="")
+    await i_Notes.save()
+    await i_Notes.archive()
+    assert i_Notes.archived is True
 
 # Bad - depends on another test's state
 @pytest.mark.asyncio
-async def test_archive_existing_notebook():
-    # Assumes test_create_notebook ran first
-    await notebook.archive()  # notebook undefined
+async def test_archive_existing_i_Notes():
+    # Assumes test_create_i_Notes ran first
+    await i_Notes.archive()  # i_Notes undefined
 ```
 
 ### 7. Use Fixtures for Reusable Setup
@@ -362,7 +362,7 @@ async def test_protected_endpoint(client_with_auth):
 - Aim for 70%+ overall coverage
 - 90%+ coverage for critical business logic
 - Don't obsess over 100% - focus on meaningful tests
-- Use `--cov` flag to check coverage: `uv run pytest --cov=open_notebook`
+- Use `--cov` flag to check coverage: `uv run pytest --cov=open_i_Notes`
 
 ## Async Test Patterns
 
@@ -380,15 +380,15 @@ async def test_async_operation():
 
 ```python
 @pytest.mark.asyncio
-async def test_concurrent_notebook_creation():
-    """Test creating multiple notebooks concurrently."""
+async def test_concurrent_i_Notes_creation():
+    """Test creating multiple i_Notes concurrently."""
     tasks = [
-        create_notebook(f"Notebook {i}", "")
+        create_i_Notes(f"i_Notes {i}", "")
         for i in range(10)
     ]
-    notebooks = await asyncio.gather(*tasks)
-    assert len(notebooks) == 10
-    assert all(n.id for n in notebooks)
+    i_Notes = await asyncio.gather(*tasks)
+    assert len(i_Notes) == 10
+    assert all(n.id for n in i_Notes)
 ```
 
 ## Common Testing Errors
@@ -398,11 +398,11 @@ async def test_concurrent_notebook_creation():
 Solution: Use the async fixture properly:
 ```python
 @pytest.fixture
-async def notebook():  # Use async fixture
-    notebook = Notebook(name="Test", description="")
-    await notebook.save()
-    yield notebook
-    await notebook.delete()
+async def i_Notes():  # Use async fixture
+    i_Notes = i_Notes(name="Test", description="")
+    await i_Notes.save()
+    yield i_Notes
+    await i_Notes.delete()
 ```
 
 ### Error: "object is not awaitable"
@@ -410,10 +410,10 @@ async def notebook():  # Use async fixture
 Solution: Make sure you're using await:
 ```python
 # Wrong
-result = create_notebook("Test", "")
+result = create_i_Notes("Test", "")
 
 # Right
-result = await create_notebook("Test", "")
+result = await create_i_Notes("Test", "")
 ```
 
 ---

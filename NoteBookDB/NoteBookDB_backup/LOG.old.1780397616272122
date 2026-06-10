@@ -1,1 +1,1 @@
-2026/06/02-16:18:52.901298 38e8 [WARN] [db/db_impl/db_impl_open.cc:2688] DB::Open() failed: IO error: Failed to create lock file: NoteBookDB/LOCK: The process cannot access the file because it is being used by another process.
+2026/06/02-16:18:52.901298 38e8 [WARN] [db/db_impl/db_impl_open.cc:2688] DB::Open() failed: IO error: Failed to create lock file: i_NotesDB/LOCK: The process cannot access the file because it is being used by another process.

@@ -9,7 +9,7 @@ Search is your gateway into your research. This guide covers two search modes an
 ### Simple Search
 
 ```
-1. Go to your notebook
+1. Go to your i_Notes
 2. Type in search box
 3. See results (both sources and notes)
 4. Click result to view source/note
@@ -23,7 +23,7 @@ But you can do much better...
 
 ## Two Search Modes Explained
 
-Open Notebook has two fundamentally different search approaches.
+Open i_Notes has two fundamentally different search approaches.
 
 ### Search Type 1: TEXT SEARCH (Keyword Matching)
 
@@ -271,7 +271,7 @@ Result: Comprehensive answer, not just search results
 |---------|-------|----------|
 | Text search: no results | Word doesn't appear | Try vector search instead |
 | Vector search: no results | Concept not in content | Try broader search term |
-| Both empty | Content not in notebook | Add sources to notebook |
+| Both empty | Content not in i_Notes | Add sources to i_Notes |
 | | Sources not processed | Wait for processing to complete |
 
 ### Getting Too Many Results
@@ -429,7 +429,7 @@ NOTES (save insights)
 ### Workflow Example
 
 ```
-1. Add 10 papers to notebook
+1. Add 10 papers to i_Notes
 
 2. Search: "What's the state of the art?"
    (Vector search explores landscape)

@@ -1,3 +1,0 @@
--- Migration 21 rollback: Remove model_id field from transformation table
-
-REMOVE FIELD model_id ON TABLE transformation;

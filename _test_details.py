@@ -1,5 +1,5 @@
 import asyncio
-from open_notebook.bank_statement.pipeline import run_pipeline_async
+from i_Notes.bank_statement.pipeline import run_pipeline_async
 
 async def main():
     result = await run_pipeline_async("data/uploads/ACCT STATEMENT.pdf", None)

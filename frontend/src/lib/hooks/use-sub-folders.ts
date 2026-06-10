@@ -3,14 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 
 /**
- * Manages parent-child notebook relationships entirely on the client side.
- * Relationships are persisted in localStorage under the key `notebook_subfolders`.
+ * Manages parent-child i_Notes relationships entirely on the client side.
+ * Relationships are persisted in localStorage under the key `i_Notes_subfolders`.
  *
  * Structure stored:
- *   { [parentId: string]: string[] }   — array of child notebook IDs
+ *   { [parentId: string]: string[] }   — array of child i_Notes IDs
  */
 
-const STORAGE_KEY = 'notebook_subfolders'
+const STORAGE_KEY = 'i_Notes_subfolders'
 
 function loadMap(): Record<string, string[]> {
   if (typeof window === 'undefined') return {}
@@ -31,7 +31,7 @@ function saveMap(map: Record<string, string[]>) {
 }
 
 /**
- * Returns the list of child notebook IDs for a given parent notebook, along
+ * Returns the list of child i_Notes IDs for a given parent i_Notes, along
  * with helpers to add / remove children.
  */
 export function useSubFolders(parentId: string) {
@@ -72,7 +72,7 @@ export function useSubFolders(parentId: string) {
 }
 
 /**
- * Returns the parent notebook ID for a given child, or null if none.
+ * Returns the parent i_Notes ID for a given child, or null if none.
  */
 export function getParentId(childId: string): string | null {
   const map = loadMap()
@@ -83,7 +83,7 @@ export function getParentId(childId: string): string | null {
 }
 
 /**
- * Returns a flat Set of ALL notebook IDs that are registered as children
+ * Returns a flat Set of ALL i_Notes IDs that are registered as children
  * of any parent. Used to exclude sub-folders from the top-level Cases list.
  */
 export function getAllChildIds(): Set<string> {
@@ -96,7 +96,7 @@ export function getAllChildIds(): Set<string> {
 }
 
 /**
- * Returns all descendant notebook IDs for a given parent notebook, including
+ * Returns all descendant i_Notes IDs for a given parent i_Notes, including
  * children, grandchildren, and so on.
  */
 export function getDescendantIds(parentId: string): string[] {

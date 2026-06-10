@@ -47,7 +47,7 @@ const navigation = [
   { name: 'Organizations', href: '/organizations', icon: Building2, studio: null, minimumRole: 'super_admin' as const },
   { name: 'Admins', href: '/admins', icon: UserCog, studio: null, minimumRole: 'super_admin' as const },
   { name: 'Users', href: '/users', icon: Users, studio: null, minimumRole: 'super_admin' as const },
-  { name: 'Cases', href: '/notebooks', icon: Folder, studio: null, minimumRole: 'user' as const },
+  { name: 'Cases', href: '/i_Notes', icon: Folder, studio: null, minimumRole: 'user' as const },
   { name: 'Sources', href: '/sources', icon: Database, studio: null, minimumRole: 'user' as const },
   { name: 'AI Search', href: '/search', icon: Search, studio: null, minimumRole: 'user' as const },
   { name: 'Models', href: '/settings/api-keys', icon: Sparkles, studio: null, minimumRole: 'super_admin' as const },

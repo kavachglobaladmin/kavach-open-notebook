@@ -410,7 +410,7 @@ export default function SourcesPage() {
           searchValue={viewMode === 'list' ? listSearchTerm : searchTerm}
           onSearchChange={viewMode === 'list' ? (val) => { setListSearchTerm(val); setListPage(1); } : setSearchTerm}
           searchPlaceholder="Search sources..."
-          newLabel="NOTEBOOK"
+          newLabel="i_Notes"
         />
 
         <main className="relative z-10 flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 custom-scrollbar text-slate-800">

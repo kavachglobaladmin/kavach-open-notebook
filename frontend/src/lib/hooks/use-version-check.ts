@@ -29,7 +29,7 @@ export function useVersionCheck() {
         toast.info(
           t.advanced.updateAvailable.replace('{version}', config.latestVersion),
           {
-            description: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/lfnovo/open-notebook`,
+            description: `${t.advanced.updateAvailableDesc} ${t.advanced.viewOnGithub}: https://github.com/lfnovo/open-i_Notes`,
             showInNotificationCenter: true,
           }
         )

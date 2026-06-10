@@ -1,6 +1,6 @@
 # Quick Start - Local & Private (5 minutes)
 
-Get Open Notebook running with **100% local AI** using Ollama. No cloud API keys needed, completely private.
+Get Open i_Notes running with **100% local AI** using Ollama. No cloud API keys needed, completely private.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ Run on a different computer, access from another. Needs network configuration.
 
 ## Step 2: Create Configuration (1 min)
 
-Create a new folder `open-notebook-local` and add this file:
+Create a new folder `open-i_Notes-local` and add this file:
 
 **docker-compose.yml**:
 ```yaml
@@ -37,24 +37,24 @@ services:
     volumes:
       - ./surreal_data:/mydata
 
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open_i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     ports:
       - "8502:8502"  # Web UI (React frontend)
       - "5055:5055"  # API (required!)
     environment:
       # Encryption key for credential storage (required)
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+      - OPEN_i_Notes_ENCRYPTION_KEY=change-me-to-a-secret-string
 
       # Database (required)
       - SURREAL_URL=ws://surrealdb:8000/rpc
       - SURREAL_USER=root
       - SURREAL_PASSWORD=password
-      - SURREAL_NAMESPACE=open_notebook
-      - SURREAL_DATABASE=open_notebook
+      - SURREAL_NAMESPACE=open_i_Notes
+      - SURREAL_DATABASE=open_i_Notes
     volumes:
-      - ./notebook_data:/app/data
+      - ./i_Notes_data:/app/data
       - ./surreal_data:/mydata
     depends_on:
       - surrealdb
@@ -80,7 +80,7 @@ services:
 
 ## Step 3: Start Services (1 min)
 
-Open terminal in your `open-notebook-local` folder:
+Open terminal in your `open-i_Notes-local` folder:
 
 ```bash
 docker compose up -d
@@ -96,27 +96,27 @@ Ollama needs at least one language model. Pick one:
 
 ```bash
 # Fastest & smallest (recommended for testing)
-docker exec open-notebook-local-ollama-1 ollama pull mistral
+docker exec open-i_Notes-local-ollama-1 ollama pull mistral
 
 # OR: Better quality but slower
-docker exec open-notebook-local-ollama-1 ollama pull neural-chat
+docker exec open-i_Notes-local-ollama-1 ollama pull neural-chat
 
 # OR: Even better quality, more VRAM needed
-docker exec open-notebook-local-ollama-1 ollama pull llama2
+docker exec open-i_Notes-local-ollama-1 ollama pull llama2
 ```
 
 This downloads the model (will take 1-5 minutes depending on your internet).
 
 ---
 
-## Step 5: Access Open Notebook (instant)
+## Step 5: Access Open i_Notes (instant)
 
 Open your browser:
 ```
 http://localhost:8502
 ```
 
-You should see the Open Notebook interface.
+You should see the Open i_Notes interface.
 
 ---
 
@@ -143,9 +143,9 @@ You should see the Open Notebook interface.
 
 ---
 
-## Step 8: Create Your First Notebook (1 min)
+## Step 8: Create Your First i_Notes (1 min)
 
-1. Click **New Notebook**
+1. Click **New i_Notes**
 2. Name: "My Private Research"
 3. Click **Create**
 
@@ -175,7 +175,7 @@ You should see the Open Notebook interface.
 - [ ] You can access `http://localhost:8502`
 - [ ] Ollama credential is configured and tested
 - [ ] Models are registered
-- [ ] You created a notebook
+- [ ] You created a i_Notes
 - [ ] Chat works with local model
 
 **All checked?** You have a completely **private, offline** research assistant!
@@ -224,7 +224,7 @@ docker compose up -d
 Check if GPU is available:
 ```bash
 # Show available GPUs
-docker exec open-notebook-local-ollama-1 ollama ps
+docker exec open-i_Notes-local-ollama-1 ollama ps
 
 # Enable GPU in docker-compose.yml:
 # - OLLAMA_NUM_GPU=1
@@ -236,10 +236,10 @@ Then restart: `docker compose restart ollama`
 
 ```bash
 # List available models
-docker exec open-notebook-local-ollama-1 ollama list
+docker exec open-i_Notes-local-ollama-1 ollama list
 
 # Pull additional model
-docker exec open-notebook-local-ollama-1 ollama pull neural-chat
+docker exec open-i_Notes-local-ollama-1 ollama pull neural-chat
 ```
 
 ---
@@ -263,7 +263,7 @@ docker exec open-notebook-local-ollama-1 ollama pull neural-chat
 1. Download LM Studio: https://lmstudio.ai
 2. Open the app, download a model from the library
 3. Go to "Local Server" tab, start server (port 1234)
-4. In Open Notebook, go to **Settings** → **API Keys**
+4. In Open i_Notes, go to **Settings** → **API Keys**
 5. Click **Add Credential** → Select **OpenAI-Compatible**
 6. Enter base URL: `http://host.docker.internal:1234/v1`
 7. Enter API key: `lm-studio` (placeholder)

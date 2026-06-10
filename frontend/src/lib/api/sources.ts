@@ -28,7 +28,7 @@ function stripSourcePrefix(id: string): string {
 
 export const sourcesApi = {
   list: async (params?: {
-    notebook_id?: string
+    i_Notes_id?: string
     limit?: number
     offset?: number
     sort_by?: 'created' | 'updated'
@@ -50,11 +50,11 @@ export const sourcesApi = {
     
     formData.append('type', data.type)
     
-    if (data.notebooks !== undefined) {
-      formData.append('notebooks', JSON.stringify(data.notebooks))
+    if (data.i_Notes !== undefined) {
+      formData.append('i_Notes', JSON.stringify(data.i_Notes))
     }
-    if (data.notebook_id) {
-      formData.append('notebook_id', data.notebook_id)
+    if (data.i_Notes_id) {
+      formData.append('i_Notes_id', data.i_Notes_id)
     }
     if (data.title) {
       formData.append('title', data.title)
@@ -99,10 +99,10 @@ export const sourcesApi = {
     return response.data
   },
 
-  upload: async (file: File, notebook_id: string) => {
+  upload: async (file: File, i_Notes_id: string) => {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('notebook_id', notebook_id)
+    formData.append('i_Notes_id', i_Notes_id)
     formData.append('type', 'upload')
     formData.append('async_processing', 'true')
     
@@ -114,10 +114,10 @@ export const sourcesApi = {
     return response.data
   },
 
-  retry: async (id: string, notebookId?: string) => {
+  retry: async (id: string, i_NotesId?: string) => {
     const cleanId = stripSourcePrefix(id)
     const response = await apiClient.post<SourceResponse>(`/sources/${cleanId}/retry`, undefined, {
-      params: notebookId ? { notebook_id: notebookId } : undefined,
+      params: i_NotesId ? { i_Notes_id: i_NotesId } : undefined,
     })
     return response.data
   },

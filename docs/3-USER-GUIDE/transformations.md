@@ -20,7 +20,7 @@ Transformations apply the same analysis to multiple sources at once. Instead of 
 ## Quick Start: Your First Transformation
 
 ```
-1. Go to your notebook
+1. Go to your i_Notes
 2. Click "Transformations" in navigation
 3. Select a built-in template (e.g., "Summary")
 4. Select sources to transform
@@ -33,7 +33,7 @@ Transformations apply the same analysis to multiple sources at once. Instead of 
 
 ## Built-in Transformations
 
-Open Notebook includes ready-to-use templates:
+Open i_Notes includes ready-to-use templates:
 
 ### Summary
 
@@ -285,7 +285,7 @@ Built-in transformations appear first, then custom ones alphabetically.
 ### Where Results Go
 
 - Each source produces one note
-- Notes appear in your notebook's Notes panel
+- Notes appear in your i_Notes's Notes panel
 - Notes are tagged with transformation name
 - Original source is linked
 

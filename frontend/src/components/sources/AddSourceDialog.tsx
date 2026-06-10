@@ -16,9 +16,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { WizardContainer, WizardStep } from '@/components/ui/wizard-container'
 import { SourceTypeStep, parseAndValidateUrls } from './steps/SourceTypeStep'
-import { NotebooksStep } from './steps/NotebooksStep'
+import { i_NotesStep } from './steps/i_NotesStep'
 import { ProcessingStep } from './steps/ProcessingStep'
-import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { usei_Notes } from '@/lib/hooks/use-i_Notes'
 import { useTransformations } from '@/lib/hooks/use-transformations'
 import { useCreateSource } from '@/lib/hooks/use-sources'
 import { useSettings } from '@/lib/hooks/use-settings'
@@ -33,7 +33,7 @@ const createSourceSchema = z.object({
   url: z.string().optional(),
   content: z.string().optional(),
   file: z.any().optional(),
-  notebooks: z.array(z.string()).optional(),
+  i_Notes: z.array(z.string()).optional(),
   transformations: z.array(z.string()).optional(),
   embed: z.boolean(),
   async_processing: z.boolean(),
@@ -70,7 +70,7 @@ type CreateSourceFormData = z.infer<typeof createSourceSchema>
 interface AddSourceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  defaultNotebookId?: string
+  defaulti_NotesId?: string
   onSuccess?: () => void
 }
 
@@ -89,14 +89,14 @@ interface BatchProgress {
 export function AddSourceDialog({ 
   open, 
   onOpenChange, 
-  defaultNotebookId,
+  defaulti_NotesId,
   onSuccess
 }: AddSourceDialogProps) {
   const { t } = useTranslation()
 
   const WIZARD_STEPS: readonly WizardStep[] = [
     { number: 1, title: t.sources.addSource, description: t.sources.processDescription },
-    { number: 2, title: t.navigation.notebooks, description: t.notebooks.searchPlaceholder },
+    { number: 2, title: t.navigation.i_Notes, description: t.i_Notes.searchPlaceholder },
     { number: 3, title: t.navigation.process, description: t.sources.processDescription },
   ]
 
@@ -104,8 +104,8 @@ export function AddSourceDialog({
   const [currentStep, setCurrentStep] = useState(1)
   const [processing, setProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState<ProcessingState | null>(null)
-  const [selectedNotebooks, setSelectedNotebooks] = useState<string[]>(
-    defaultNotebookId ? [defaultNotebookId] : []
+  const [selectedi_Notes, setSelectedi_Notes] = useState<string[]>(
+    defaulti_NotesId ? [defaulti_NotesId] : []
   )
   const [selectedTransformations, setSelectedTransformations] = useState<string[]>([])
 
@@ -118,7 +118,7 @@ export function AddSourceDialog({
 
   // API hooks
   const createSource = useCreateSource()
-  const { data: notebooks = [], isLoading: notebooksLoading } = useNotebooks()
+  const { data: i_Notes = [], isLoading: i_NotesLoading } = usei_Notes()
   const { data: transformations = [], isLoading: transformationsLoading } = useTransformations()
   const { data: settings } = useSettings()
 
@@ -134,7 +134,7 @@ export function AddSourceDialog({
   } = useForm<CreateSourceFormData>({
     resolver: zodResolver(createSourceSchema),
     defaultValues: {
-      notebooks: defaultNotebookId ? [defaultNotebookId] : [],
+      i_Notes: defaulti_NotesId ? [defaulti_NotesId] : [],
       embed: settings?.default_embedding_option === 'always' || settings?.default_embedding_option === 'ask',
       async_processing: true,
       transformations: [],
@@ -155,13 +155,13 @@ export function AddSourceDialog({
                          (settings.default_embedding_option === 'ask')
 
       reset({
-        notebooks: defaultNotebookId ? [defaultNotebookId] : [],
+        i_Notes: defaulti_NotesId ? [defaulti_NotesId] : [],
         embed: embedValue,
         async_processing: true,
         transformations: [],
       })
     }
-  }, [settings, transformations, defaultNotebookId, reset])
+  }, [settings, transformations, defaulti_NotesId, reset])
 
   // Cleanup effect
   useEffect(() => {
@@ -284,11 +284,11 @@ export function AddSourceDialog({
   }
 
   // Selection handlers
-  const handleNotebookToggle = (notebookId: string) => {
-    const updated = selectedNotebooks.includes(notebookId)
-      ? selectedNotebooks.filter(id => id !== notebookId)
-      : [...selectedNotebooks, notebookId]
-    setSelectedNotebooks(updated)
+  const handlei_NotesToggle = (i_NotesId: string) => {
+    const updated = selectedi_Notes.includes(i_NotesId)
+      ? selectedi_Notes.filter(id => id !== i_NotesId)
+      : [...selectedi_Notes, i_NotesId]
+    setSelectedi_Notes(updated)
   }
 
   const handleTransformationToggle = (transformationId: string) => {
@@ -302,7 +302,7 @@ export function AddSourceDialog({
   const submitSingleSource = async (data: CreateSourceFormData): Promise<void> => {
     const createRequest: CreateSourceRequest = {
       type: data.type,
-      notebooks: selectedNotebooks,
+      i_Notes: selectedi_Notes,
       url: data.type === 'link' ? data.url : undefined,
       content: data.type === 'text' ? data.content : undefined,
       title: data.title,
@@ -354,7 +354,7 @@ export function AddSourceDialog({
       try {
         const createRequest: CreateSourceRequest = {
           type: item.type === 'url' ? 'link' : 'upload',
-          notebooks: selectedNotebooks,
+          i_Notes: selectedi_Notes,
           url: item.type === 'url' ? item.value as string : undefined,
           transformations: selectedTransformations,
           embed: data.embed,
@@ -437,7 +437,7 @@ export function AddSourceDialog({
     setCurrentStep(1)
     setProcessing(false)
     setProcessingStatus(null)
-    setSelectedNotebooks(defaultNotebookId ? [defaultNotebookId] : [])
+    setSelectedi_Notes(defaulti_NotesId ? [defaulti_NotesId] : [])
     setUrlValidationErrors([])
     setBatchProgress(null)
 
@@ -567,11 +567,11 @@ export function AddSourceDialog({
             )}
             
             {currentStep === 2 && (
-              <NotebooksStep
-                notebooks={notebooks}
-                selectedNotebooks={selectedNotebooks}
-                onToggleNotebook={handleNotebookToggle}
-                loading={notebooksLoading}
+              <i_NotesStep
+                i_Notes={i_Notes}
+                selectedi_Notes={selectedi_Notes}
+                onTogglei_Notes={handlei_NotesToggle}
+                loading={i_NotesLoading}
               />
             )}
             

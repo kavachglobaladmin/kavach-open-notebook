@@ -1,6 +1,6 @@
 # Quick Start - OpenAI (5 minutes)
 
-Get Open Notebook running with OpenAI's GPT models. Fast, powerful, and simple.
+Get Open i_Notes running with OpenAI's GPT models. Fast, powerful, and simple.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Get Open Notebook running with OpenAI's GPT models. Fast, powerful, and simple.
 
 ## Step 1: Create Configuration (1 min)
 
-Create a new folder `open-notebook` and add this file:
+Create a new folder `open-i_Notes` and add this file:
 
 **docker-compose.yml**:
 ```yaml
@@ -29,24 +29,24 @@ services:
     volumes:
       - ./surreal_data:/mydata
 
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest
+  open_i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest
     pull_policy: always
     ports:
       - "8502:8502"  # Web UI
       - "5055:5055"  # API
     environment:
       # Encryption key for credential storage (required)
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+      - OPEN_i_Notes_ENCRYPTION_KEY=change-me-to-a-secret-string
 
       # Database (required)
       - SURREAL_URL=ws://surrealdb:8000/rpc
       - SURREAL_USER=root
       - SURREAL_PASSWORD=password
-      - SURREAL_NAMESPACE=open_notebook
-      - SURREAL_DATABASE=open_notebook
+      - SURREAL_NAMESPACE=open_i_Notes
+      - SURREAL_DATABASE=open_i_Notes
     volumes:
-      - ./notebook_data:/app/data
+      - ./i_Notes_data:/app/data
     depends_on:
       - surrealdb
     restart: always
@@ -60,7 +60,7 @@ services:
 
 ## Step 2: Start Services (1 min)
 
-Open terminal in your `open-notebook` folder:
+Open terminal in your `open-i_Notes` folder:
 
 ```bash
 docker compose up -d
@@ -70,14 +70,14 @@ Wait 15-20 seconds for services to start.
 
 ---
 
-## Step 3: Access Open Notebook (instant)
+## Step 3: Access Open i_Notes (instant)
 
 Open your browser:
 ```
 http://localhost:8502
 ```
 
-You should see the Open Notebook interface!
+You should see the Open i_Notes interface!
 
 ---
 
@@ -96,9 +96,9 @@ Your OpenAI models are now available!
 
 ---
 
-## Step 5: Create Your First Notebook (1 min)
+## Step 5: Create Your First i_Notes (1 min)
 
-1. Click **New Notebook**
+1. Click **New i_Notes**
 2. Name: "My Research"
 3. Click **Create**
 
@@ -128,7 +128,7 @@ Your OpenAI models are now available!
 - [ ] Docker is running
 - [ ] You can access `http://localhost:8502`
 - [ ] OpenAI credential is configured and tested
-- [ ] You created a notebook
+- [ ] You created a i_Notes
 - [ ] You added a source
 - [ ] Chat works
 
@@ -138,7 +138,7 @@ Your OpenAI models are now available!
 
 ## Using Different Models
 
-In your notebook, go to **Settings** → **Models** to choose:
+In your i_Notes, go to **Settings** → **Models** to choose:
 - `gpt-4o` - Best quality (recommended)
 - `gpt-4o-mini` - Fast and cheap (good for testing)
 

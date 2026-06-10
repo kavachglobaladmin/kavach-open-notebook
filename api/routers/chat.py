@@ -10,23 +10,23 @@ from langchain_core.runnables import RunnableConfig
 # from loguru import logger
 from pydantic import BaseModel, Field
 import logging as logger
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.notebook import ChatSession, Note, Notebook, Source
-from open_notebook.exceptions import (
+from i_Notes.database.repository import ensure_record_id, repo_query
+from i_Notes.domain.i_Notes import ChatSession, Note, i_Notes, Source
+from i_Notes.exceptions import (
     NotFoundError,
 )
-from open_notebook.graphs.chat import (
+from i_Notes.graphs.chat import (
     generate_model_response,
     graph as chat_graph,
     stream_model_tokens,
 )
-from open_notebook.utils.graph_utils import get_session_message_count
+from i_Notes.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
 
 
-def _is_notebook_chat_session(session: ChatSession) -> bool:
-    return getattr(session, "chat_mode", None) in (None, "notebook")
+def _is_i_Notes_chat_session(session: ChatSession) -> bool:
+    return getattr(session, "chat_mode", None) in (None, "i_Notes")
 
 
 def _fallback_suggested_questions(user_message: str, ai_response: str) -> list[str]:
@@ -49,7 +49,7 @@ def _fallback_suggested_questions(user_message: str, ai_response: str) -> list[s
 
 # Request/Response models
 class CreateSessionRequest(BaseModel):
-    notebook_id: str = Field(..., description="Notebook ID to create session for")
+    i_Notes_id: str = Field(..., description="i_Notes ID to create session for")
     title: Optional[str] = Field(None, description="Optional session title")
     model_override: Optional[str] = Field(
         None, description="Optional model override for this session"
@@ -73,7 +73,7 @@ class ChatMessage(BaseModel):
 class ChatSessionResponse(BaseModel):
     id: str = Field(..., description="Session ID")
     title: str = Field(..., description="Session title")
-    notebook_id: Optional[str] = Field(None, description="Notebook ID")
+    i_Notes_id: Optional[str] = Field(None, description="i_Notes ID")
     created: str = Field(..., description="Creation timestamp")
     updated: str = Field(..., description="Last update timestamp")
     message_count: Optional[int] = Field(
@@ -113,11 +113,11 @@ class ExecuteChatResponse(BaseModel):
 
 
 class BuildContextRequest(BaseModel):
-    notebook_id: str = Field(..., description="Notebook ID")
+    i_Notes_id: str = Field(..., description="i_Notes ID")
     context_config: Dict[str, Any] = Field(..., description="Context configuration")
     folder_structure: Optional[List[Dict[str, Any]]] = Field(
         None,
-        description="Sub-folder layout; used to load every connected notebook's sources",
+        description="Sub-folder layout; used to load every connected i_Notes's sources",
     )
 
 
@@ -132,28 +132,28 @@ class SuccessResponse(BaseModel):
     message: str = Field(..., description="Success message")
 
 
-async def _get_related_notebooks(record_table: str, record_id: str) -> list[dict[str, str]]:
+async def _get_related_i_Notes(record_table: str, record_id: str) -> list[dict[str, str]]:
     relation_table = "reference" if record_table == "source" else "artifact"
     try:
         rows = await repo_query(
-            f"SELECT out AS notebook FROM {relation_table} WHERE in = $record_id",
+            f"SELECT out AS i_Notes FROM {relation_table} WHERE in = $record_id",
             {"record_id": ensure_record_id(record_id)},
         )
     except Exception:
         return []
 
-    notebooks: list[dict[str, str]] = []
+    i_Notes: list[dict[str, str]] = []
     for row in rows or []:
-        notebook_obj = row.get("notebook")
-        if not notebook_obj:
+        i_Notes_obj = row.get("i_Notes")
+        if not i_Notes_obj:
             continue
         try:
-            notebook = Notebook(**notebook_obj) if isinstance(notebook_obj, dict) else await Notebook.get(str(notebook_obj))
+            i_Notes = i_Notes(**i_Notes_obj) if isinstance(i_Notes_obj, dict) else await i_Notes.get(str(i_Notes_obj))
         except Exception:
             continue
-        if notebook and notebook.id:
-            notebooks.append({"id": str(notebook.id), "name": notebook.name})
-    return notebooks
+        if i_Notes and i_Notes.id:
+            i_Notess.append({"id": str(i_Notes.id), "name": i_Notes.name})
+    return i_Notess
 
 
 def _canonical_record_id(record_id: str, prefix: str) -> str:
@@ -185,10 +185,10 @@ def _record_has_full_source_text(entry: dict[str, Any]) -> bool:
     return False
 
 
-async def _augment_folder_structure_from_notebooks(
+async def _augment_folder_structure_from_i_Notess(
     folder_structure: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Ensure each sub-folder lists all sources/notes from its notebook in SurrealDB."""
+    """Ensure each sub-folder lists all sources/notes from its i_Notes in SurrealDB."""
     augmented: list[dict[str, Any]] = []
 
     for folder in folder_structure:
@@ -202,7 +202,7 @@ async def _augment_folder_structure_from_notebooks(
             continue
 
         full_id = (
-            folder_id if folder_id.startswith("notebook:") else f"notebook:{folder_id}"
+            folder_id if folder_id.startswith("i_Notes:") else f"i_Notes:{folder_id}"
         )
 
         source_entries = [
@@ -225,14 +225,14 @@ async def _augment_folder_structure_from_notebooks(
         }
 
         try:
-            notebook = await Notebook.get(full_id)
+            i_Notes = await i_Notes.get(full_id)
         except Exception as e:
-            logger.warning(f"[Chat] Could not load notebook {full_id}: {e}")
-            notebook = None
+            logger.warning(f"[Chat] Could not load i_Notes {full_id}: {e}")
+            i_Notes = None
 
-        if notebook:
+        if i_Notes:
             try:
-                for source in await notebook.get_sources():
+                for source in await i_Notes.get_sources():
                     cid = _canonical_record_id(str(source.id or ""), "source")
                     if cid and cid not in seen_source_ids:
                         seen_source_ids.add(cid)
@@ -243,7 +243,7 @@ async def _augment_folder_structure_from_notebooks(
                 logger.warning(f"[Chat] Could not list sources for {full_id}: {e}")
 
             try:
-                for note in await notebook.get_notes():
+                for note in await i_Notes.get_notes():
                     cid = _canonical_record_id(str(note.id or ""), "note")
                     if cid and cid not in seen_note_ids:
                         seen_note_ids.add(cid)
@@ -288,25 +288,25 @@ async def _load_source_context_entry(source_id: str, status: str) -> dict[str, A
             logger.warning(f"Could not load insights for {source_id}: {ie}")
             source_context["insights"] = []
 
-    source_context["notebooks"] = await _get_related_notebooks("source", source_id)
+    source_context["i_Notess"] = await _get_related_i_Notess("source", source_id)
     return source_context
 
 
 @router.get("/chat/sessions", response_model=List[ChatSessionResponse])
-async def get_sessions(notebook_id: str = Query(..., description="Notebook ID")):
-    """Get all chat sessions for a notebook."""
+async def get_sessions(i_Notes_id: str = Query(..., description="i_Notes ID")):
+    """Get all chat sessions for a i_Notes."""
     try:
-        # Get notebook to verify it exists
-        notebook = await Notebook.get(notebook_id)
-        if not notebook:
-            raise HTTPException(status_code=404, detail="Notebook not found")
+        # Get i_Notes to verify it exists
+        i_Notes = await i_Notes.get(i_Notes_id)
+        if not i_Notes:
+            raise HTTPException(status_code=404, detail="i_Notes not found")
 
-        # Get sessions for this notebook
-        sessions_list = await notebook.get_chat_sessions()
+        # Get sessions for this i_Notes
+        sessions_list = await i_Notes.get_chat_sessions()
 
         results = []
         for session in sessions_list:
-            if not _is_notebook_chat_session(session):
+            if not _is_i_Notes_chat_session(session):
                 continue
             session_id = str(session.id)
 
@@ -317,7 +317,7 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
                 ChatSessionResponse(
                     id=session.id or "",
                     title=session.title or "Untitled Session",
-                    notebook_id=notebook_id,
+                    i_Notes_id=i_Notes_id,
                     created=str(session.created),
                     updated=str(session.updated),
                     message_count=msg_count,
@@ -327,7 +327,7 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 
         return results
     except NotFoundError:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        raise HTTPException(status_code=404, detail="i_Notes not found")
     except Exception as e:
         logger.error(f"Error fetching chat sessions: {str(e)}")
         raise HTTPException(
@@ -339,34 +339,34 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 async def create_session(request: CreateSessionRequest):
     """Create a new chat session."""
     try:
-        # Verify notebook exists
-        notebook = await Notebook.get(request.notebook_id)
-        if not notebook:
-            raise HTTPException(status_code=404, detail="Notebook not found")
+        # Verify i_Notes exists
+        i_Notes = await i_Notes.get(request.i_Notes_id)
+        if not i_Notes:
+            raise HTTPException(status_code=404, detail="i_Notes not found")
 
         # Create new session
         session = ChatSession(
             title=request.title
             or f"Chat Session {asyncio.get_event_loop().time():.0f}",
             model_override=request.model_override,
-            chat_mode="notebook",
+            chat_mode="i_Notes",
         )
         await session.save()
 
-        # Relate session to notebook
-        await session.relate_to_notebook(request.notebook_id)
+        # Relate session to i_Notes
+        await session.relate_to_i_Notes(request.i_Notes_id)
 
         return ChatSessionResponse(
             id=session.id or "",
             title=session.title or "",
-            notebook_id=request.notebook_id,
+            i_Notes_id=request.i_Notes_id,
             created=str(session.created),
             updated=str(session.updated),
             message_count=0,
             model_override=session.model_override,
         )
     except NotFoundError:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        raise HTTPException(status_code=404, detail="i_Notes not found")
     except Exception as e:
         logger.error(f"Error creating chat session: {str(e)}")
         raise HTTPException(
@@ -411,7 +411,7 @@ async def get_session(session_id: str):
                     )
                 )
 
-        # Find notebook_id (we need to query the relationship)
+        # Find i_Notes_id (we need to query the relationship)
         # Ensure session_id has proper table prefix
         full_session_id = (
             session_id
@@ -419,23 +419,23 @@ async def get_session(session_id: str):
             else f"chat_session:{session_id}"
         )
 
-        notebook_query = await repo_query(
+        i_Notes_query = await repo_query(
             "SELECT out FROM refers_to WHERE in = $session_id",
             {"session_id": ensure_record_id(full_session_id)},
         )
 
-        notebook_id = notebook_query[0]["out"] if notebook_query else None
+        i_Notes_id = i_Notes_query[0]["out"] if i_Notes_query else None
 
-        if not notebook_id:
+        if not i_Notes_id:
             # This might be an old session created before API migration
             logger.warning(
-                f"No notebook relationship found for session {session_id} - may be an orphaned session"
+                f"No i_Notes relationship found for session {session_id} - may be an orphaned session"
             )
 
         return ChatSessionWithMessagesResponse(
             id=session.id or "",
             title=session.title or "Untitled Session",
-            notebook_id=notebook_id,
+            i_Notes_id=i_Notes_id,
             created=str(session.created),
             updated=str(session.updated),
             message_count=len(messages),
@@ -474,18 +474,18 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
 
         await session.save()
 
-        # Find notebook_id
+        # Find i_Notes_id
         # Ensure session_id has proper table prefix
         full_session_id = (
             session_id
             if session_id.startswith("chat_session:")
             else f"chat_session:{session_id}"
         )
-        notebook_query = await repo_query(
+        i_Notes_query = await repo_query(
             "SELECT out FROM refers_to WHERE in = $session_id",
             {"session_id": ensure_record_id(full_session_id)},
         )
-        notebook_id = notebook_query[0]["out"] if notebook_query else None
+        i_Notes_id = i_Notes_query[0]["out"] if i_Notes_query else None
 
         # Get message count from LangGraph state
         msg_count = await get_session_message_count(chat_graph, full_session_id)
@@ -493,7 +493,7 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
         return ChatSessionResponse(
             id=session.id or "",
             title=session.title or "",
-            notebook_id=notebook_id,
+            i_Notes_id=i_Notes_id,
             created=str(session.created),
             updated=str(session.updated),
             message_count=msg_count,
@@ -651,12 +651,12 @@ async def stream_execute_chat(request: ExecuteChatRequest):
         #   1. Collect ALL source and note IDs across all folders (authoritative list).
         #   2. Determine which ones are already enriched with usable content.
         #   3. Fetch ALL missing records in parallel so large case trees stay responsive.
-        #   4. Attach folder/notebook metadata to each record.
+        #   4. Attach folder/i_Notes metadata to each record.
         #   5. Scale content limits so the prompt stays readable even with many files.
         enriched_context = dict(request.context)
         folder_structure = enriched_context.get("folder_structure") or []
         if folder_structure:
-            folder_structure = await _augment_folder_structure_from_notebooks(
+            folder_structure = await _augment_folder_structure_from_i_Notess(
                 folder_structure
             )
             enriched_context["folder_structure"] = folder_structure
@@ -700,7 +700,7 @@ async def stream_execute_chat(request: ExecuteChatRequest):
                 if cid:
                     folder_by_note.setdefault(cid, []).append(folder)
 
-        # Link every source stored in each sub-folder notebook (covers IR, ICJS, Dossier, etc.)
+        # Link every source stored in each sub-folder i_Notes (covers IR, ICJS, Dossier, etc.)
         for folder in folder_structure:
             if not isinstance(folder, dict):
                 continue
@@ -708,18 +708,18 @@ async def stream_execute_chat(request: ExecuteChatRequest):
             if not folder_id:
                 continue
             full_nb_id = (
-                folder_id if folder_id.startswith("notebook:") else f"notebook:{folder_id}"
+                folder_id if folder_id.startswith("i_Notes:") else f"i_Notes:{folder_id}"
             )
             try:
-                notebook = await Notebook.get(full_nb_id)
+                i_Notes = await i_Notes.get(full_nb_id)
             except Exception as e:
-                logger.warning(f"[Chat] Could not load notebook {full_nb_id}: {e}")
-                notebook = None
-            if not notebook:
+                logger.warning(f"[Chat] Could not load i_Notes {full_nb_id}: {e}")
+                i_Notes = None
+            if not i_Notes:
                 continue
 
             try:
-                db_sources = await notebook.get_sources()
+                db_sources = await i_Notes.get_sources()
             except Exception as e:
                 logger.warning(f"[Chat] Could not list sources for {full_nb_id}: {e}")
                 db_sources = []
@@ -738,7 +738,7 @@ async def stream_execute_chat(request: ExecuteChatRequest):
             existing = source_map.get(cid)
             has_full_source_text = bool(existing and _record_has_full_source_text(existing))
 
-            # Always fetch missing text so every connected notebook (including IR) has content.
+            # Always fetch missing text so every connected i_Notes (including IR) has content.
             if not has_full_source_text:
                 source_ids_to_fetch.append(cid)
 
@@ -819,32 +819,32 @@ async def stream_execute_chat(request: ExecuteChatRequest):
                     merged = {**existing, **data}
                     note_map[cid] = merged
 
-        # Attach folder/notebook metadata to every source in source_map
+        # Attach folder/i_Notes metadata to every source in source_map
         for cid, folders in folder_by_source.items():
             entry = source_map.get(cid)
             if entry is None:
                 continue
-            existing_nbs: list[dict] = entry.get("notebooks") or []
+            existing_nbs: list[dict] = entry.get("i_Notess") or []
             existing_nb_ids = {n.get("id") for n in existing_nbs}
             for folder in folders:
                 nb = {"id": folder.get("id") or "", "name": folder.get("name") or ""}
                 if nb["id"] and nb["id"] not in existing_nb_ids:
                     existing_nbs.append(nb)
                     existing_nb_ids.add(nb["id"])
-            entry["notebooks"] = existing_nbs
+            entry["i_Notess"] = existing_nbs
 
         for cid, folders in folder_by_note.items():
             entry = note_map.get(cid)
             if entry is None:
                 continue
-            existing_nbs: list[dict] = entry.get("notebooks") or []
+            existing_nbs: list[dict] = entry.get("i_Notess") or []
             existing_nb_ids = {n.get("id") for n in existing_nbs}
             for folder in folders:
                 nb = {"id": folder.get("id") or "", "name": folder.get("name") or ""}
                 if nb["id"] and nb["id"] not in existing_nb_ids:
                     existing_nbs.append(nb)
                     existing_nb_ids.add(nb["id"])
-            entry["notebooks"] = existing_nbs
+            entry["i_Notess"] = existing_nbs
 
         # Scale per-source text limit based on total number of sources
         # so large case files (50+ sources) don't blow the context window
@@ -935,11 +935,11 @@ async def stream_execute_chat(request: ExecuteChatRequest):
             token_count = 0
             try:
                 from langchain_core.messages import AIMessage
-                from open_notebook.utils.folder_chat_response import (
+                from i_Notes.utils.folder_chat_response import (
                     iter_response_stream_chunks,
                     postprocess_folder_chat_response,
                 )
-                from open_notebook.utils.text_utils import finalize_chat_response
+                from i_Notes.utils.text_utils import finalize_chat_response
 
                 logger.info(f"[API-STREAM] Starting stream for session: {full_session_id}, model: {model_override}")
 
@@ -1022,7 +1022,7 @@ Return ONLY this format (no code blocks, no explanation):
                     logger.debug(f"[API-STREAM] 📋 Prompt prepared: {len(prompt_text)} chars")
                     
                     # Generate questions using LLM
-                    from open_notebook.ai.provision import provision_langchain_model
+                    from i_Notes.ai.provision import provision_langchain_model
                     model = await provision_langchain_model(
                         prompt_text,
                         model_override,
@@ -1173,16 +1173,16 @@ Return ONLY this format (no code blocks, no explanation):
 
 @router.post("/chat/context", response_model=BuildContextResponse)
 async def build_context(request: BuildContextRequest):
-    """Build context for a notebook based on context configuration.
+    """Build context for a i_Notes based on context configuration.
 
     Loads full source text + insights for each selected source so the LLM
     receives complete content when Chat With All is used.
     """
     try:
-        # Verify notebook exists
-        notebook = await Notebook.get(request.notebook_id)
-        if not notebook:
-            raise HTTPException(status_code=404, detail="Notebook not found")
+        # Verify i_Notes exists
+        i_Notes = await i_Notes.get(request.i_Notes_id)
+        if not i_Notes:
+            raise HTTPException(status_code=404, detail="i_Notes not found")
 
         context_data: dict[str, list[dict[str, Any]]] = {"sources": [], "notes": []}
         total_content = ""
@@ -1225,7 +1225,7 @@ async def build_context(request: BuildContextRequest):
                                 logger.warning(f"Could not load insights for {source_id}: {ie}")
                                 source_context["insights"] = []
 
-                        source_context["notebooks"] = await _get_related_notebooks("source", source_id)
+                        source_context["i_Notess"] = await _get_related_i_Notess("source", source_id)
                         context_data["sources"].append(source_context)
                         total_content += str(source_context)
                 except Exception as e:
@@ -1247,7 +1247,7 @@ async def build_context(request: BuildContextRequest):
 
                     if "full content" in status:
                         note_context = note.get_context(context_size="long")
-                        note_context["notebooks"] = await _get_related_notebooks("note", note_id)
+                        note_context["i_Notes"] = await _get_related_i_Notes("note", note_id)
                         context_data["notes"].append(note_context)
                         total_content += str(note_context)
                 except Exception as e:
@@ -1256,7 +1256,7 @@ async def build_context(request: BuildContextRequest):
 
             # Include every source listed under connected sub-folders (e.g. IR, ICJS, Dossier)
             if request.folder_structure:
-                folder_structure = await _augment_folder_structure_from_notebooks(
+                folder_structure = await _augment_folder_structure_from_i_Notess(
                     request.folder_structure
                 )
                 included_source_ids = {
@@ -1294,11 +1294,11 @@ async def build_context(request: BuildContextRequest):
                             source_context = await _load_source_context_entry(cid, status)
                             if not source_context:
                                 continue
-                            notebooks = source_context.get("notebooks") or []
-                            nb_ids = {nb.get("id") for nb in notebooks}
+                            i_Notess = source_context.get("i_Notess") or []
+                            nb_ids = {nb.get("id") for nb in i_Notess}
                             if folder_meta["id"] and folder_meta["id"] not in nb_ids:
-                                notebooks.append(folder_meta)
-                            source_context["notebooks"] = notebooks
+                                i_Notess.append(folder_meta)
+                            source_context["i_Notess"] = i_Notess
                             context_data["sources"].append(source_context)
                             included_source_ids.add(cid)
                             total_content += str(source_context)
@@ -1309,7 +1309,7 @@ async def build_context(request: BuildContextRequest):
 
         else:
             # Default: include all sources (insights + full text) and notes
-            sources = await notebook.get_sources()
+            sources = await i_Notes.get_sources()
             for source in sources:
                 try:
                     source_context = await source.get_context(context_size="long")
@@ -1326,18 +1326,18 @@ async def build_context(request: BuildContextRequest):
                         ]
                     except Exception:
                         source_context["insights"] = []
-                    source_context["notebooks"] = await _get_related_notebooks("source", source.id or "")
+                    source_context["i_Notess"] = await _get_related_i_Notess("source", source.id or "")
                     context_data["sources"].append(source_context)
                     total_content += str(source_context)
                 except Exception as e:
                     logger.warning(f"Error processing source {source.id}: {str(e)}")
                     continue
 
-            notes = await notebook.get_notes()
+            notes = await i_Notes.get_notes()
             for note in notes:
                 try:
                     note_context = note.get_context(context_size="short")
-                    note_context["notebooks"] = await _get_related_notebooks("note", note.id or "")
+                    note_context["i_Notes"] = await _get_related_i_Notes("note", note.id or "")
                     context_data["notes"].append(note_context)
                     total_content += str(note_context)
                 except Exception as e:
@@ -1347,7 +1347,7 @@ async def build_context(request: BuildContextRequest):
         # Calculate character and token counts
         char_count = len(total_content)
         try:
-            from open_notebook.utils import token_count
+            from i_Notes.utils import token_count
             estimated_tokens = token_count(total_content) if total_content else 0
         except ImportError:
             estimated_tokens = char_count // 4

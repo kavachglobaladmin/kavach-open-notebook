@@ -1,4 +1,4 @@
-export interface NotebookResponse {
+export interface i_NotesResponse {
   id: string
   name: string
   description: string
@@ -44,7 +44,7 @@ export interface SourceDetailResponse extends SourceListResponse {
   full_text: string
   translated_content?: string | null   // English translation (if original is non-English)
   content_language?: string | null     // Detected language code (e.g. "hi", "en")
-  notebooks?: string[]  // List of notebook IDs this source is linked to
+  i_Notes?: string[]  // List of i_Notes IDs this source is linked to
 }
 
 export type SourceResponse = SourceDetailResponse
@@ -64,45 +64,45 @@ export interface SettingsResponse {
   youtube_preferred_languages?: string[]
 }
 
-export interface CreateNotebookRequest {
+export interface Createi_NotesRequest {
   name: string
   description?: string
   storage_limit_mb?: number
 }
 
-export interface UpdateNotebookRequest {
+export interface Updatei_NotesRequest {
   name?: string
   description?: string
   archived?: boolean
 }
 
-export interface NotebookDeletePreview {
-  notebook_id: string
-  notebook_name: string
+export interface i_NotesDeletePreview {
+  i_Notes_id: string
+  i_Notes_name: string
   note_count: number
   exclusive_source_count: number
   shared_source_count: number
 }
 
-export interface NotebookDeleteResponse {
+export interface i_NotesDeleteResponse {
   message: string
   deleted_notes: number
   deleted_sources: number
   unlinked_sources: number
 }
 
-export interface CreateNoteRequest {
+export interface Createi_NotesRequest {
   title?: string
   content: string
   note_type?: string
-  notebook_id?: string
+  i_Notes_id?: string
 }
 
 export interface CreateSourceRequest {
-  // Backward compatibility: support old single notebook_id
-  notebook_id?: string
-  // New multi-notebook support
-  notebooks?: string[]
+  // Backward compatibility: support old single i_Notes_id
+  i_Notes_id?: string
+  // New multi-i_Notes support
+  i_Notes?: string[]
   // Required fields
   type: 'link' | 'upload' | 'text'
   url?: string
@@ -149,7 +149,7 @@ export interface CommonGraphResponse {
   updated: string
 }
 
-export interface UpdateNoteRequest {
+export interface Updatei_NotesRequest {
   title?: string
   content?: string
   note_type?: string
@@ -225,35 +225,35 @@ export interface SourceChatStreamEvent {
   timestamp?: string
 }
 
-// Notebook Chat Types
-export interface NotebookChatSession extends BaseChatSession {
-  notebook_id: string
+// i_Notes Chat Types
+export interface i_NotesChatSession extends BaseChatSession {
+  i_Notes_id: string
 }
 
-export interface NotebookChatMessage {
+export interface i_NotesChatMessage {
   id: string
   type: 'human' | 'ai'
   content: string
   timestamp?: string
 }
 
-export interface NotebookChatSessionWithMessages extends NotebookChatSession {
-  messages: NotebookChatMessage[]
+export interface i_NotesChatSessionWithMessages extends i_NotesChatSession {
+  messages: i_NotesChatMessage[]
   suggested_questions?: string[]
 }
 
-export interface CreateNotebookChatSessionRequest {
-  notebook_id: string
+export interface Createi_NotesChatSessionRequest {
+  i_Notes_id: string
   title?: string
   model_override?: string
 }
 
-export interface UpdateNotebookChatSessionRequest {
+export interface Updatei_NotesChatSessionRequest {
   title?: string
   model_override?: string | null
 }
 
-export interface SendNotebookChatMessageRequest {
+export interface Sendi_NotesChatMessageRequest {
   session_id: string
   message: string
   context: {
@@ -277,7 +277,7 @@ export interface SendNotebookChatMessageRequest {
 }
 
 export interface BuildContextRequest {
-  notebook_id: string
+  i_Notes_id: string
   context_config: {
     sources: Record<string, string>
     notes: Record<string, string>

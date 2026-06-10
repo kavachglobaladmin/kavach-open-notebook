@@ -13,7 +13,7 @@ export function ConfigureChatModal({ currentConfig, onSave, onClose }: any) {
           <button onClick={onClose} className="text-gray-500 hover:text-black text-2xl">×</button>
         </div>
 
-        <p className="text-gray-600 text-sm mb-6">Notebooks can be customised to help you achieve different goals.</p>
+        <p className="text-gray-600 text-sm mb-6">i_Notes can be customised to help you achieve different goals.</p>
 
         <div className="space-y-6">
           {/* Goal Selection */}

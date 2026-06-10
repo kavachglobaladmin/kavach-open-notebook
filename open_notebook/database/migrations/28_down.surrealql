@@ -1,2 +1,0 @@
--- Migration 28 rollback
-REMOVE TABLE command;

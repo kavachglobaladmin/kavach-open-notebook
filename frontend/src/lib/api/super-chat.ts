@@ -1,26 +1,26 @@
 import apiClient from './client'
 import { getApiUrl } from '@/lib/config'
 import {
-  NotebookChatSession,
-  NotebookChatSessionWithMessages,
-  CreateNotebookChatSessionRequest,
-  UpdateNotebookChatSessionRequest,
-  SendNotebookChatMessageRequest,
+  i_NotesChatSession,
+  i_NotesChatSessionWithMessages,
+  Createi_NotesChatSessionRequest,
+  Updatei_NotesChatSessionRequest,
+  Sendi_NotesChatMessageRequest,
   BuildContextRequest,
   BuildContextResponse,
 } from '@/lib/types/api'
 
 export const superChatApi = {
-  listSessions: async (notebookId: string) => {
-    const response = await apiClient.get<NotebookChatSession[]>(
+  listSessions: async (i_NotesId: string) => {
+    const response = await apiClient.get<i_NotesChatSession[]>(
       `/super-chat/sessions`,
-      { params: { notebook_id: notebookId } }
+      { params: { i_Notes_id: i_NotesId } }
     )
     return response.data
   },
 
-  createSession: async (data: CreateNotebookChatSessionRequest) => {
-    const response = await apiClient.post<NotebookChatSession>(
+  createSession: async (data: Createi_NotesChatSessionRequest) => {
+    const response = await apiClient.post<i_NotesChatSession>(
       `/super-chat/sessions`,
       data
     )
@@ -28,7 +28,7 @@ export const superChatApi = {
   },
 
   getSession: async (sessionId: string) => {
-    const response = await apiClient.get<NotebookChatSessionWithMessages>(
+    const response = await apiClient.get<i_NotesChatSessionWithMessages>(
       `/super-chat/sessions/${sessionId}`
     )
     return response.data
@@ -36,9 +36,9 @@ export const superChatApi = {
 
   updateSession: async (
     sessionId: string,
-    data: UpdateNotebookChatSessionRequest,
+    data: Updatei_NotesChatSessionRequest,
   ) => {
-    const response = await apiClient.put<NotebookChatSession>(
+    const response = await apiClient.put<i_NotesChatSession>(
       `/super-chat/sessions/${sessionId}`,
       data
     )
@@ -50,7 +50,7 @@ export const superChatApi = {
   },
 
   sendMessageStream: async (
-    data: SendNotebookChatMessageRequest,
+    data: Sendi_NotesChatMessageRequest,
     onToken: (token: string) => void,
     onSuggestedQuestions?: (questions: string[]) => void,
   ) => {

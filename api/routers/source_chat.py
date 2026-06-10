@@ -9,20 +9,20 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.notebook import ChatSession, Source
-from open_notebook.exceptions import (
+from i_Notes.database.repository import ensure_record_id, repo_query
+from i_Notes.domain.i_Notes import ChatSession, Source
+from i_Notes.exceptions import (
     NotFoundError,
 )
-from open_notebook.graphs.source_chat import source_chat_graph as source_chat_graph
-from open_notebook.graphs.source_chat import (
+from i_Notes.graphs.source_chat import source_chat_graph as source_chat_graph
+from i_Notes.graphs.source_chat import (
     _answer_from_context_only,
     _format_source_context,
     stream_source_chat_tokens,
 )
-from open_notebook.utils.context_builder import ContextBuilder
+from i_Notes.utils.context_builder import ContextBuilder
 from ai_prompter import Prompter
-from open_notebook.utils.graph_utils import get_session_message_count
+from i_Notes.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
 
@@ -478,12 +478,12 @@ async def delete_source_chat_session(
 #     session_id: str, source_id: str, message: str, model_override: Optional[str] = None
 # ) -> AsyncGenerator[str, None]:
 #     """Stream the source chat response as Server-Sent Events with real token streaming."""
-#     from open_notebook.graphs.source_chat import (
+#     from open_i_Notes.graphs.source_chat import (
 #         _answer_from_context_only,
 #         _format_source_context,
 #         stream_source_chat_tokens,
 #     )
-#     from open_notebook.ai.provision import provision_langchain_model
+#     from open_i_Notes.ai.provision import provision_langchain_model
 #     from langchain_core.messages import SystemMessage, HumanMessage as HMsg
 
 #     try:
@@ -748,7 +748,7 @@ async def delete_source_chat_session(
 #         yield f"data: {json.dumps(completion_event)}\n\n"
 
 #     except Exception as e:
-#         from open_notebook.utils.error_classifier import classify_error
+#         from open_i_Notes.utils.error_classifier import classify_error
 
 #         _, user_message = classify_error(e)
 #         logger.error(f"Error in source chat streaming: {str(e)}")
@@ -890,7 +890,7 @@ async def delete_source_chat_session(
 #         yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
 #     except Exception as e:
-#         from open_notebook.utils.error_classifier import classify_error
+#         from open_i_Notes.utils.error_classifier import classify_error
 #         _, user_message = classify_error(e)
 #         logger.error(f"Error in source chat streaming: {str(e)}")
 #         error_event = {"type": "error", "message": user_message}
@@ -900,12 +900,12 @@ async def delete_source_chat_session(
 async def stream_source_chat_response(
     session_id: str, source_id: str, message: str, model_override: Optional[str] = None
 ) -> AsyncGenerator[str, None]:
-    from open_notebook.graphs.source_chat import (
+    from i_Notes.graphs.source_chat import (
         _answer_from_context_only,
         _format_source_context,
         stream_source_chat_tokens,
     )
-    from open_notebook.ai.provision import provision_langchain_model
+    from i_Notes.ai.provision import provision_langchain_model
     from langchain_core.messages import SystemMessage, HumanMessage as HMsg, AIMessage as AiMsg
 
     try:
@@ -1203,7 +1203,7 @@ JSON array:"""
         yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
     except Exception as e:
-        from open_notebook.utils.error_classifier import classify_error
+        from i_Notes.utils.error_classifier import classify_error
         _, user_message = classify_error(e)
         logger.error(f"Error in source chat streaming: {str(e)}")
         error_event = {"type": "error", "message": user_message}

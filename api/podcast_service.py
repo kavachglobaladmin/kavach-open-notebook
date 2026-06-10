@@ -6,8 +6,8 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import get_command_status, submit_command
 
-from open_notebook.domain.notebook import Notebook
-from open_notebook.podcasts.models import EpisodeProfile, PodcastEpisode, SpeakerProfile
+from i_Notes.domain.i_Notes import i_Notes
+from i_Notes.podcasts.models import EpisodeProfile, PodcastEpisode, SpeakerProfile
 
 
 class PodcastGenerationRequest(BaseModel):
@@ -17,7 +17,7 @@ class PodcastGenerationRequest(BaseModel):
     speaker_profile: str
     episode_name: str
     content: Optional[str] = None
-    notebook_id: Optional[str] = None
+    i_Notes_id: Optional[str] = None
     briefing_suffix: Optional[str] = None
 
 
@@ -39,7 +39,7 @@ class PodcastService:
         episode_profile_name: str,
         speaker_profile_name: str,
         episode_name: str,
-        notebook_id: Optional[str] = None,
+        i_Notes_id: Optional[str] = None,
         content: Optional[str] = None,
         briefing_suffix: Optional[str] = None,
     ) -> str:
@@ -55,25 +55,25 @@ class PodcastService:
             if not speaker_profile:
                 raise ValueError(f"Speaker profile '{speaker_profile_name}' not found")
 
-            # Get content from notebook if not provided directly
-            if not content and notebook_id:
+            # Get content from i_Notes if not provided directly
+            if not content and i_Notes_id:
                 try:
-                    notebook = await Notebook.get(notebook_id)
-                    # Get notebook context (this may need to be adjusted based on actual Notebook implementation)
+                    i_Notes = await i_Notes.get(i_Notes_id)
+                    # Get i_Notes context (this may need to be adjusted based on actual i_Notes implementation)
                     content = (
-                        await notebook.get_context()
-                        if hasattr(notebook, "get_context")
-                        else str(notebook)
+                        await i_Notes.get_context()
+                        if hasattr(i_Notes, "get_context")
+                        else str(i_Notes)
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Failed to get notebook content, using notebook_id as content: {e}"
+                        f"Failed to get i_Notes content, using i_Notes_id as content: {e}"
                     )
-                    content = f"Notebook ID: {notebook_id}"
+                    content = f"i_Notes ID: {i_Notes_id}"
 
             if not content:
                 raise ValueError(
-                    "Content is required - provide either content or notebook_id"
+                    "Content is required - provide either content or i_Notes_id"
                 )
 
             # Prepare command arguments
@@ -97,7 +97,7 @@ class PodcastService:
             # submit_command uses a synchronous blocking WebSocket connection.
             # Run it in a thread to avoid blocking the async event loop.
             def _submit():
-                return submit_command("open_notebook", "generate_podcast", command_args)
+                return submit_command("open_i_Notes", "generate_podcast", command_args)
 
             job_id = await asyncio.to_thread(_submit)
 

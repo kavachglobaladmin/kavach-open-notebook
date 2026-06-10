@@ -2,7 +2,7 @@
  * Utility to map backend English error messages to i18n keys.
  */
 export const ERROR_MAP: Record<string, string> = {
-  "Notebook not found": "apiErrors.notebookNotFound",
+  "i_Notes not found": "apiErrors.i_NotesNotFound",
   "Source not found": "apiErrors.sourceNotFound",
   "Transformation not found": "apiErrors.transformationNotFound",
   "File upload failed": "apiErrors.fileUploadFailed",

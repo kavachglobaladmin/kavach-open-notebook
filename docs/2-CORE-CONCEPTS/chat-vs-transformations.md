@@ -1,6 +1,6 @@
 # Chat vs. Ask vs. Transformations - Which Tool for Which Job?
 
-Open Notebook offers different ways to work with your research. Understanding when to use each is key to using the system effectively.
+Open i_Notes offers different ways to work with your research. Understanding when to use each is key to using the system effectively.
 
 ---
 
@@ -111,7 +111,7 @@ You: [Get back one comprehensive answer]
 
 4. You get back
    - Structured output (main argument, methodology, limitations)
-   - Saved as a note in your notebook
+   - Saved as a note in your i_Notes
 ```
 
 **Context management:** Works on one source at a time.
@@ -288,7 +288,7 @@ Context is automatic:
   - Sends those to AI
 
 But you can:
-  - Search in specific notebook
+  - Search in specific i_Notes
   - Filter by source type
   - Use the results to decide context for follow-up Chat
 ```
@@ -350,4 +350,4 @@ CHAT → Save as Note → TRANSFORMATIONS
 | "I want to build a knowledge base" | **TRANSFORMATIONS** | Create structured note from each source |
 | "I want to iterate on understanding" | **CHAT** | Multiple questions, refine thinking |
 
-The key insight: **Different questions need different tools.** Open Notebook gives you all three because research rarely fits one mode.
+The key insight: **Different questions need different tools.** Open i_Notes gives you all three because research rarely fits one mode.

@@ -1,16 +1,16 @@
 .env
 prompts/patterns/user/
-/notebooks/
+/i_Notes/
 .env
 prompts/patterns/user/
-/notebooks/
+/i_Notes/
 data/
 .uploads/
 sqlite-db/
 surreal-data/
 docker.env
-notebook_data/
-notebook_data/
+i_Notes_data/
+i_Notes_data/
 # Python-specific
 *.py[cod]
 __pycache__/
@@ -62,7 +62,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 **/node_modules/
-# Jupyter Notebook
+# Jupyter i_Notes
 .ipynb_checkpoints
 
 # IPython

@@ -11,8 +11,8 @@ from loguru import logger
 from pydantic import BaseModel
 
 from api.auth import get_current_user
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.notebook import Notebook, Source
+from i_Notes.database.repository import ensure_record_id, repo_query
+from i_Notes.domain.i_Notes import i_Notes, Source
 
 router = APIRouter()
 
@@ -65,7 +65,7 @@ def _render_html(data: dict) -> str:
 
 def _build_orchestrator():
     from langchain_ollama import ChatOllama
-    from open_notebook.graphs.infographic import (
+    from i_Notes.graphs.infographic import (
         InfographicLLMService,
         InfographicPipeline,
         InfographicTextProcessor,
@@ -110,7 +110,7 @@ async def _assert_source_access(source_id: str, current_user: Optional[str]) -> 
     """
     Enforce ownership scope for infographic generation.
 
-    A source is accessible when at least one linked notebook is:
+    A source is accessible when at least one linked i_Notes is:
     - owned by current_user, or
     - unowned (legacy data, visible to all).
     """
@@ -127,13 +127,13 @@ async def _assert_source_access(source_id: str, current_user: Optional[str]) -> 
         return
 
     current_user_lc = current_user.strip().lower()
-    for notebook_id in references:
+    for i_Notes_id in references:
         try:
-            notebook = await Notebook.get(str(notebook_id))
+            i_Notes = await i_Notes.get(str(i_Notes_id))
         except Exception:
             continue
 
-        owner = notebook.owner.strip().lower() if notebook.owner else None
+        owner = i_Notes.owner.strip().lower() if i_Notes.owner else None
         if owner is None or owner == current_user_lc:
             return
 

@@ -23,10 +23,10 @@ from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
 from api.auth import get_current_user, get_current_user_role
-from api.notebook_access import (
-    can_access_notebook,
-    get_accessible_notebook_ids,
-    normalize_notebook_id,
+from api.i_Notes_access import (
+    can_access_i_Notes,
+    get_accessible_i_Notes_ids,
+    normalize_i_Notes_id,
 )
 from api.roles import has_elevated_data_access
 
@@ -45,12 +45,12 @@ from api.models import (
     SourceUpdate,
 )
 from commands.source_commands import SourceProcessingInput
-from open_notebook.config import UPLOADS_FOLDER
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.common_graph import CommonGraph
-from open_notebook.domain.notebook import Notebook, Source
-from open_notebook.domain.transformation import Transformation
-from open_notebook.exceptions import InvalidInputError, NotFoundError
+from i_Notes.config import UPLOADS_FOLDER
+from i_Notes.database.repository import ensure_record_id, repo_query
+from i_Notes.domain.common_graph import CommonGraph
+from i_Notes.domain.i_Notes import i_Notes, Source
+from i_Notes.domain.transformation import Transformation
+from i_Notes.exceptions import InvalidInputError, NotFoundError
 from urllib.parse import unquote
 from pydantic import BaseModel
 
@@ -123,8 +123,8 @@ async def save_uploaded_file(upload_file: UploadFile) -> str:
 
 def parse_source_form_data(
     type: str = Form(...),
-    notebook_id: Optional[str] = Form(None),
-    notebooks: Optional[str] = Form(None),  # JSON string of notebook IDs
+    i_Notes_id: Optional[str] = Form(None),
+    i_Notes: Optional[str] = Form(None),  # JSON string of i_Notes IDs
     url: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
@@ -146,13 +146,13 @@ def parse_source_form_data(
     async_processing_bool = str_to_bool(async_processing)
 
     # Parse JSON strings
-    notebooks_list = None
-    if notebooks:
+    i_Notes_list = None
+    if i_Notes:
         try:
-            notebooks_list = json.loads(notebooks)
+            i_Notes_list = json.loads(i_Notes)
         except json.JSONDecodeError:
-            logger.error(f"Invalid JSON in notebooks field: {notebooks}")
-            raise ValueError("Invalid JSON in notebooks field")
+            logger.error(f"Invalid JSON in i_Notes field: {i_Notes}")
+            raise ValueError("Invalid JSON in i_Notes field")
 
     transformations_list = []
     if transformations:
@@ -166,8 +166,8 @@ def parse_source_form_data(
     try:
         source_data = SourceCreate(
             type=type,
-            notebook_id=notebook_id,
-            notebooks=notebooks_list,
+            i_Notes_id=i_Notes_id,
+            i_Notes=i_Notes_list,
             url=url,
             content=content,
             title=title,
@@ -1394,7 +1394,7 @@ async def _build_common_graph_metadata_llm(sources, model_id, prompt=None):
 @router.get("/sources", response_model=List[SourceListResponse])
 async def get_sources(
     request: Request,
-    notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
+    i_Notes_id: Optional[str] = Query(None, description="Filter by i_Notes ID"),
     limit: int = Query(
         50, ge=1, le=500, description="Number of sources to return (1-500)"
     ),
@@ -1422,15 +1422,15 @@ async def get_sources(
         order_clause = f"ORDER BY {sort_by} {sort_order.upper()}"
 
         # Build the query
-        if notebook_id:
-            # Verify notebook exists and belongs to current user
-            notebook = await Notebook.get(normalize_notebook_id(notebook_id))
-            if not notebook:
-                raise HTTPException(status_code=404, detail="Notebook not found")
-            if not await can_access_notebook(current_user, current_role, notebook_id):
+        if i_Notes_id:
+            # Verify i_Notes exists and belongs to current user
+            i_Notes = await i_Notes.get(normalize_i_Notes_id(i_Notes_id))
+            if not i_Notes:
+                raise HTTPException(status_code=404, detail="i_Notes not found")
+            if not await can_access_i_Notes(current_user, current_role, i_Notes_id):
                 raise HTTPException(status_code=403, detail="Access denied")
 
-            # Query sources for specific notebook - include command field with FETCH
+            # Query sources for specific i_Notes - include command field with FETCH
             # Deduplicate by using array::distinct on the source IDs first
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
@@ -1440,7 +1440,7 @@ async def get_sources(
                     WHERE source = $parent.id
                 )) AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM array::distinct((select value in from reference where out=$notebook_id))
+                FROM array::distinct((select value in from reference where out=$i_Notes_id))
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -1448,16 +1448,16 @@ async def get_sources(
             result = await repo_query(
                 query,
                 {
-                    "notebook_id": ensure_record_id(notebook_id),
+                    "i_Notes_id": ensure_record_id(i_Notes_id),
                     "limit": limit,
                     "offset": offset,
                 },
             )
         elif current_user and not has_elevated_data_access(current_role):
-            accessible_notebook_ids = await get_accessible_notebook_ids(
+            accessible_i_Notes_ids = await get_accessible_i_Notes_ids(
                 current_user, current_role
             )
-            if not accessible_notebook_ids:
+            if not accessible_i_Notes_ids:
                 result = []
             else:
                 # Deduplicate by using array::distinct on the source IDs first
@@ -1471,7 +1471,7 @@ async def get_sources(
                     (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                     FROM array::distinct((
                         SELECT VALUE in FROM reference
-                        WHERE out IN $notebook_ids
+                        WHERE out IN $i_Notes_ids
                     ))
                     {order_clause}
                     LIMIT $limit START $offset
@@ -1480,14 +1480,14 @@ async def get_sources(
                 result = await repo_query(
                     query,
                     {
-                        "notebook_ids": list(accessible_notebook_ids),
+                        "i_Notes_ids": list(accessible_i_Notes_ids),
                         "limit": limit,
                         "offset": offset,
                     },
                 )
         else:
-            # Query only sources linked to any notebook (admin/elevated access)
-            # Sources without a notebook association are excluded
+            # Query only sources linked to any i_Notes (admin/elevated access)
+            # Sources without a i_Notes association are excluded
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
                 count(array::distinct(
@@ -1581,17 +1581,17 @@ async def create_source(
     file_path = None
 
     try:
-        # Verify all specified notebooks exist (backward compatibility support)
-        for notebook_id in source_data.notebooks or []:
-            notebook = await Notebook.get(notebook_id)
-            if not notebook:
+        # Verify all specified i_Notes exist (backward compatibility support)
+        for i_Notes_id in source_data.i_Notes or []:
+            i_Notes = await i_Notes.get(i_Notes_id)
+            if not i_Notes:
                 raise HTTPException(
-                    status_code=404, detail=f"Notebook {notebook_id} not found"
+                    status_code=404, detail=f"i_Notes {i_Notes_id} not found"
                 )
 
         # Handle file upload if provided
         if upload_file and source_data.type == "upload":
-            # Check storage limit for each target notebook before saving
+            # Check storage limit for each target i_Notes before saving
             if upload_file.size is not None:
                 file_size_mb = upload_file.size / (1024 * 1024)
             else:
@@ -1600,16 +1600,16 @@ async def create_source(
                 file_size_mb = len(content_bytes) / (1024 * 1024)
                 await upload_file.seek(0)
 
-            for notebook_id in source_data.notebooks or []:
-                nb_obj = await Notebook.get(notebook_id)
+            for i_Notes_id in source_data.i_Notes or []:
+                nb_obj = await i_Notes.get(i_Notes_id)
                 if nb_obj and nb_obj.storage_limit_mb:
-                    from api.routers.notebooks import _get_notebook_storage_used_mb
-                    used_mb = await _get_notebook_storage_used_mb(notebook_id)
+                    from api.routers.i_Notes import _get_i_Notes_storage_used_mb
+                    used_mb = await _get_i_Notes_storage_used_mb(i_Notes_id)
                     if used_mb + file_size_mb > nb_obj.storage_limit_mb:
                         raise HTTPException(
                             status_code=413,
                             detail=(
-                                f"Storage limit exceeded for notebook '{nb_obj.name}'. "
+                                f"Storage limit exceeded for i_Notes '{nb_obj.name}'. "
                                 f"Limit: {nb_obj.storage_limit_mb} MB, "
                                 f"Used: {used_mb:.1f} MB, "
                                 f"File: {file_size_mb:.1f} MB."
@@ -1676,10 +1676,10 @@ async def create_source(
             )
             await source.save()
 
-            # Add source to notebooks immediately so it appears in the UI
+            # Add source to i_Notes immediately so it appears in the UI
             # The source_graph will skip adding duplicates
-            for notebook_id in source_data.notebooks or []:
-                await source.add_to_notebook(notebook_id)
+            for i_Notes_id in source_data.i_Notes or []:
+                await source.add_to_i_Notes(i_Notes_id)
 
             try:
                 # Import command modules to ensure they're registered
@@ -1689,13 +1689,13 @@ async def create_source(
                 command_input = SourceProcessingInput(
                     source_id=str(source.id),
                     content_state=content_state,
-                    notebook_ids=source_data.notebooks,
+                    i_Notes_ids=source_data.i_Notes,
                     transformations=transformation_ids,
                     embed=source_data.embed,
                 )
 
                 command_id = await CommandService.submit_command_job(
-                    "open_notebook",  # app name
+                    "open_i_Notes",  # app name
                     "process_source",  # command name
                     command_input.model_dump(),
                 )
@@ -1755,16 +1755,16 @@ async def create_source(
                 )
                 await source.save()
 
-                # Add source to notebooks immediately so it appears in the UI
+                # Add source to i_Notes immediately so it appears in the UI
                 # The source_graph will skip adding duplicates
-                for notebook_id in source_data.notebooks or []:
-                    await source.add_to_notebook(notebook_id)
+                for i_Notes_id in source_data.i_Notes or []:
+                    await source.add_to_i_Notes(i_Notes_id)
 
                 # Execute command synchronously
                 command_input = SourceProcessingInput(
                     source_id=str(source.id),
                     content_state=content_state,
-                    notebook_ids=source_data.notebooks,
+                    i_Notes_ids=source_data.i_Notes,
                     transformations=transformation_ids,
                     embed=source_data.embed,
                 )
@@ -1774,7 +1774,7 @@ async def create_source(
                 # be called from an already-running event loop (FastAPI)
                 result = await asyncio.to_thread(
                     execute_command_sync,
-                    "open_notebook",  # app name
+                    "open_i_Notes",  # app name
                     "process_source",  # command name
                     command_input.model_dump(),
                     timeout=300,  # 5 minute timeout for sync processing
@@ -2936,7 +2936,7 @@ async def _extract_profile_graph_llm(text: str, model_id: str) -> dict:
     Returns structured data without hardcoded field names.
     """
     from langchain_core.messages import HumanMessage, SystemMessage
-    from open_notebook.ai.provision import provision_langchain_model
+    from i_Notes.ai.provision import provision_langchain_model
     import json as _json
     import re as _re
 
@@ -3320,13 +3320,13 @@ async def get_source(source_id: str, include_text: bool = True):
 
         embedded_chunks = await source.get_embedded_chunks()
 
-        # Get associated notebooks
-        notebooks_query = await repo_query(
+        # Get associated i_Notes
+        i_Notes_query = await repo_query(
             "SELECT VALUE out FROM reference WHERE in = $source_id",
             {"source_id": ensure_record_id(source.id or source_id)},
         )
-        notebook_ids = (
-            [str(nb_id) for nb_id in notebooks_query] if notebooks_query else []
+        i_Notes_ids = (
+            [str(nb_id) for nb_id in i_Notes_query] if i_Notes_query else []
         )
 
         return SourceResponse(
@@ -3351,8 +3351,8 @@ async def get_source(source_id: str, include_text: bool = True):
             command_id=str(source.command) if source.command else None,
             status=status,
             processing_info=processing_info,
-            # Notebook associations
-            notebooks=notebook_ids,
+            # i_Notes associations
+            i_Notes=i_Notes_ids,
         )
     except HTTPException:
         raise
@@ -3407,7 +3407,7 @@ async def format_source_as_html(source_id: str, request: Request):
 
         # Auto-select a model if none provided
         if not model_id:
-            from open_notebook.ai.models import DefaultModels
+            from i_Notes.ai.models import DefaultModels
             defaults = await DefaultModels.get_instance()
             model_id = (
                 getattr(defaults, "default_chat_model", None)
@@ -3415,7 +3415,7 @@ async def format_source_as_html(source_id: str, request: Request):
             )
         # Fallback: get first available language model
         if not model_id:
-            from open_notebook.ai.models import Model
+            from i_Notes.ai.models import Model
             models = await Model.get_all()
             lang_models = [m for m in models if getattr(m, "type", "") == "language"]
             if lang_models:
@@ -3423,7 +3423,7 @@ async def format_source_as_html(source_id: str, request: Request):
         if not model_id:
             raise HTTPException(status_code=400, detail="No language model configured. Please add a model in Settings.")
 
-        from open_notebook.ai.provision import provision_langchain_model
+        from i_Notes.ai.provision import provision_langchain_model
 
         content = source.full_text
         CHUNK = 12000
@@ -3446,8 +3446,8 @@ TEXT:
         html_parts = []
         for chunk in chunks:
             from langchain_core.messages import SystemMessage, HumanMessage
-            from open_notebook.utils import clean_thinking_content
-            from open_notebook.utils.text_utils import extract_text_content
+            from i_Notes.utils import clean_thinking_content
+            from i_Notes.utils.text_utils import extract_text_content
 
             chain = await provision_langchain_model(
                 system + chunk, model_id, "transformation", max_tokens=4096
@@ -3573,7 +3573,7 @@ async def update_source(source_id: str, source_update: SourceUpdate):
 
 
 @router.post("/sources/{source_id}/retry", response_model=SourceResponse)
-async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Query(None)):
+async def retry_source_processing(source_id: str, i_Notes_id: Optional[str] = Query(None)):
     """Retry processing for a failed or stuck source."""
     try:
         # First, verify source exists
@@ -3596,25 +3596,25 @@ async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Q
                 )
                 # Continue with retry if we can't check status
 
-        # Get notebooks that this source belongs to
-        query = "SELECT notebook FROM reference WHERE source = $source_id"
+        # Get i_Notes that this source belongs to
+        query = "SELECT i_Notes FROM reference WHERE source = $source_id"
         references = await repo_query(query, {"source_id": source_id})
-        notebook_ids = [str(ref["notebook"]) for ref in references]
+        i_Notes_ids = [str(ref["i_Notes"]) for ref in references]
 
-        # If no notebooks found, use the provided notebook_id or raise error
-        if not notebook_ids:
-            if not notebook_id:
+        # If no i_Notes found, use the provided i_Notes_id or raise error
+        if not i_Notes_ids:
+            if not i_Notes_id:
                 raise HTTPException(
                     status_code=400, 
-                    detail="Source is not associated with any notebooks. Please provide a notebook_id parameter to retry."
+                    detail="Source is not associated with any i_Notes. Please provide a i_Notes_id parameter to retry."
                 )
-            notebook_ids = [notebook_id]
+            i_Notes_ids = [i_Notes_id]
             # Also create the reference relationship
             try:
-                await source.add_to_notebook(notebook_id)
-                logger.info(f"Added source {source_id} to notebook {notebook_id}")
+                await source.add_to_i_Notes(i_Notes_id)
+                logger.info(f"Added source {source_id} to i_Notes {i_Notes_id}")
             except Exception as e:
-                logger.warning(f"Failed to add source to notebook: {e}")
+                logger.warning(f"Failed to add source to i_Notes: {e}")
                 # Continue anyway, the reference might already exist
 
         # Prepare content_state based on source asset
@@ -3648,13 +3648,13 @@ async def retry_source_processing(source_id: str, notebook_id: Optional[str] = Q
             command_input = SourceProcessingInput(
                 source_id=str(source.id),
                 content_state=content_state,
-                notebook_ids=notebook_ids,
+                i_Notes_ids=i_Notes_ids,
                 transformations=[],  # Use default transformations on retry
                 embed=True,  # Always embed on retry
             )
 
             command_id = await CommandService.submit_command_job(
-                "open_notebook",  # app name
+                "open_i_Notes",  # app name
                 "process_source",  # command name
                 command_input.model_dump(),
             )
@@ -3767,7 +3767,7 @@ async def retranslate_source(source_id: str):
         if not source.full_text or not source.full_text.strip():
             raise HTTPException(status_code=400, detail="Source has no text content to translate")
 
-        from open_notebook.utils.translation import translate_to_english
+        from i_Notes.utils.translation import translate_to_english
         translated, lang = await translate_to_english(source.full_text)
         source.content_language = lang
         if lang != "en":
@@ -3879,7 +3879,7 @@ async def delete_mindmap_insights(source_id: str):
         
 #         if model_id_to_use:
 #             try:
-#                 from open_notebook.ai.models import Model
+#                 from open_i_Notes.ai.models import Model
 #                 model = await Model.get(model_id_to_use)
 #                 if model and hasattr(model, 'name') and hasattr(model, 'provider'):
 #                     model_name = f"{model.name} ({model.provider})"
@@ -3891,7 +3891,7 @@ async def delete_mindmap_insights(source_id: str):
 
 #         # Submit transformation as background job (fire-and-forget)
 #         command_id = submit_command(
-#             "open_notebook",
+#             "open_i_Notes",
 #             "run_transformation",
 #             {
 #                 "source_id": source_id,
@@ -4011,7 +4011,7 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
 
         if model_id_to_use:
             try:
-                from open_notebook.ai.models import Model
+                from i_Notes.ai.models import Model
                 model = await Model.get(model_id_to_use)
                 if model and hasattr(model, 'name') and hasattr(model, 'provider'):
                     model_name = f"{model.name} ({model.provider})"
@@ -4023,7 +4023,7 @@ async def create_source_insight(source_id: str, request: CreateSourceInsightRequ
 
         # Submit transformation as background job (fire-and-forget)
         command_id = submit_command(
-            "open_notebook",
+            "open_i_Notes",
             "run_transformation",
             {
                 "source_id": source_id,

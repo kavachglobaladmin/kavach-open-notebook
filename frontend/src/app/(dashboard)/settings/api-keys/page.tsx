@@ -124,7 +124,7 @@ const PROVIDER_DOCS: Record<string, string> = {
   elevenlabs: 'https://elevenlabs.io/app/settings/api-keys',
   azure: 'https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI',
   vertex: 'https://cloud.google.com/vertex-ai/docs/start/cloud-environment',
-  openai_compatible: 'https://github.com/lfnovo/open-notebook/blob/main/docs/5-CONFIGURATION/openai-compatible.md',
+  openai_compatible: 'https://github.com/lfnovo/open-i_Notes/blob/main/docs/5-CONFIGURATION/openai-compatible.md',
 }
 
 const TYPE_ICONS: Record<ModelType, React.ReactNode> = {
@@ -1643,7 +1643,7 @@ export default function ApiKeysPage() {
         <PageHeader 
           searchValue={searchTerm} 
           onSearchChange={(val) => setSearchTerm(val)} 
-          newLabel="NOTEBOOK"
+          newLabel="i_Notes"
         />
 
         <div className="flex-1 overflow-y-auto">

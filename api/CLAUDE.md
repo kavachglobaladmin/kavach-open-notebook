@@ -1,6 +1,6 @@
 # API Module
 
-FastAPI-based REST backend exposing services for notebooks, sources, notes, chat, podcasts, and AI model management.
+FastAPI-based REST backend exposing services for i_Notes, sources, notes, chat, podcasts, and AI model management.
 
 ## Purpose
 
@@ -72,7 +72,7 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - **Async/await throughout**: All DB queries, graph invocations, AI calls are async
 - **SurrealDB transactions**: Services use repo_query, repo_create, repo_upsert from database layer
 - **Config override pattern**: Models/config override via models_service passed to graph.ainvoke(config=...)
-- **Error handling**: Custom exception hierarchy (`open_notebook.exceptions`) with global FastAPI exception handlers mapping to HTTP status codes (see Error Handling section below). LangGraph nodes use `classify_error()` to convert raw LLM provider errors into typed exceptions with user-friendly messages.
+- **Error handling**: Custom exception hierarchy (`open_i_Notes.exceptions`) with global FastAPI exception handlers mapping to HTTP status codes (see Error Handling section below). LangGraph nodes use `classify_error()` to convert raw LLM provider errors into typed exceptions with user-friendly messages.
 - **Logging**: loguru logger in main.py; services expected to log key operations
 - **Response normalization**: All responses follow standard schema (data + metadata structure)
 
@@ -80,10 +80,10 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 
 - `fastapi`: FastAPI app, routers, HTTPException
 - `pydantic`: Validation models with Field, field_validator
-- `open_notebook.graphs`: chat, ask, source_chat, source, transformation graphs
-- `open_notebook.database`: SurrealDB repository functions (repo_query, repo_create, repo_upsert)
-- `open_notebook.domain`: Notebook, Source, Note, SourceInsight models
-- `open_notebook.ai.provision`: provision_langchain_model() factory
+- `open_i_Notes.graphs`: chat, ask, source_chat, source, transformation graphs
+- `open_i_Notes.database`: SurrealDB repository functions (repo_query, repo_create, repo_upsert)
+- `open_i_Notes.domain`: i_Notes, Source, Note, SourceInsight models
+- `open_i_Notes.ai.provision`: provision_langchain_model() factory
 - `ai_prompter`: Prompter for template rendering
 - `content_core`: extract_content() for file/URL processing
 - `esperanto`: AI provider client library (LLM, embeddings, TTS)
@@ -101,13 +101,13 @@ FastAPI application serving three architectural layers: routes (HTTP endpoints),
 - **Model override scoping**: Model config override via RunnableConfig is per-request only (not persistent)
 - **CORS open by default**: main.py CORS settings allow all origins (restrict before production)
 - **No OpenAPI security scheme**: API docs available without auth (disable before production)
-- **Services don't validate user permission**: All endpoints trust authentication layer; no per-notebook permission checks
+- **Services don't validate user permission**: All endpoints trust authentication layer; no per-i_Notes permission checks
 
 ## Error Handling
 
 ### Global Exception Handlers (`main.py`)
 
-FastAPI exception handlers map custom exception types from `open_notebook.exceptions` to HTTP status codes. All error responses include CORS headers.
+FastAPI exception handlers map custom exception types from `open_i_Notes.exceptions` to HTTP status codes. All error responses include CORS headers.
 
 | Exception Class | HTTP Status | Use Case |
 |----------------|-------------|----------|
@@ -118,9 +118,9 @@ FastAPI exception handlers map custom exception types from `open_notebook.except
 | `ConfigurationError` | 422 | Wrong model name, missing config |
 | `NetworkError` | 502 | Cannot reach AI provider |
 | `ExternalServiceError` | 502 | Provider returned error (500/503, context length) |
-| `OpenNotebookError` (base) | 500 | Any other application error |
+| `Openi_NotesError` (base) | 500 | Any other application error |
 
-### Error Classification (`open_notebook.utils.error_classifier`)
+### Error Classification (`open_i_Notes.utils.error_classifier`)
 
 The `classify_error()` function maps raw exceptions from LLM providers/Esperanto/LangChain into the typed exceptions above with user-friendly messages. Used in all LangGraph graph nodes and SSE streaming handlers.
 
@@ -180,16 +180,16 @@ The Credential Management system enables users to configure AI provider credenti
 - NEVER returns actual API key values (only metadata)
 - URL validation (SSRF protection) on all URL fields via `_validate_url()`
 - Allows private IPs and localhost for self-hosted services (Ollama, LM Studio)
-- Requires `OPEN_NOTEBOOK_ENCRYPTION_KEY` to be set for storing credentials
+- Requires `OPEN_i_Notes_ENCRYPTION_KEY` to be set for storing credentials
 
-### Domain Model: `Credential` (`open_notebook/domain/credential.py`)
+### Domain Model: `Credential` (`open_i_Notes/domain/credential.py`)
 
 Individual credential records replacing the old `ProviderConfig` singleton. Each credential stores:
 - Provider name, display name, modalities
 - Encrypted API key (via Fernet)
 - Provider-specific config (base_url, endpoint, api_version, etc.)
 
-### Integration with Key Provider (`open_notebook/ai/key_provider.py`)
+### Integration with Key Provider (`open_i_Notes/ai/key_provider.py`)
 
 The `key_provider` module provisions DB-stored credentials into environment variables for Esperanto compatibility:
 
@@ -210,10 +210,10 @@ No changes to authentication. The `credentials` router uses the same `PasswordAu
 
 **Auth Flow** (unchanged from `api/auth.py`):
 - `PasswordAuthMiddleware`: Global middleware checking `Authorization: Bearer {password}` header
-- Default password: `open-notebook-change-me` (set `OPEN_NOTEBOOK_PASSWORD` in production)
-- Docker secrets support via `OPEN_NOTEBOOK_PASSWORD_FILE`
+- Default password: `open-i_Notes-change-me` (set `OPEN_i_Notes_PASSWORD` in production)
+- Docker secrets support via `OPEN_i_Notes_PASSWORD_FILE`
 
-### Connection Testing (`open_notebook/ai/connection_tester.py`)
+### Connection Testing (`open_i_Notes/ai/connection_tester.py`)
 
 The `/credentials/{credential_id}/test` endpoint uses minimal API calls to verify credentials:
 - Loads Credential via `Credential.get(config_id)`, uses `credential.to_esperanto_config()`

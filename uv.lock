@@ -2814,7 +2814,7 @@ wheels = [
 ]
 
 [[package]]
-name = "open-notebook"
+name = "open-i_Notes"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

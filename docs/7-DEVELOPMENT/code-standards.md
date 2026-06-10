@@ -1,6 +1,6 @@
 # Code Standards
 
-This document outlines coding standards and best practices for Open Notebook contributions. All code should follow these guidelines to ensure consistency, readability, and maintainability.
+This document outlines coding standards and best practices for Open i_Notes contributions. All code should follow these guidelines to ensure consistency, readability, and maintainability.
 
 ## Python Standards
 
@@ -51,19 +51,19 @@ def fetch_data(url: str) -> Dict[str, Any]:
 Use structured error handling with custom exceptions:
 
 ```python
-from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
+from open_i_Notes.exceptions import DatabaseOperationError, InvalidInputError
 
-async def create_notebook(name: str, description: str) -> Notebook:
-    """Create a new notebook with validation."""
+async def create_i_Notes(name: str, description: str) -> i_Notes:
+    """Create a new i_Notes with validation."""
     if not name.strip():
-        raise InvalidInputError("Notebook name cannot be empty")
+        raise InvalidInputError("i_Notes name cannot be empty")
 
     try:
-        notebook = Notebook(name=name, description=description)
-        await notebook.save()
-        return notebook
+        i_Notes = i_Notes(name=name, description=description)
+        await i_Notes.save()
+        return i_Notes
     except Exception as e:
-        raise DatabaseOperationError(f"Failed to create notebook: {str(e)}")
+        raise DatabaseOperationError(f"Failed to create i_Notes: {str(e)}")
 ```
 
 ### Documentation (Google-style Docstrings)
@@ -96,26 +96,26 @@ async def vector_search(
 #### Module Docstrings
 ```python
 """
-Notebook domain model and operations.
+i_Notes domain model and operations.
 
-This module contains the core Notebook class and related operations for
-managing research notebooks within the Open Notebook system.
+This module contains the core i_Notes class and related operations for
+managing research i_Notes within the Open i_Notes system.
 """
 ```
 
 #### Class Docstrings
 ```python
-class Notebook(BaseModel):
-    """A research notebook containing sources, notes, and chat sessions.
+class i_Notes(BaseModel):
+    """A research i_Notes containing sources, notes, and chat sessions.
 
-    Notebooks are the primary organizational unit in Open Notebook, allowing
+    i_Notes are the primary organizational unit in Open i_Notes, allowing
     users to group related research materials and maintain separate contexts
     for different projects.
 
     Attributes:
-        name: The notebook's display name
-        description: Optional description of the notebook's purpose
-        archived: Whether the notebook is archived (default: False)
+        name: The i_Notes's display name
+        description: Optional description of the i_Notes's purpose
+        archived: Whether the i_Notes is archived (default: False)
         created: Timestamp of creation
         updated: Timestamp of last update
     """
@@ -123,20 +123,20 @@ class Notebook(BaseModel):
 
 #### Function Docstrings
 ```python
-async def create_notebook(
+async def create_i_Notes(
     name: str,
     description: str = "",
     user_id: Optional[str] = None
-) -> Notebook:
-    """Create a new notebook with validation.
+) -> i_Notes:
+    """Create a new i_Notes with validation.
 
     Args:
-        name: The notebook name (required, non-empty)
-        description: Optional notebook description
+        name: The i_Notes name (required, non-empty)
+        description: Optional i_Notes description
         user_id: Optional user ID for multi-user deployments
 
     Returns:
-        The created notebook instance
+        The created i_Notes instance
 
     Raises:
         InvalidInputError: If name is empty or invalid
@@ -144,7 +144,7 @@ async def create_notebook(
 
     Example:
         ```python
-        notebook = await create_notebook(
+        i_Notes = await create_i_Notes(
             name="AI Research",
             description="Research on AI applications"
         )
@@ -159,18 +159,18 @@ async def create_notebook(
 Organize endpoints by domain:
 
 ```python
-# api/routers/notebooks.py
+# api/routers/i_Notes.py
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 
 router = APIRouter()
 
-@router.get("/notebooks", response_model=List[NotebookResponse])
-async def get_notebooks(
+@router.get("/i_Notes", response_model=List[i_NotesResponse])
+async def get_i_Notes(
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
     order_by: str = Query("updated desc", description="Order by field and direction"),
 ):
-    """Get all notebooks with optional filtering and ordering."""
+    """Get all i_Notes with optional filtering and ordering."""
     # Implementation
 ```
 
@@ -182,11 +182,11 @@ Use Pydantic models for validation:
 from pydantic import BaseModel, Field
 from typing import Optional
 
-class NotebookCreate(BaseModel):
-    name: str = Field(..., description="Name of the notebook", min_length=1)
-    description: str = Field(default="", description="Description of the notebook")
+class i_NotesCreate(BaseModel):
+    name: str = Field(..., description="Name of the i_Notes", min_length=1)
+    description: str = Field(default="", description="Description of the i_Notes")
 
-class NotebookResponse(BaseModel):
+class i_NotesResponse(BaseModel):
     id: str
     name: str
     description: str
@@ -219,18 +219,18 @@ Use FastAPI's automatic documentation features:
 
 ```python
 @router.post(
-    "/notebooks",
-    response_model=NotebookResponse,
-    summary="Create a new notebook",
-    description="Create a new notebook with the specified name and description.",
+    "/i_Notes",
+    response_model=i_NotesResponse,
+    summary="Create a new i_Notes",
+    description="Create a new i_Notes with the specified name and description.",
     responses={
-        201: {"description": "Notebook created successfully"},
+        201: {"description": "i_Notes created successfully"},
         400: {"description": "Invalid input data"},
         500: {"description": "Internal server error"}
     }
 )
-async def create_notebook(notebook: NotebookCreate):
-    """Create a new notebook."""
+async def create_i_Notes(i_Notes: i_NotesCreate):
+    """Create a new i_Notes."""
     # Implementation
 ```
 
@@ -241,25 +241,25 @@ async def create_notebook(notebook: NotebookCreate):
 Use the repository pattern consistently:
 
 ```python
-from open_notebook.database.repository import repo_create, repo_query, repo_update
+from open_i_Notes.database.repository import repo_create, repo_query, repo_update
 
 # Create records
-async def create_notebook(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a new notebook record."""
-    return await repo_create("notebook", data)
+async def create_i_Notes(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a new i_Notes record."""
+    return await repo_create("i_Notes", data)
 
 # Query with parameters
-async def find_notebooks_by_user(user_id: str) -> List[Dict[str, Any]]:
-    """Find notebooks for a specific user."""
+async def find_i_Notes_by_user(user_id: str) -> List[Dict[str, Any]]:
+    """Find i_Notes for a specific user."""
     return await repo_query(
-        "SELECT * FROM notebook WHERE user_id = $user_id",
+        "SELECT * FROM i_Notes WHERE user_id = $user_id",
         {"user_id": user_id}
     )
 
 # Update records
-async def update_notebook(notebook_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-    """Update a notebook record."""
-    return await repo_update("notebook", notebook_id, data)
+async def update_i_Notes(i_Notes_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update a i_Notes record."""
+    return await repo_update("i_Notes", i_Notes_id, data)
 ```
 
 ### Schema Management
@@ -319,22 +319,22 @@ We use these tools to maintain code quality:
 ### Async Database Operations
 
 ```python
-async def get_notebook_with_sources(notebook_id: str) -> Notebook:
-    """Retrieve notebook with all related sources."""
-    notebook_data = await repo_query(
-        "SELECT * FROM notebook WHERE id = $id",
-        {"id": notebook_id}
+async def get_i_Notes_with_sources(i_Notes_id: str) -> i_Notes:
+    """Retrieve i_Notes with all related sources."""
+    i_Notes_data = await repo_query(
+        "SELECT * FROM i_Notes WHERE id = $id",
+        {"id": i_Notes_id}
     )
-    if not notebook_data:
-        raise InvalidInputError(f"Notebook {notebook_id} not found")
+    if not i_Notes_data:
+        raise InvalidInputError(f"i_Notes {i_Notes_id} not found")
 
     sources_data = await repo_query(
-        "SELECT * FROM source WHERE notebook_id = $notebook_id",
-        {"notebook_id": notebook_id}
+        "SELECT * FROM source WHERE i_Notes_id = $i_Notes_id",
+        {"i_Notes_id": i_Notes_id}
     )
 
-    return Notebook(
-        **notebook_data[0],
+    return i_Notes(
+        **i_Notes_data[0],
         sources=[Source(**s) for s in sources_data]
     )
 ```
@@ -344,7 +344,7 @@ async def get_notebook_with_sources(notebook_id: str) -> Notebook:
 ```python
 from pydantic import BaseModel, validator
 
-class NotebookInput(BaseModel):
+class i_NotesInput(BaseModel):
     name: str
     description: str = ""
 

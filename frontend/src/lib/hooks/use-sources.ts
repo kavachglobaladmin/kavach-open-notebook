@@ -14,55 +14,55 @@ import {
   SourceListResponse
 } from '@/lib/types/api'
 
-const NOTEBOOK_SOURCES_PAGE_SIZE = 30
+const i_Notes_SOURCES_PAGE_SIZE = 30
 
 /**
  * Include the logged-in user's email in source query keys so that
  * React Query maintains a separate cache per user — same pattern as
- * use-notebooks.ts.  The backend already scopes sources by owner via
+ * use-i_Notes.ts.  The backend already scopes sources by owner via
  * the X-User-Email header; this ensures the client cache is also scoped.
  */
 function useCurrentUserEmail(): string | null {
   return useAuthStore(s => s.currentUserEmail)
 }
 
-export function useSources(notebookId?: string) {
+export function useSources(i_NotesId?: string) {
   const userEmail = useCurrentUserEmail()
   return useQuery({
-    queryKey: [...QUERY_KEYS.sources(notebookId), { user: userEmail }],
-    queryFn: () => sourcesApi.list({ notebook_id: notebookId }),
-    enabled: !!notebookId && userEmail !== null,
+    queryKey: [...QUERY_KEYS.sources(i_NotesId), { user: userEmail }],
+    queryFn: () => sourcesApi.list({ i_Notes_id: i_NotesId }),
+    enabled: !!i_NotesId && userEmail !== null,
     staleTime: 5 * 1000,
     refetchOnWindowFocus: true,
   })
 }
 
 /**
- * Hook for fetching notebook sources with infinite scroll pagination.
+ * Hook for fetching i_Notes sources with infinite scroll pagination.
  * Returns flattened sources array and pagination controls.
  */
-export function useNotebookSources(notebookId: string) {
+export function usei_Notesources(i_NotesId: string) {
   const queryClient = useQueryClient()
   const userEmail = useCurrentUserEmail()
 
   const query = useInfiniteQuery({
-    queryKey: [...QUERY_KEYS.sourcesInfinite(notebookId), { user: userEmail }],
+    queryKey: [...QUERY_KEYS.sourcesInfinite(i_NotesId), { user: userEmail }],
     queryFn: async ({ pageParam = 0 }) => {
       const data = await sourcesApi.list({
-        notebook_id: notebookId,
-        limit: NOTEBOOK_SOURCES_PAGE_SIZE,
+        i_Notes_id: i_NotesId,
+        limit: i_Notes_SOURCES_PAGE_SIZE,
         offset: pageParam,
         sort_by: 'updated',
         sort_order: 'desc',
       })
       return {
         sources: data,
-        nextOffset: data.length === NOTEBOOK_SOURCES_PAGE_SIZE ? pageParam + data.length : undefined,
+        nextOffset: data.length === i_Notes_SOURCES_PAGE_SIZE ? pageParam + data.length : undefined,
       }
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
-    enabled: !!notebookId && userEmail !== null,
+    enabled: !!i_NotesId && userEmail !== null,
     staleTime: 5 * 1000,
     refetchOnWindowFocus: true,
   })
@@ -86,8 +86,8 @@ export function useNotebookSources(notebookId: string) {
 
   // Refetch function that resets to first page
   const refetch = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId) })
-  }, [queryClient, notebookId])
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId) })
+  }, [queryClient, i_NotesId])
 
   return {
     sources,
@@ -119,33 +119,33 @@ export function useCreateSource() {
   return useMutation({
     mutationFn: (data: CreateSourceRequest) => sourcesApi.create(data),
     onSuccess: (result: SourceResponse, variables) => {
-      // Invalidate queries for all relevant notebooks with immediate refetch
-      if (variables.notebooks) {
-        variables.notebooks.forEach(notebookId => {
+      // Invalidate queries for all relevant i_Notes with immediate refetch
+      if (variables.i_Notes) {
+        variables.i_Notes.forEach(i_NotesId => {
           queryClient.invalidateQueries({
-            queryKey: QUERY_KEYS.sources(notebookId),
+            queryKey: QUERY_KEYS.sources(i_NotesId),
             refetchType: 'active' // Refetch active queries immediately
           })
           queryClient.invalidateQueries({
-            queryKey: QUERY_KEYS.sourcesInfinite(notebookId),
+            queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId),
             refetchType: 'active'
           })
           queryClient.refetchQueries({
-            queryKey: QUERY_KEYS.sourcesInfinite(notebookId),
+            queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId),
             exact: true
           })
         })
-      } else if (variables.notebook_id) {
+      } else if (variables.i_Notes_id) {
         queryClient.invalidateQueries({
-          queryKey: QUERY_KEYS.sources(variables.notebook_id),
+          queryKey: QUERY_KEYS.sources(variables.i_Notes_id),
           refetchType: 'active'
         })
         queryClient.invalidateQueries({
-          queryKey: QUERY_KEYS.sourcesInfinite(variables.notebook_id),
+          queryKey: QUERY_KEYS.sourcesInfinite(variables.i_Notes_id),
           refetchType: 'active'
         })
         queryClient.refetchQueries({
-          queryKey: QUERY_KEYS.sourcesInfinite(variables.notebook_id),
+          queryKey: QUERY_KEYS.sourcesInfinite(variables.i_Notes_id),
           exact: true
         })
       }
@@ -192,7 +192,7 @@ export function useUpdateSource() {
     mutationFn: ({ id, data }: { id: string; data: UpdateSourceRequest }) =>
       sourcesApi.update(id, data),
     onSuccess: (_, { id }) => {
-      // Invalidate ALL sources queries (both general and notebook-specific)
+      // Invalidate ALL sources queries (both general and i_Notes-specific)
       queryClient.invalidateQueries({ queryKey: ['sources'] })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(id) })
       toast({
@@ -218,7 +218,7 @@ export function useDeleteSource() {
   return useMutation({
     mutationFn: (id: string) => sourcesApi.delete(id),
     onSuccess: (_, id) => {
-      // Invalidate ALL sources queries (both general and notebook-specific)
+      // Invalidate ALL sources queries (both general and i_Notes-specific)
       queryClient.invalidateQueries({ queryKey: ['sources'] })
       // Also invalidate the specific source
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(id) })
@@ -243,11 +243,11 @@ export function useFileUpload() {
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: ({ file, notebookId }: { file: File; notebookId: string }) =>
-      sourcesApi.upload(file, notebookId),
+    mutationFn: ({ file, i_NotesId }: { file: File; i_NotesId: string }) =>
+      sourcesApi.upload(file, i_NotesId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ 
-        queryKey: QUERY_KEYS.sources(variables.notebookId) 
+        queryKey: QUERY_KEYS.sources(variables.i_NotesId) 
       })
       toast({
         title: t.common.success,
@@ -297,8 +297,8 @@ export function useRetrySource() {
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: ({ sourceId, notebookId }: { sourceId: string; notebookId?: string }) =>
-      sourcesApi.retry(sourceId, notebookId),
+    mutationFn: ({ sourceId, i_NotesId }: { sourceId: string; i_NotesId?: string }) =>
+      sourcesApi.retry(sourceId, i_NotesId),
     onSuccess: (result, vars) => {
       const sourceId = vars.sourceId
       // Invalidate status query to refetch latest status
@@ -324,18 +324,18 @@ export function useRetrySource() {
   })
 }
 
-export function useAddSourcesToNotebook() {
+export function useAddSourcesToi_Notes() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: async ({ notebookId, sourceIds }: { notebookId: string; sourceIds: string[] }) => {
-      const { notebooksApi } = await import('@/lib/api/notebooks')
+    mutationFn: async ({ i_NotesId, sourceIds }: { i_NotesId: string; sourceIds: string[] }) => {
+      const { i_NotesApi } = await import('@/lib/api/i_Notes')
 
       // Use Promise.allSettled to handle partial failures gracefully
       const results = await Promise.allSettled(
-        sourceIds.map(sourceId => notebooksApi.addSource(notebookId, sourceId))
+        sourceIds.map(sourceId => i_NotesApi.addSource(i_NotesId, sourceId))
       )
 
       // Count successes and failures
@@ -344,13 +344,13 @@ export function useAddSourcesToNotebook() {
 
       return { successes, failures, total: sourceIds.length }
     },
-    onSuccess: (result, { notebookId, sourceIds }) => {
+    onSuccess: (result, { i_NotesId, sourceIds }) => {
       // Invalidate ALL sources queries to refresh all lists
       queryClient.invalidateQueries({ queryKey: ['sources'] })
-      // Specifically invalidate the notebook's sources
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sources(notebookId) })
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId) })
-      queryClient.refetchQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId), exact: true })
+      // Specifically invalidate the i_Notes's sources
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sources(i_NotesId) })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId) })
+      queryClient.refetchQueries({ queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId), exact: true })
       // Invalidate each affected source
       sourceIds.forEach(sourceId => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(sourceId) })
@@ -360,12 +360,12 @@ export function useAddSourcesToNotebook() {
       if (result.failures === 0) {
         toast({
           title: t.common.success,
-          description: t.sources.sourcesAddedToNotebook.replace('{count}', result.successes.toString()),
+          description: t.sources.sourcesAddedToi_Notes.replace('{count}', result.successes.toString()),
         })
       } else if (result.successes === 0) {
         toast({
           title: t.common.error,
-          description: t.sources.failedToAddSourcesToNotebook,
+          description: t.sources.failedToAddSourcesToi_Notes,
           variant: 'destructive',
         })
       } else {
@@ -381,43 +381,43 @@ export function useAddSourcesToNotebook() {
     onError: (error: unknown) => {
       toast({
         title: t.common.error,
-        description: getApiErrorMessage(error, (key) => t(key), t.sources.failedToAddSourcesToNotebook),
+        description: getApiErrorMessage(error, (key) => t(key), t.sources.failedToAddSourcesToi_Notes),
         variant: 'destructive',
       })
     },
   })
 }
 
-export function useRemoveSourceFromNotebook() {
+export function useRemoveSourceFromi_Notes() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: async ({ notebookId, sourceId }: { notebookId: string; sourceId: string }) => {
+    mutationFn: async ({ i_NotesId, sourceId }: { i_NotesId: string; sourceId: string }) => {
       // This will call the API we created
-      const { notebooksApi } = await import('@/lib/api/notebooks')
-      return notebooksApi.removeSource(notebookId, sourceId)
+      const { i_NotesApi } = await import('@/lib/api/i_Notes')
+      return i_NotesApi.removeSource(i_NotesId, sourceId)
     },
-    onSuccess: (_, { notebookId, sourceId }) => {
+    onSuccess: (_, { i_NotesId, sourceId }) => {
       // Invalidate ALL sources queries to refresh all lists
       queryClient.invalidateQueries({ queryKey: ['sources'] })
-      // Specifically invalidate the notebook's sources
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sources(notebookId) })
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId) })
-      queryClient.refetchQueries({ queryKey: QUERY_KEYS.sourcesInfinite(notebookId), exact: true })
+      // Specifically invalidate the i_Notes's sources
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sources(i_NotesId) })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId) })
+      queryClient.refetchQueries({ queryKey: QUERY_KEYS.sourcesInfinite(i_NotesId), exact: true })
       // Also invalidate the specific source
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.source(sourceId) })
 
       toast({
         title: t.common.success,
-        description: t.sources.sourceRemovedFromNotebook,
+        description: t.sources.sourceRemovedFromi_Notes,
       })
     },
     onError: (error: unknown) => {
       toast({
         title: t.common.error,
-        description: getApiErrorMessage(error, (key) => t(key), t.sources.failedToRemoveSourceFromNotebook),
+        description: getApiErrorMessage(error, (key) => t(key), t.sources.failedToRemoveSourceFromi_Notes),
         variant: 'destructive',
       })
     },

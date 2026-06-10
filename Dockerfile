@@ -49,7 +49,7 @@ WORKDIR /app
 
 # Copy dependency files and minimal package structure first for better layer caching
 COPY pyproject.toml uv.lock ./
-COPY open_notebook/__init__.py ./open_notebook/__init__.py
+COPY open_i_Notes/__init__.py ./open_i_Notes/__init__.py
 
 # Install dependencies with optimizations
 RUN uv sync --no-dev
@@ -67,7 +67,7 @@ RUN mkdir -p /app/tiktoken-cache && \
 # Copy the rest of the application code
 # Copy dependency files and minimal package structure first for better layer caching
 COPY pyproject.toml uv.lock ./
-COPY open_notebook/__init__.py ./open_notebook/__init__.py
+COPY open_i_Notes/__init__.py ./open_i_Notes/__init__.py
 
 # Install dependencies with optimizations
 RUN uv sync --no-dev

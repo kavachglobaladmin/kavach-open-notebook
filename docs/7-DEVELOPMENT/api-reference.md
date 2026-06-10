@@ -1,6 +1,6 @@
 # API Reference
 
-Complete REST API for Open Notebook. All endpoints are served from the API backend (default: `http://localhost:5055`).
+Complete REST API for Open i_Notes. All endpoints are served from the API backend (default: `http://localhost:5055`).
 
 **Base URL**: `http://localhost:5055` (development) or environment-specific production URL
 
@@ -15,7 +15,7 @@ Complete REST API for Open Notebook. All endpoints are served from the API backe
 Simple password-based (development only):
 
 ```bash
-curl http://localhost:5055/api/notebooks \
+curl http://localhost:5055/api/i_Notes \
   -H "Authorization: Bearer your_password"
 ```
 
@@ -24,7 +24,7 @@ curl http://localhost:5055/api/notebooks \
 ### 2. Base API Flow
 
 Most operations follow this pattern:
-1. Create a **Notebook** (container for research)
+1. Create a **i_Notes** (container for research)
 2. Add **Sources** (PDFs, URLs, text)
 3. Query via **Chat** or **Search**
 4. View results and **Notes**
@@ -43,9 +43,9 @@ Instead of memorizing endpoints, use the interactive API docs:
 
 ### Main Resource Types
 
-**Notebooks** - Research projects containing sources and notes
-- `GET/POST /notebooks` - List and create
-- `GET/PUT/DELETE /notebooks/{id}` - Read, update, delete
+**i_Notes** - Research projects containing sources and notes
+- `GET/POST /i_Notes` - List and create
+- `GET/PUT/DELETE /i_Notes/{id}` - Read, update, delete
 
 **Sources** - Content items (PDFs, URLs, text)
 - `GET/POST /sources` - List and add content
@@ -98,10 +98,10 @@ Instead of memorizing endpoints, use the interactive API docs:
 All requests require password header:
 
 ```bash
-curl -H "Authorization: Bearer your_password" http://localhost:5055/api/notebooks
+curl -H "Authorization: Bearer your_password" http://localhost:5055/api/i_Notes
 ```
 
-Password configured via `OPEN_NOTEBOOK_PASSWORD` environment variable.
+Password configured via `OPEN_i_Notes_PASSWORD` environment variable.
 
 > **📖 See [Security Configuration](../5-CONFIGURATION/security.md)** for complete authentication setup, API examples, and production hardening.
 
@@ -128,8 +128,8 @@ curl 'http://localhost:5055/sources?limit=20&offset=10'
 ### Filtering & Sorting
 
 ```bash
-# Filter by notebook, sort by date
-curl 'http://localhost:5055/sources?notebook_id=notebook:abc&sort_by=created&sort_order=asc'
+# Filter by i_Notes, sort by date
+curl 'http://localhost:5055/sources?i_Notes_id=i_Notes:abc&sort_by=created&sort_order=asc'
 ```
 
 ### Async Operations
@@ -164,7 +164,7 @@ curl -N 'http://localhost:5055/ask' \
 ```bash
 curl -X POST http://localhost:5055/sources \
   -F "type=upload" \
-  -F "notebook_id=notebook:abc" \
+  -F "i_Notes_id=i_Notes:abc" \
   -F "file=@document.pdf"
 ```
 
@@ -175,7 +175,7 @@ curl -X POST http://localhost:5055/sources \
 All errors return JSON with status code:
 
 ```json
-{"detail": "Notebook not found"}
+{"detail": "i_Notes not found"}
 ```
 
 ### Common Status Codes
@@ -205,7 +205,7 @@ All errors return JSON with status code:
 ## Learning Path
 
 1. **Authentication**: Add `X-Password` header to all requests
-2. **Create a notebook**: `POST /notebooks` with name and description
+2. **Create a i_Notes**: `POST /i_Notes` with name and description
 3. **Add a source**: `POST /sources` with file, URL, or text
 4. **Query your content**: `POST /chat/execute` to ask questions
 5. **Explore advanced features**: Search, transformations, streaming

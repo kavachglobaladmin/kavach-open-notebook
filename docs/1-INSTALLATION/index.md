@@ -119,7 +119,7 @@ Before installing, you'll need:
 Once you're up and running:
 
 1. **Configure Models** - Choose your AI provider in Settings
-2. **Create First Notebook** - Start organizing research
+2. **Create First i_Notes** - Start organizing research
 3. **Add Sources** - PDFs, web links, documents
 4. **Explore Features** - Chat, search, transformations
 5. **Read Full Guide** - [User Guide](../3-USER-GUIDE/index.md)
@@ -135,7 +135,7 @@ Once you're up and running:
 ## Need Help?
 
 - **Discord**: [Join community](https://discord.gg/37XJPXfz2w)
-- **GitHub Issues**: [Report problems](https://github.com/lfnovo/open-notebook/issues)
+- **GitHub Issues**: [Report problems](https://github.com/lfnovo/open-i_Notes/issues)
 - **Docs**: See [Full Documentation](../index.md)
 
 ---

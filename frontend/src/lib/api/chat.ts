@@ -1,28 +1,28 @@
 import apiClient from './client'
 import { getApiUrl } from '@/lib/config'
 import {
-  NotebookChatSession,
-  NotebookChatSessionWithMessages,
-  CreateNotebookChatSessionRequest,
-  UpdateNotebookChatSessionRequest,
-  SendNotebookChatMessageRequest,
-  NotebookChatMessage,
+  i_NotesChatSession,
+  i_NotesChatSessionWithMessages,
+  Createi_NotesChatSessionRequest,
+  Updatei_NotesChatSessionRequest,
+  Sendi_NotesChatMessageRequest,
+  i_NotesChatMessage,
   BuildContextRequest,
   BuildContextResponse,
 } from '@/lib/types/api'
 
 export const chatApi = {
   // Session management
-  listSessions: async (notebookId: string) => {
-    const response = await apiClient.get<NotebookChatSession[]>(
+  listSessions: async (i_NotesId: string) => {
+    const response = await apiClient.get<i_NotesChatSession[]>(
       `/chat/sessions`,
-      { params: { notebook_id: notebookId } }
+      { params: { i_Notes_id: i_NotesId } }
     )
     return response.data
   },
 
-  createSession: async (data: CreateNotebookChatSessionRequest) => {
-    const response = await apiClient.post<NotebookChatSession>(
+  createSession: async (data: Createi_NotesChatSessionRequest) => {
+    const response = await apiClient.post<i_NotesChatSession>(
       `/chat/sessions`,
       data
     )
@@ -30,14 +30,14 @@ export const chatApi = {
   },
 
   getSession: async (sessionId: string) => {
-    const response = await apiClient.get<NotebookChatSessionWithMessages>(
+    const response = await apiClient.get<i_NotesChatSessionWithMessages>(
       `/chat/sessions/${sessionId}`
     )
     return response.data
   },
 
-  updateSession: async (sessionId: string, data: UpdateNotebookChatSessionRequest) => {
-    const response = await apiClient.put<NotebookChatSession>(
+  updateSession: async (sessionId: string, data: Updatei_NotesChatSessionRequest) => {
+    const response = await apiClient.put<i_NotesChatSession>(
       `/chat/sessions/${sessionId}`,
       data
     )
@@ -49,10 +49,10 @@ export const chatApi = {
   },
 
   // Messaging (synchronous, no streaming)
-  sendMessage: async (data: SendNotebookChatMessageRequest) => {
+  sendMessage: async (data: Sendi_NotesChatMessageRequest) => {
     const response = await apiClient.post<{
       session_id: string
-      messages: NotebookChatMessage[]
+      messages: i_NotesChatMessage[]
     }>(
       `/chat/execute`,
       data
@@ -62,7 +62,7 @@ export const chatApi = {
 
   // Messaging with streaming (real-time token generation)
   sendMessageStream: async (
-    data: SendNotebookChatMessageRequest,
+    data: Sendi_NotesChatMessageRequest,
     onToken: (token: string) => void,
     onSuggestedQuestions?: (questions: string[]) => void
   ) => {

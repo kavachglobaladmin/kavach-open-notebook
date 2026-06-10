@@ -1,8 +1,8 @@
-# Open Notebook Architecture
+# Open i_Notes Architecture
 
 ## High-Level Overview
 
-Open Notebook follows a three-tier architecture with clear separation of concerns:
+Open i_Notes follows a three-tier architecture with clear separation of concerns:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -39,7 +39,7 @@ Open Notebook follows a three-tier architecture with clear separation of concern
 
 ## Detailed Architecture
 
-Open Notebook is built on a **three-tier, async-first architecture** designed for scalability, modularity, and multi-provider AI flexibility. The system separates concerns across frontend, API, and database layers, with LangGraph powering intelligent workflows and Esperanto enabling seamless integration with 8+ AI providers.
+Open i_Notes is built on a **three-tier, async-first architecture** designed for scalability, modularity, and multi-provider AI flexibility. The system separates concerns across frontend, API, and database layers, with LangGraph powering intelligent workflows and Esperanto enabling seamless integration with 8+ AI providers.
 
 **Core Philosophy**:
 - Privacy-first: Users control their data and AI provider choice
@@ -64,7 +64,7 @@ Open Notebook is built on a **three-tier, async-first architecture** designed fo
 - **Build Tool**: Webpack (bundled via Next.js)
 
 **Key Responsibilities**:
-- Render notebooks, sources, notes, chat sessions, and podcasts
+- Render i_Notes, sources, notes, chat sessions, and podcasts
 - Handle user interactions (create, read, update, delete operations)
 - Manage complex UI state (modals, file uploads, real-time search)
 - Stream responses from API (chat, podcast generation)
@@ -74,13 +74,13 @@ Open Notebook is built on a **three-tier, async-first architecture** designed fo
 - All data fetched via REST API (async requests to port 5055)
 - Configured base URL: `http://localhost:5055` (dev) or environment-specific (prod)
 - TanStack Query handles caching, refetching, and data synchronization
-- Zustand stores global state (user, notebooks, selected context)
+- Zustand stores global state (user, i_Notes, selected context)
 - CORS enabled on API side for cross-origin requests
 
 **Component Architecture**:
 - `/src/app/`: Next.js App Router (pages, layouts)
 - `/src/components/`: Reusable React components (buttons, forms, cards)
-- `/src/hooks/`: Custom hooks (useNotebook, useChat, useSearch)
+- `/src/hooks/`: Custom hooks (usei_Notes, useChat, useSearch)
 - `/src/lib/`: Utility functions, API clients, validators
 - `/src/styles/`: Global CSS, Tailwind config
 
@@ -88,7 +88,7 @@ Open Notebook is built on a **three-tier, async-first architecture** designed fo
 
 ### Layer 2: API (FastAPI @ port 5055)
 
-**Purpose**: RESTful backend exposing operations on notebooks, sources, notes, chat sessions, and AI models.
+**Purpose**: RESTful backend exposing operations on i_Notes, sources, notes, chat sessions, and AI models.
 
 **Technology Stack**:
 - **Framework**: FastAPI 0.104+ (async Python web framework)
@@ -101,7 +101,7 @@ Open Notebook is built on a **three-tier, async-first architecture** designed fo
 ```
 FastAPI App (main.py)
   ├── Routers (HTTP endpoints)
-  │   ├── routers/notebooks.py (CRUD operations)
+  │   ├── routers/i_Notes.py (CRUD operations)
   │   ├── routers/sources.py (content ingestion, upload)
   │   ├── routers/notes.py (note management)
   │   ├── routers/chat.py (conversation sessions)
@@ -162,19 +162,19 @@ Response ← Pydantic serialization ← Service ← Result
 
 | Table | Purpose | Key Fields |
 |-------|---------|-----------|
-| `notebook` | Research project container | id, name, description, archived, created, updated |
+| `i_Notes` | Research project container | id, name, description, archived, created, updated |
 | `source` | Content item (PDF, URL, text) | id, title, full_text, topics, asset, created, updated |
 | `source_embedding` | Vector embeddings for semantic search | id, source, embedding, chunk_text, chunk_index |
 | `note` | User-created research notes | id, title, content, note_type (human/ai), created, updated |
-| `chat_session` | Conversation session | id, notebook_id, title, messages (JSON), created, updated |
+| `chat_session` | Conversation session | id, i_Notes_id, title, messages (JSON), created, updated |
 | `transformation` | Custom transformation rules | id, name, description, prompt, created, updated |
 | `source_insight` | Transformation output | id, source_id, insight_type, content, created, updated |
-| `reference` | Relationship: source → notebook | out (source), in (notebook) |
-| `artifact` | Relationship: note → notebook | out (note), in (notebook) |
+| `reference` | Relationship: source → i_Notes | out (source), in (i_Notes) |
+| `artifact` | Relationship: note → i_Notes | out (note), in (i_Notes) |
 
 **Relationship Graph**:
 ```
-Notebook
+i_Notes
   ↓ (referenced_by)
 Source
   ├→ SourceEmbedding (1:many for chunked text)
@@ -184,7 +184,7 @@ Source
     └→ Topics (tags)
 
 ChatSession
-  ├→ Notebook
+  ├→ i_Notes
   └→ Messages (stored as JSON array)
 ```
 
@@ -269,9 +269,9 @@ ChatSession
 
 ## LangGraph Workflows
 
-LangGraph is a state machine library that orchestrates multi-step AI workflows. Open Notebook uses five core workflows:
+LangGraph is a state machine library that orchestrates multi-step AI workflows. Open i_Notes uses five core workflows:
 
-### 1. **Source Processing Workflow** (`open_notebook/graphs/source.py`)
+### 1. **Source Processing Workflow** (`open_i_Notes/graphs/source.py`)
 
 **Purpose**: Ingest content (PDF, URL, text) and prepare for search/insights.
 
@@ -302,7 +302,7 @@ Output (Source record with embeddings)
   "full_text": str,
   "embeddings": List[Dict],
   "topics": List[str],
-  "notebook_ids": List[str],
+  "i_Notes_ids": List[str],
 }
 ```
 
@@ -310,9 +310,9 @@ Output (Source record with embeddings)
 
 ---
 
-### 2. **Chat Workflow** (`open_notebook/graphs/chat.py`)
+### 2. **Chat Workflow** (`open_i_Notes/graphs/chat.py`)
 
-**Purpose**: Conduct multi-turn conversations with AI model, referencing notebook context.
+**Purpose**: Conduct multi-turn conversations with AI model, referencing i_Notes context.
 
 **Flow**:
 ```
@@ -354,7 +354,7 @@ Output (complete message)
 
 ---
 
-### 3. **Ask Workflow** (`open_notebook/graphs/ask.py`)
+### 3. **Ask Workflow** (`open_i_Notes/graphs/ask.py`)
 
 **Purpose**: Answer user questions by searching sources and synthesizing responses.
 
@@ -392,7 +392,7 @@ Output (final answer)
 
 ---
 
-### 4. **Transformation Workflow** (`open_notebook/graphs/transformation.py`)
+### 4. **Transformation Workflow** (`open_i_Notes/graphs/transformation.py`)
 
 **Purpose**: Apply custom transformations to sources (extract summaries, key points, etc).
 
@@ -421,7 +421,7 @@ Output (insight with type + content)
 
 ---
 
-### 5. **Prompt Workflow** (`open_notebook/graphs/prompt.py`)
+### 5. **Prompt Workflow** (`open_i_Notes/graphs/prompt.py`)
 
 **Purpose**: Generic LLM task execution (e.g., auto-generate note titles, analyze content).
 
@@ -442,7 +442,7 @@ Output (completion)
 
 ### ModelManager: Centralized Factory
 
-Located in `open_notebook/ai/models.py`, ModelManager handles:
+Located in `open_i_Notes/ai/models.py`, ModelManager handles:
 
 1. **Provider Detection**: Check environment variables for available providers
 2. **Model Selection**: Choose best model based on context size and task
@@ -452,7 +452,7 @@ Located in `open_notebook/ai/models.py`, ModelManager handles:
 
 **Usage**:
 ```python
-from open_notebook.ai.provision import provision_langchain_model
+from open_i_Notes.ai.provision import provision_langchain_model
 
 # Get best LLM for context size
 model = await provision_langchain_model(
@@ -511,15 +511,15 @@ result = await graph.ainvoke(
 
 ### 1. **Domain-Driven Design (DDD)**
 
-**Domain Objects** (`open_notebook/domain/`):
-- `Notebook`: Research container with relationships to sources/notes
+**Domain Objects** (`open_i_Notes/domain/`):
+- `i_Notes`: Research container with relationships to sources/notes
 - `Source`: Content item (PDF, URL, text) with embeddings
 - `Note`: User-created or AI-generated research note
-- `ChatSession`: Conversation history for a notebook
+- `ChatSession`: Conversation history for a i_Notes
 - `Transformation`: Custom rule for extracting insights
 
 **Repository Pattern**:
-- Database access layer (`open_notebook/database/repository.py`)
+- Database access layer (`open_i_Notes/database/repository.py`)
 - `repo_query()`: Execute SurrealQL queries
 - `repo_create()`: Insert records
 - `repo_upsert()`: Merge records
@@ -528,10 +528,10 @@ result = await graph.ainvoke(
 **Entity Methods**:
 ```python
 # Domain methods (business logic)
-notebook = await Notebook.get(id)
-await notebook.save()
-notes = await notebook.get_notes()
-sources = await notebook.get_sources()
+i_Notes = await i_Notes.get(id)
+await i_Notes.save()
+notes = await i_Notes.get_notes()
+sources = await i_Notes.get_sources()
 ```
 
 ### 2. **Async-First Architecture**
@@ -563,14 +563,14 @@ async def create_source(source_data: SourceCreate):
 Services orchestrate domain objects, repositories, and workflows:
 
 ```python
-# api/notebook_service.py
-class NotebookService:
-    async def get_notebook_with_stats(notebook_id: str):
-        notebook = await Notebook.get(notebook_id)
-        sources = await notebook.get_sources()
-        notes = await notebook.get_notes()
+# api/i_Notes_service.py
+class i_Noteservice:
+    async def get_i_Notes_with_stats(i_Notes_id: str):
+        i_Notes = await i_Notes.get(i_Notes_id)
+        sources = await i_Notes.get_sources()
+        notes = await i_Notes.get_notes()
         return {
-            "notebook": notebook,
+            "i_Notes": i_Notes,
             "source_count": len(sources),
             "note_count": len(notes),
         }
@@ -603,7 +603,7 @@ For async background tasks (source processing), use Surreal-Commands job queue:
 ```python
 # Submit job
 command_id = await CommandService.submit_command_job(
-    app="open_notebook",
+    app="open_i_Notes",
     command="process_source",
     input={...}
 )
@@ -644,8 +644,8 @@ const source = await response.json();
 ```python
 # API
 result = await repo_query(
-    "SELECT * FROM source WHERE notebook = $notebook_id",
-    {"notebook_id": ensure_record_id(notebook_id)}
+    "SELECT * FROM source WHERE i_Notes = $i_Notes_id",
+    {"i_Notes_id": ensure_record_id(i_Notes_id)}
 )
 ```
 
@@ -687,14 +687,14 @@ status = await response.json()  # returns { status: "running|queued|completed|fa
 ### Core Schema Structure
 
 **Tables** (20+):
-- Notebooks (with soft-delete via `archived` flag)
+- i_Notes (with soft-delete via `archived` flag)
 - Sources (content + metadata)
 - SourceEmbeddings (vector chunks)
 - Notes (user-created + AI-generated)
 - ChatSessions (conversation history)
 - Transformations (custom rules)
 - SourceInsights (transformation outputs)
-- Relationships (notebook→source, notebook→note)
+- Relationships (i_Notes→source, i_Notes→note)
 
 **Migrations**:
 - Automatic on API startup
@@ -707,7 +707,7 @@ status = await response.json()  # returns { status: "running|queued|completed|fa
 
 **Graph Relationships**:
 ```
-Notebook
+i_Notes
   ← reference ← Source (many:many)
   ← artifact ← Note (many:many)
 
@@ -718,19 +718,19 @@ Source
 
 ChatSession
   → messages (JSON array in database)
-  → notebook_id (reference to Notebook)
+  → i_Notes_id (reference to i_Notes)
 
 Transformation
   → source_insight (one:many)
 ```
 
-**Query Example** (get all sources in a notebook with counts):
+**Query Example** (get all sources in a i_Notes with counts):
 ```sql
 SELECT id, title,
   count(<-reference.in) as note_count,
   count(<-embedding.in) as embedded_chunks
 FROM source
-WHERE notebook = $notebook_id
+WHERE i_Notes = $i_Notes_id
 ORDER BY updated DESC
 ```
 
@@ -780,7 +780,7 @@ Async job submission (source processing, podcast generation) prevents request ti
 
 ### Database Operations
 
-- **Record IDs use SurrealDB syntax** (table:id format, e.g., "notebook:abc123")
+- **Record IDs use SurrealDB syntax** (table:id format, e.g., "i_Notes:abc123")
 - **ensure_record_id()** helper prevents malformed IDs
 - **Soft deletes** via `archived` field (data not removed, just marked inactive)
 - **Timestamps in ISO 8601 format** (created, updated fields)
@@ -839,7 +839,7 @@ Async job submission (source processing, podcast generation) prevents request ti
 
 ### Adding a New Workflow
 
-1. Create `open_notebook/graphs/workflow_name.py`
+1. Create `open_i_Notes/graphs/workflow_name.py`
 2. Define StateDict and node functions
 3. Build graph with `.add_node()` / `.add_edge()`
 4. Create service in `api/workflow_service.py`
@@ -848,7 +848,7 @@ Async job submission (source processing, podcast generation) prevents request ti
 
 ### Adding a New Data Model
 
-1. Create model in `open_notebook/domain/model_name.py`
+1. Create model in `open_i_Notes/domain/model_name.py`
 2. Inherit from BaseModel (domain object)
 3. Implement `save()`, `get()`, `delete()` methods (CRUD)
 4. Add repository functions if complex queries needed
@@ -888,4 +888,4 @@ Async job submission (source processing, podcast generation) prevents request ti
 
 ## Summary
 
-Open Notebook's architecture provides a solid foundation for privacy-focused, AI-powered research. The separation of concerns (frontend/API/database), async-first design, and multi-provider flexibility enable rapid development and easy deployment. LangGraph workflows orchestrate complex AI tasks, while Esperanto abstracts provider details. The result is a scalable, maintainable system that puts users in control of their data and AI provider choice.
+Open i_Notes's architecture provides a solid foundation for privacy-focused, AI-powered research. The separation of concerns (frontend/API/database), async-first design, and multi-provider flexibility enable rapid development and easy deployment. LangGraph workflows orchestrate complex AI tasks, while Esperanto abstracts provider details. The result is a scalable, maintainable system that puts users in control of their data and AI provider choice.

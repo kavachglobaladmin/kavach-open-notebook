@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { AppShell } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useNotebooks } from '@/lib/hooks/use-notebooks'
+import { usei_Notes } from '@/lib/hooks/use-i_Notes'
 import { sourcesApi } from '@/lib/api/sources'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -155,7 +155,7 @@ function CasesAreaChart() {
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('')
 
-  const { data: notebooks } = useNotebooks(false)
+  const { data: notebooks } = usei_Notes(false)
   const { data: sources } = useQuery({
     queryKey: ['sources', 'dashboard'],
     queryFn: () => sourcesApi.list({ limit: 50, sort_by: 'updated', sort_order: 'desc' }),
@@ -359,7 +359,7 @@ export default function DashboardPage() {
         <div className="absolute top-[-10%] right-[-5%] w-[400px] h-[400px] bg-slate-100 rounded-full blur-[100px] opacity-40 pointer-events-none" />
         <div className="absolute bottom-[10%] left-[-5%] w-[300px] h-[300px] bg-slate-100 rounded-full blur-[80px] opacity-30 pointer-events-none" />
 
-        <PageHeader searchValue={searchTerm} onSearchChange={setSearchTerm} newLabel="NOTEBOOK" />
+        <PageHeader searchValue={searchTerm} onSearchChange={setSearchTerm} newLabel="i_Notes" />
 
         <div className="flex-1 overflow-y-auto relative z-10 custom-scrollbar">
           <div className="w-full px-6 lg:px-8 py-8 lg:py-10 pb-24 space-y-8 text-left">

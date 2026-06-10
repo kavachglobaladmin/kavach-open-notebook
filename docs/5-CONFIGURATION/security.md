@@ -1,12 +1,12 @@
 # Security Configuration
 
-Protect your Open Notebook deployment with password authentication and production hardening.
+Protect your Open i_Notes deployment with password authentication and production hardening.
 
 ---
 
 ## API Key Encryption
 
-Open Notebook encrypts API keys stored in the database using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256).
+Open i_Notes encrypts API keys stored in the database using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256).
 
 ### Configuration Methods
 
@@ -21,7 +21,7 @@ Set the encryption key to any secret string:
 
 ```bash
 # .env or docker.env
-OPEN_NOTEBOOK_ENCRYPTION_KEY=my-secret-passphrase
+OPEN_i_Notes_ENCRYPTION_KEY=my-secret-passphrase
 ```
 
 Any string works — it will be securely derived via SHA-256 internally. Use a strong passphrase for production deployments.
@@ -30,10 +30,10 @@ Any string works — it will be securely derived via SHA-256 internally. Use a s
 
 | Setting | Default | Security Level |
 |---------|---------|----------------|
-| Password | `open-notebook-change-me` | Development only |
+| Password | `open-i_Notes-change-me` | Development only |
 | Encryption Key | **None** (must be configured) | Required for API key storage |
 
-**The encryption key has no default.** You must set `OPEN_NOTEBOOK_ENCRYPTION_KEY` before using the API key configuration feature. Without it, encrypting/decrypting API keys will fail.
+**The encryption key has no default.** You must set `OPEN_i_Notes_ENCRYPTION_KEY` before using the API key configuration feature. Without it, encrypting/decrypting API keys will fail.
 
 ### Docker Secrets Support
 
@@ -41,8 +41,8 @@ Both settings support Docker secrets via `_FILE` suffix:
 
 ```yaml
 environment:
-  - OPEN_NOTEBOOK_PASSWORD_FILE=/run/secrets/app_password
-  - OPEN_NOTEBOOK_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
+  - OPEN_i_Notes_PASSWORD_FILE=/run/secrets/app_password
+  - OPEN_i_Notes_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
 ```
 
 ### Security Notes
@@ -84,12 +84,12 @@ environment:
 ```yaml
 # docker-compose.yml
 services:
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open_i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     environment:
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=your-secret-encryption-key
-      - OPEN_NOTEBOOK_PASSWORD=your_secure_password
+      - OPEN_i_Notes_ENCRYPTION_KEY=your-secret-encryption-key
+      - OPEN_i_Notes_PASSWORD=your_secure_password
     # ... rest of config
 ```
 
@@ -97,8 +97,8 @@ Or using environment file:
 
 ```bash
 # docker.env
-OPEN_NOTEBOOK_ENCRYPTION_KEY=your-secret-encryption-key
-OPEN_NOTEBOOK_PASSWORD=your_secure_password
+OPEN_i_Notes_ENCRYPTION_KEY=your-secret-encryption-key
+OPEN_i_Notes_PASSWORD=your_secure_password
 ```
 
 > **Important**: The encryption key is **required** for credential storage. Without it, you cannot save AI provider credentials via the Settings UI. If you change or lose the encryption key, all stored credentials become unreadable.
@@ -107,7 +107,7 @@ OPEN_NOTEBOOK_PASSWORD=your_secure_password
 
 ```bash
 # .env
-OPEN_NOTEBOOK_PASSWORD=your_secure_password
+OPEN_i_Notes_PASSWORD=your_secure_password
 ```
 
 ---
@@ -118,20 +118,20 @@ OPEN_NOTEBOOK_PASSWORD=your_secure_password
 
 ```bash
 # Strong: 20+ characters, mixed case, numbers, symbols
-OPEN_NOTEBOOK_PASSWORD=MySecure2024!Research#Tool
-OPEN_NOTEBOOK_PASSWORD=Notebook$Dev$2024$Strong!
+OPEN_i_Notes_PASSWORD=MySecure2024!Research#Tool
+OPEN_i_Notes_PASSWORD=i_Notes$Dev$2024$Strong!
 
 # Generated (recommended)
-OPEN_NOTEBOOK_PASSWORD=$(openssl rand -base64 24)
+OPEN_i_Notes_PASSWORD=$(openssl rand -base64 24)
 ```
 
 ### Bad Passwords
 
 ```bash
 # DON'T use these
-OPEN_NOTEBOOK_PASSWORD=password123
-OPEN_NOTEBOOK_PASSWORD=opennotebook
-OPEN_NOTEBOOK_PASSWORD=admin
+OPEN_i_Notes_PASSWORD=password123
+OPEN_i_Notes_PASSWORD=openi_Notes
+OPEN_i_Notes_PASSWORD=admin
 ```
 
 ---
@@ -152,10 +152,10 @@ All API endpoints require authentication:
 ```bash
 # Authenticated request
 curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+  http://localhost:5055/api/i_Notes
 
 # Unauthenticated (will fail)
-curl http://localhost:5055/api/notebooks
+curl http://localhost:5055/api/i_Notes
 # Returns: {"detail": "Missing authorization header"}
 ```
 
@@ -174,16 +174,16 @@ These work without authentication:
 ### curl
 
 ```bash
-# List notebooks
+# List i_Notes
 curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+  http://localhost:5055/api/i_Notes
 
-# Create notebook
+# Create i_Notes
 curl -X POST \
   -H "Authorization: Bearer your_password" \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Notebook", "description": "Research notes"}' \
-  http://localhost:5055/api/notebooks
+  -d '{"name": "My i_Notes", "description": "Research notes"}' \
+  http://localhost:5055/api/i_Notes
 
 # Upload file
 curl -X POST \
@@ -197,29 +197,29 @@ curl -X POST \
 ```python
 import requests
 
-class OpenNotebookClient:
+class Openi_NotesClient:
     def __init__(self, base_url: str, password: str):
         self.base_url = base_url
         self.headers = {"Authorization": f"Bearer {password}"}
 
-    def get_notebooks(self):
+    def get_i_Notes(self):
         response = requests.get(
-            f"{self.base_url}/api/notebooks",
+            f"{self.base_url}/api/i_Notes",
             headers=self.headers
         )
         return response.json()
 
-    def create_notebook(self, name: str, description: str = None):
+    def create_i_Notes(self, name: str, description: str = None):
         response = requests.post(
-            f"{self.base_url}/api/notebooks",
+            f"{self.base_url}/api/i_Notes",
             headers=self.headers,
             json={"name": name, "description": description}
         )
         return response.json()
 
 # Usage
-client = OpenNotebookClient("http://localhost:5055", "your_password")
-notebooks = client.get_notebooks()
+client = Openi_NotesClient("http://localhost:5055", "your_password")
+i_Notes = client.get_i_Notes()
 ```
 
 ### JavaScript/TypeScript
@@ -228,8 +228,8 @@ notebooks = client.get_notebooks()
 const API_URL = 'http://localhost:5055';
 const PASSWORD = 'your_password';
 
-async function getNotebooks() {
-  const response = await fetch(`${API_URL}/api/notebooks`, {
+async function geti_Notes() {
+  const response = await fetch(`${API_URL}/api/i_Notes`, {
     headers: {
       'Authorization': `Bearer ${PASSWORD}`
     }
@@ -246,13 +246,13 @@ async function getNotebooks() {
 
 ```yaml
 services:
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open_i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     ports:
       - "127.0.0.1:8502:8502"  # Bind to localhost only
     environment:
-      - OPEN_NOTEBOOK_PASSWORD=your_secure_password
+      - OPEN_i_Notes_PASSWORD=your_secure_password
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -290,7 +290,7 @@ See [Reverse Proxy Configuration](reverse-proxy.md) for complete nginx/Caddy/Tra
 
 ## Security Limitations
 
-Open Notebook's password protection provides **basic access control**, not enterprise-grade security:
+Open i_Notes's password protection provides **basic access control**, not enterprise-grade security:
 
 | Feature | Status |
 |---------|--------|
@@ -333,10 +333,10 @@ For deployments requiring advanced security:
 
 ```bash
 # Check env var is set
-docker exec open-notebook env | grep OPEN_NOTEBOOK_PASSWORD
+docker exec open-i_Notes env | grep OPEN_i_Notes_PASSWORD
 
 # Check logs
-docker logs open-notebook | grep -i auth
+docker logs open-i_Notes | grep -i auth
 
 # Test API directly
 curl -H "Authorization: Bearer your_password" \
@@ -348,10 +348,10 @@ curl -H "Authorization: Bearer your_password" \
 ```bash
 # Check header format
 curl -v -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+  http://localhost:5055/api/i_Notes
 
 # Verify password matches
-echo "Password length: $(echo -n $OPEN_NOTEBOOK_PASSWORD | wc -c)"
+echo "Password length: $(echo -n $OPEN_i_Notes_PASSWORD | wc -c)"
 ```
 
 ### Cannot Access After Setting Password
@@ -365,12 +365,12 @@ echo "Password length: $(echo -n $OPEN_NOTEBOOK_PASSWORD | wc -c)"
 
 ```bash
 # Without password (should fail)
-curl http://localhost:5055/api/notebooks
+curl http://localhost:5055/api/i_Notes
 # Expected: {"detail": "Missing authorization header"}
 
 # With correct password (should succeed)
 curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+  http://localhost:5055/api/i_Notes
 
 # Health check (should work without password)
 curl http://localhost:5055/health

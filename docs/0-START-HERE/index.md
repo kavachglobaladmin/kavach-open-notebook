@@ -1,6 +1,6 @@
-# Open Notebook - Start Here
+# Open i_Notes - Start Here
 
-**Open Notebook** is a privacy-focused AI research assistant. Upload documents, chat with AI, generate notes, and create podcasts—all with complete control over your data.
+**Open i_Notes** is a privacy-focused AI research assistant. Upload documents, chat with AI, generate notes, and create podcasts—all with complete control over your data.
 
 ## Choose Your Path
 
@@ -34,9 +34,9 @@
 - 🔍 **Search**: Full-text and semantic search across all content
 - ⚙️ **Transform**: Extract insights, analyze themes, create summaries
 
-## Why Open Notebook?
+## Why Open i_Notes?
 
-| Feature | Open Notebook | Notebook LM |
+| Feature | Open i_Notes | i_Notes LM |
 |---------|---|---|
 | **Privacy** | Self-hosted, your control | Cloud, Google's servers |
 | **AI Choice** | 15+ providers | Google's models only |
@@ -55,7 +55,7 @@
 
 1. Pick your path above ⬆️
 2. Follow the 5-minute quick start
-3. Create your first notebook
+3. Create your first i_Notes
 4. Start uploading documents!
 
 ---

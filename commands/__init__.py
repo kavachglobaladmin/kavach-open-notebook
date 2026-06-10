@@ -1,4 +1,4 @@
-"""Surreal-commands integration for Open Notebook"""
+"""Surreal-commands integration for Open i_Notes"""
 
 from .embedding_commands import (
     embed_insight_command,
@@ -35,7 +35,7 @@ def fix_stuck_commands_sync():
 
     async def _fix():
         try:
-            from open_notebook.database.repository import repo_query, ensure_record_id
+            from i_Notes.database.repository import repo_query, ensure_record_id
             stuck = await repo_query(
                 "SELECT id, result FROM command WHERE status = 'running'"
             )

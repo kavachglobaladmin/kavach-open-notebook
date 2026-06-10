@@ -1,5 +1,5 @@
 """
-Authentication router for Open Notebook API.
+Authentication router for Open i_Notes API.
 
 Endpoints:
   GET  /api/auth/status  – public, check if auth is enabled
@@ -10,7 +10,7 @@ The JWT returned by /login must be sent on every subsequent request as:
 
 All original logic (DB lookup, password verification) is preserved.
 The only change is that api_token is now a real signed JWT instead of
-the raw OPEN_NOTEBOOK_PASSWORD string.
+the raw OPEN_i_Notes_PASSWORD string.
 """
 
 import hashlib
@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.auth import create_access_token
 from api.roles import ensure_user_role
-from open_notebook.database.repository import repo_query
+from i_Notes.database.repository import repo_query
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

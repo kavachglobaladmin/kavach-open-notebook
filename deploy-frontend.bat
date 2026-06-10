@@ -3,7 +3,7 @@ echo ========================================
 echo  Full Deploy to Docker (Windows)
 echo ========================================
 
-set CONTAINER=kavach-open-notebook-open_notebook-1
+set CONTAINER=kavach-open-i_Notes-open_i_Notes-1
 set ROOT=%~dp0
 
 echo.
@@ -26,11 +26,11 @@ docker cp "api\routers\source_chat.py"              %CONTAINER%:/app/api/routers
 docker cp "api\routers\chat.py"                     %CONTAINER%:/app/api/routers/chat.py
 docker cp "api\routers\super_chat.py"               %CONTAINER%:/app/api/routers/super_chat.py
 docker cp "api\routers\mindmap.py"                  %CONTAINER%:/app/api/routers/mindmap.py
-docker cp "api\routers\notebooks.py"                %CONTAINER%:/app/api/routers/notebooks.py
+docker cp "api\routers\i_Notes.py"                %CONTAINER%:/app/api/routers/i_Notes.py
 docker cp "api\models.py"                           %CONTAINER%:/app/api/models.py
-docker cp "open_notebook\graphs\source_chat.py"     %CONTAINER%:/app/open_notebook/graphs/source_chat.py
-docker cp "open_notebook\graphs\super_chat.py"      %CONTAINER%:/app/open_notebook/graphs/super_chat.py
-docker cp "open_notebook\utils\context_builder.py"  %CONTAINER%:/app/open_notebook/utils/context_builder.py
+docker cp "open_i_Notes\graphs\source_chat.py"     %CONTAINER%:/app/open_i_Notes/graphs/source_chat.py
+docker cp "open_i_Notes\graphs\super_chat.py"      %CONTAINER%:/app/open_i_Notes/graphs/super_chat.py
+docker cp "open_i_Notes\utils\context_builder.py"  %CONTAINER%:/app/open_i_Notes/utils/context_builder.py
 docker cp "prompts\source_chat\system.jinja"        %CONTAINER%:/app/prompts/source_chat/system.jinja
 docker cp "prompts\super_chat\system.jinja"         %CONTAINER%:/app/prompts/super_chat/system.jinja
 

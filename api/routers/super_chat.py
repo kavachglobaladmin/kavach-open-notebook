@@ -10,14 +10,14 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 import logging as logger
 
-from open_notebook.database.repository import ensure_record_id, repo_query
-from open_notebook.domain.notebook import ChatSession, Note, Notebook, Source
-from open_notebook.exceptions import NotFoundError
-from open_notebook.graphs.super_chat import (
+from i_Notes.database.repository import ensure_record_id, repo_query
+from i_Notes.domain.i_Notes import ChatSession, Note, i_Notes, Source
+from i_Notes.exceptions import NotFoundError
+from i_Notes.graphs.super_chat import (
     graph as super_chat_graph,
     stream_model_tokens as stream_super_chat_tokens,
 )
-from open_notebook.utils.graph_utils import get_session_message_count
+from i_Notes.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
 
@@ -45,38 +45,38 @@ def _ensure_super_session(session: Optional[ChatSession]) -> ChatSession:
     return session
 
 
-async def _get_related_notebooks(
+async def _get_related_i_Notes(
     record_table: str, record_id: str
 ) -> list[dict[str, str]]:
     relation_table = "reference" if record_table == "source" else "artifact"
     try:
         rows = await repo_query(
-            f"SELECT out AS notebook FROM {relation_table} WHERE in = $record_id",
+            f"SELECT out AS i_Notes FROM {relation_table} WHERE in = $record_id",
             {"record_id": ensure_record_id(record_id)},
         )
     except Exception:
         return []
 
-    notebooks: list[dict[str, str]] = []
+    i_Notes: list[dict[str, str]] = []
     for row in rows or []:
-        notebook_obj = row.get("notebook")
-        if not notebook_obj:
+        i_Notes_obj = row.get("i_Notes")
+        if not i_Notes_obj:
             continue
         try:
-            notebook = (
-                Notebook(**notebook_obj)
-                if isinstance(notebook_obj, dict)
-                else await Notebook.get(str(notebook_obj))
+            i_Notes = (
+                i_Notes(**i_Notes_obj)
+                if isinstance(i_Notes_obj, dict)
+                else await i_Notes.get(str(i_Notes_obj))
             )
         except Exception:
             continue
-        if notebook and notebook.id:
-            notebooks.append({"id": str(notebook.id), "name": notebook.name})
-    return notebooks
+        if i_Notes and i_Notes.id:
+            i_Notes.append({"id": str(i_Notes.id), "name": i_Notes.name})
+    return i_Notes
 
 
 class CreateSessionRequest(BaseModel):
-    notebook_id: str = Field(..., description="Notebook ID to create session for")
+    i_Notes_id: str = Field(..., description="i_Notes ID to create session for")
     title: Optional[str] = Field(None, description="Optional session title")
     model_override: Optional[str] = Field(
         None, description="Optional model override for this session"
@@ -100,7 +100,7 @@ class ChatMessage(BaseModel):
 class ChatSessionResponse(BaseModel):
     id: str = Field(..., description="Session ID")
     title: str = Field(..., description="Session title")
-    notebook_id: Optional[str] = Field(None, description="Notebook ID")
+    i_Notes_id: Optional[str] = Field(None, description="i_Notes ID")
     created: str = Field(..., description="Creation timestamp")
     updated: str = Field(..., description="Last update timestamp")
     message_count: Optional[int] = Field(
@@ -132,7 +132,7 @@ class ExecuteChatRequest(BaseModel):
 
 
 class BuildContextRequest(BaseModel):
-    notebook_id: str = Field(..., description="Notebook ID")
+    i_Notes_id: str = Field(..., description="i_Notes ID")
     context_config: Dict[str, Any] = Field(..., description="Context configuration")
     folder_structure: Optional[List[Dict[str, Any]]] = Field(
         None, description="Folder structure with source/note IDs per folder"
@@ -151,13 +151,13 @@ class SuccessResponse(BaseModel):
 
 
 @router.get("/super-chat/sessions", response_model=List[ChatSessionResponse])
-async def get_sessions(notebook_id: str = Query(..., description="Notebook ID")):
+async def get_sessions(i_Notes_id: str = Query(..., description="i_Notes ID")):
     try:
-        notebook = await Notebook.get(notebook_id)
-        if not notebook:
-            raise HTTPException(status_code=404, detail="Notebook not found")
+        i_Notes = await i_Notes.get(i_Notes_id)
+        if not i_Notes:
+            raise HTTPException(status_code=404, detail="i_Notes not found")
 
-        sessions_list = await notebook.get_chat_sessions()
+        sessions_list = await i_Notes.get_chat_sessions()
 
         results = []
         for session in sessions_list:
@@ -170,7 +170,7 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
                 ChatSessionResponse(
                     id=session.id or "",
                     title=session.title or "Untitled Session",
-                    notebook_id=notebook_id,
+                    i_Notes_id=i_Notes_id,
                     created=str(session.created),
                     updated=str(session.updated),
                     message_count=msg_count,
@@ -180,7 +180,7 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 
         return results
     except NotFoundError:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        raise HTTPException(status_code=404, detail="i_Notes not found")
     except Exception as e:
         logger.error(f"Error fetching super chat sessions: {str(e)}")
         raise HTTPException(
@@ -191,9 +191,9 @@ async def get_sessions(notebook_id: str = Query(..., description="Notebook ID"))
 @router.post("/super-chat/sessions", response_model=ChatSessionResponse)
 async def create_session(request: CreateSessionRequest):
     try:
-        notebook = await Notebook.get(request.notebook_id)
-        if not notebook:
-            raise HTTPException(status_code=404, detail="Notebook not found")
+        i_Notes = await i_Notes.get(request.i_Notes_id)
+        if not i_Notes:
+            raise HTTPException(status_code=404, detail="i_Notes not found")
 
         session = ChatSession(
             title=request.title
@@ -202,19 +202,19 @@ async def create_session(request: CreateSessionRequest):
             chat_mode="super",
         )
         await session.save()
-        await session.relate_to_notebook(request.notebook_id)
+        await session.relate_to_i_Notes(request.i_Notes_id)
 
         return ChatSessionResponse(
             id=session.id or "",
             title=session.title or "",
-            notebook_id=request.notebook_id,
+            i_Notes_id=request.i_Notes_id,
             created=str(session.created),
             updated=str(session.updated),
             message_count=0,
             model_override=session.model_override,
         )
     except NotFoundError:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        raise HTTPException(status_code=404, detail="i_Notes not found")
     except Exception as e:
         logger.error(f"Error creating super chat session: {str(e)}")
         raise HTTPException(
@@ -252,16 +252,16 @@ async def get_session(session_id: str):
                     )
                 )
 
-        notebook_query = await repo_query(
+        i_Notes_query = await repo_query(
             "SELECT out FROM refers_to WHERE in = $session_id",
             {"session_id": ensure_record_id(full_session_id)},
         )
-        notebook_id = notebook_query[0]["out"] if notebook_query else None
+        i_Notes_id = i_Notes_query[0]["out"] if i_Notes_query else None
 
         return ChatSessionWithMessagesResponse(
             id=session.id or "",
             title=session.title or "Untitled Session",
-            notebook_id=notebook_id,
+            i_Notes_id=i_Notes_id,
             created=str(session.created),
             updated=str(session.updated),
             message_count=len(messages),
@@ -297,17 +297,17 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
             session.model_override = update_data["model_override"]
         await session.save()
 
-        notebook_query = await repo_query(
+        i_Notes_query = await repo_query(
             "SELECT out FROM refers_to WHERE in = $session_id",
             {"session_id": ensure_record_id(full_session_id)},
         )
-        notebook_id = notebook_query[0]["out"] if notebook_query else None
+        i_Notes_id = i_Notes_query[0]["out"] if i_Notes_query else None
         msg_count = await get_session_message_count(super_chat_graph, full_session_id)
 
         return ChatSessionResponse(
             id=session.id or "",
             title=session.title or "",
-            notebook_id=notebook_id,
+            i_Notes_id=i_Notes_id,
             created=str(session.created),
             updated=str(session.updated),
             message_count=msg_count,
@@ -430,7 +430,7 @@ Requirements:
 Return ONLY this format:
 ["First question here?", "Second question here?", "Third question here?"]"""
 
-                    from open_notebook.ai.provision import provision_langchain_model
+                    from i_Notes.ai.provision import provision_langchain_model
                     from langchain_core.messages import SystemMessage
 
                     model = await provision_langchain_model(
@@ -554,9 +554,9 @@ Return ONLY this format:
 @router.post("/super-chat/context", response_model=BuildContextResponse)
 async def build_context(request: BuildContextRequest):
     try:
-        notebook = await Notebook.get(request.notebook_id)
-        if not notebook:
-            raise HTTPException(status_code=404, detail="Notebook not found")
+        i_Notes = await i_Notes.get(request.i_Notes_id)
+        if not i_Notes:
+            raise HTTPException(status_code=404, detail="i_Notes not found")
 
         context_data: dict[str, list[dict[str, Any]]] = {"sources": [], "notes": []}
         total_content = ""
@@ -621,7 +621,7 @@ async def build_context(request: BuildContextRequest):
                 else:
                     source_context = await source.get_context(context_size="short")
 
-                source_context["notebooks"] = await _get_related_notebooks("source", source_id)
+                source_context["i_Notes"] = await _get_related_i_Notes("source", source_id)
                 context_data["sources"].append(source_context)
                 loaded_source_ids.add(str(source_context.get("id", source_id)))
                 total_content += str(source_context)
@@ -645,7 +645,7 @@ async def build_context(request: BuildContextRequest):
                     note_context = note.get_context(context_size="long")
                 else:
                     note_context = note.get_context(context_size="short")
-                note_context["notebooks"] = await _get_related_notebooks("note", note_id)
+                note_context["i_Notes"] = await _get_related_i_Notes("note", note_id)
                 context_data["notes"].append(note_context)
                 total_content += str(note_context)
             except Exception as e:
@@ -653,12 +653,12 @@ async def build_context(request: BuildContextRequest):
                 continue
 
         if not source_configs and not note_configs:
-            # Fallback: load all sources/notes from the notebook
-            sources = await notebook.get_sources()
+            # Fallback: load all sources/notes from the i_Notes if no specific context_config was provided
+            sources = await i_Notes.get_sources()
             for source in sources:
                 try:
                     source_context = await source.get_context(context_size="short")
-                    source_context["notebooks"] = await _get_related_notebooks(
+                    source_context["i_Notes"] = await _get_related_i_Notes(
                         "source", source.id or ""
                     )
                     context_data["sources"].append(source_context)
@@ -667,11 +667,11 @@ async def build_context(request: BuildContextRequest):
                     logger.warning(f"Error processing source {source.id}: {str(e)}")
                     continue
 
-            notes_list = await notebook.get_notes()
+            notes_list = await i_Notes.get_notes()
             for note in notes_list:
                 try:
                     note_context = note.get_context(context_size="short")
-                    note_context["notebooks"] = await _get_related_notebooks(
+                    note_context["i_Notes"] = await _get_related_i_Notes(
                         "note", note.id or ""
                     )
                     context_data["notes"].append(note_context)
@@ -682,7 +682,7 @@ async def build_context(request: BuildContextRequest):
 
         char_count = len(total_content)
         try:
-            from open_notebook.utils import token_count
+            from i_Notes.utils import token_count
 
             estimated_tokens = token_count(total_content) if total_content else 0
         except ImportError:

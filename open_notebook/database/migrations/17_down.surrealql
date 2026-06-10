@@ -1,3 +1,0 @@
--- Migration 17 rollback: Remove kavach_user table
-
-REMOVE TABLE IF EXISTS kavach_user;

@@ -1,6 +1,6 @@
 # OpenAI-Compatible Providers
 
-Use any server that implements the OpenAI API format with Open Notebook. This includes LM Studio, Text Generation WebUI, vLLM, and many others.
+Use any server that implements the OpenAI API format with Open i_Notes. This includes LM Studio, Text Generation WebUI, vLLM, and many others.
 
 ---
 
@@ -14,7 +14,7 @@ POST /v1/embeddings
 POST /v1/audio/speech
 ```
 
-Open Notebook can connect to any server using this format.
+Open i_Notes can connect to any server using this format.
 
 ---
 
@@ -54,7 +54,7 @@ export OPENAI_COMPATIBLE_BASE_URL=http://localhost:1234/v1
 export OPENAI_COMPATIBLE_API_KEY=not-needed
 ```
 
-### Step 3: Add Model in Open Notebook
+### Step 3: Add Model in Open i_Notes
 
 1. Go to **Settings** → **Models**
 2. Click **Add Model**
@@ -112,7 +112,7 @@ OPENAI_COMPATIBLE_API_KEY_STT=optional-api-key
 
 ## Docker Networking
 
-When Open Notebook runs in Docker and your compatible server runs on the host, use the appropriate base URL when adding your credential in **Settings → API Keys**:
+When Open i_Notes runs in Docker and your compatible server runs on the host, use the appropriate base URL when adding your credential in **Settings → API Keys**:
 
 ### macOS / Windows
 
@@ -130,7 +130,7 @@ Then use base URL: `http://localhost:1234/v1`
 ```yaml
 # docker-compose.yml
 services:
-  open-notebook:
+  open-i_Notes:
     # ...
 
   lm-studio:
@@ -151,7 +151,7 @@ services:
 python server.py --api --listen
 ```
 
-### Configure Open Notebook
+### Configure Open i_Notes
 
 In **Settings → API Keys**, add an **OpenAI-Compatible** credential with base URL: `http://localhost:5000/v1`
 
@@ -168,8 +168,8 @@ services:
       - ./models:/app/models
     command: --api --listen
 
-  open-notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open-i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     depends_on:
       - text-gen
@@ -189,7 +189,7 @@ python -m vllm.entrypoints.openai.api_server \
   --port 8000
 ```
 
-### Configure Open Notebook
+### Configure Open i_Notes
 
 In **Settings → API Keys**, add an **OpenAI-Compatible** credential with base URL: `http://localhost:8000/v1`
 
@@ -212,8 +212,8 @@ services:
               count: 1
               capabilities: [gpu]
 
-  open-notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open-i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     depends_on:
       - vllm
@@ -223,7 +223,7 @@ Then in **Settings → API Keys**, add an **OpenAI-Compatible** credential with 
 
 ---
 
-## Adding Models in Open Notebook
+## Adding Models in Open i_Notes
 
 ### Via Settings UI
 
@@ -264,7 +264,7 @@ curl http://localhost:1234/v1/chat/completions \
 ### Test from Inside Docker
 
 ```bash
-docker exec -it open-notebook curl http://host.docker.internal:1234/v1/models
+docker exec -it open-i_Notes curl http://host.docker.internal:1234/v1/models
 ```
 
 ---
@@ -293,7 +293,7 @@ Solutions:
 1. Check model is loaded in server
 2. Verify exact model name spelling
 3. List available models: curl http://localhost:1234/v1/models
-4. Update model name in Open Notebook
+4. Update model name in Open i_Notes
 ```
 
 ### Slow Responses

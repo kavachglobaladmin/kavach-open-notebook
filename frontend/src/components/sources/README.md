@@ -1,11 +1,11 @@
 # AddSourceDialog Component
 
-The `AddSourceDialog` component provides a comprehensive interface for adding new sources to notebooks with async processing support.
+The `AddSourceDialog` component provides a comprehensive interface for adding new sources to i_Notes with async processing support.
 
 ## Features
 
 - **Multi-type source support**: Links, file uploads, and text content
-- **Multi-notebook selection**: Add sources to multiple notebooks simultaneously  
+- **Multi-i_Notes selection**: Add sources to multiple i_Notes simultaneously  
 - **Transformations**: Apply transformations during source processing
 - **Async processing**: Background processing with status monitoring
 - **Form validation**: Comprehensive validation with Zod and React Hook Form
@@ -37,13 +37,13 @@ function MyComponent() {
 }
 ```
 
-### With Default Notebook
+### With Default i_Notes
 
 ```tsx
 <AddSourceDialog
   open={dialogOpen}
   onOpenChange={setDialogOpen}
-  defaultNotebookId="notebook:123"
+  defaulti_NotesId="i_Notes:123"
 />
 ```
 
@@ -55,7 +55,7 @@ import { AddSourceButton } from '@/components/sources'
 function MyComponent() {
   return (
     <AddSourceButton 
-      defaultNotebookId="notebook:123"
+      defaulti_NotesId="i_Notes:123"
       variant="outline"
       size="sm"
     />
@@ -71,13 +71,13 @@ function MyComponent() {
 |------|------|---------|-------------|
 | `open` | `boolean` | - | Controls dialog visibility |
 | `onOpenChange` | `(open: boolean) => void` | - | Called when dialog should open/close |
-| `defaultNotebookId` | `string` | - | Pre-select a notebook |
+| `defaulti_NotesId` | `string` | - | Pre-select a i_Notes |
 
 ### AddSourceButton
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `defaultNotebookId` | `string` | - | Pre-select a notebook in dialog |
+| `defaulti_NotesId` | `string` | - | Pre-select a i_Notes in dialog |
 | `variant` | `'default' \| 'outline' \| 'ghost'` | `'default'` | Button styling variant |
 | `size` | `'sm' \| 'default' \| 'lg'` | `'default'` | Button size |
 | `className` | `string` | - | Additional CSS classes |
@@ -114,7 +114,7 @@ function MyComponent() {
 
 The component integrates with several custom hooks:
 
-- `useNotebooks()` - Fetches available notebooks
+- `usei_Notes()` - Fetches available i_Notes
 - `useTransformations()` - Fetches available transformations  
 - `useCreateSource()` - Handles source creation
 - `useSourceStatus()` - Monitors processing status

@@ -1,3 +1,0 @@
--- Migration 22 rollback: Remove source_insight_generation table
-
-REMOVE TABLE source_insight_generation;

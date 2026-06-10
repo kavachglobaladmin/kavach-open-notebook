@@ -1,12 +1,12 @@
 # Reverse Proxy Configuration
 
-Deploy Open Notebook behind nginx, Caddy, Traefik, or other reverse proxies with custom domains and HTTPS.
+Deploy Open i_Notes behind nginx, Caddy, Traefik, or other reverse proxies with custom domains and HTTPS.
 
 ---
 
 ## Simplified Setup (v1.1+)
 
-Starting with v1.1, Open Notebook uses Next.js rewrites to simplify configuration. **You only need to proxy to one port** - Next.js handles internal API routing automatically.
+Starting with v1.1, Open i_Notes uses Next.js rewrites to simplify configuration. **You only need to proxy to one port** - Next.js handles internal API routing automatically.
 
 ### How It Works
 
@@ -27,7 +27,7 @@ Next.js automatically forwards `/api/*` requests to the FastAPI backend, so your
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name notebook.example.com;
+    server_name i_Notes.example.com;
 
     ssl_certificate /etc/nginx/ssl/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/privkey.pem;
@@ -37,7 +37,7 @@ server {
 
     # Single location block - that's it!
     location / {
-        proxy_pass http://open-notebook:8502;
+        proxy_pass http://open-i_Notes:8502;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -52,7 +52,7 @@ server {
 # HTTP to HTTPS redirect
 server {
     listen 80;
-    server_name notebook.example.com;
+    server_name i_Notes.example.com;
     return 301 https://$server_name$request_uri;
 }
 ```
@@ -60,8 +60,8 @@ server {
 ### Caddy
 
 ```caddy
-notebook.example.com {
-    reverse_proxy open-notebook:8502 {
+i_Notes.example.com {
+    reverse_proxy open-i_Notes:8502 {
         transport http {
             read_timeout 600s
             write_timeout 600s
@@ -76,19 +76,19 @@ Caddy handles HTTPS automatically. The timeout settings ensure long-running oper
 
 ```yaml
 services:
-  open-notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open-i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     environment:
-      - API_URL=https://notebook.example.com
+      - API_URL=https://i_Notes.example.com
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.notebook.rule=Host(`notebook.example.com`)"
-      - "traefik.http.routers.notebook.entrypoints=websecure"
-      - "traefik.http.routers.notebook.tls.certresolver=myresolver"
-      - "traefik.http.services.notebook.loadbalancer.server.port=8502"
+      - "traefik.http.routers.i_Notes.rule=Host(`i_Notes.example.com`)"
+      - "traefik.http.routers.i_Notes.entrypoints=websecure"
+      - "traefik.http.routers.i_Notes.tls.certresolver=myresolver"
+      - "traefik.http.services.i_Notes.loadbalancer.server.port=8502"
       # Timeout for long-running operations (transformations, podcasts)
-      - "traefik.http.services.notebook.loadbalancer.responseforwarding.flushinterval=100ms"
+      - "traefik.http.services.i_Notes.loadbalancer.responseforwarding.flushinterval=100ms"
     networks:
       - traefik-network
 ```
@@ -106,7 +106,7 @@ serversTransport:
 
 ### Coolify
 
-1. Create new service with `lfnovo/open_notebook:v1-latest-single`
+1. Create new service with `lfnovo/open_i_Notes:v1-latest-single`
 2. Set port to **8502**
 3. Add environment: `API_URL=https://your-domain.com`
 4. Enable HTTPS in Coolify
@@ -161,16 +161,16 @@ When `API_URL` is not set, the Next.js frontend:
 
 ```yaml
 services:
-  open-notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open-i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
-    container_name: open-notebook
+    container_name: open-i_Notes
     environment:
-      - API_URL=https://notebook.example.com
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY}
-      - OPEN_NOTEBOOK_PASSWORD=${OPEN_NOTEBOOK_PASSWORD}
+      - API_URL=https://i_Notes.example.com
+      - OPEN_i_Notes_ENCRYPTION_KEY=${OPEN_i_Notes_ENCRYPTION_KEY}
+      - OPEN_i_Notes_PASSWORD=${OPEN_i_Notes_PASSWORD}
     volumes:
-      - ./notebook_data:/app/data
+      - ./i_Notes_data:/app/data
       - ./surreal_data:/mydata
     # Only expose to localhost (nginx handles public access)
     ports:
@@ -187,7 +187,7 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
-      - open-notebook
+      - open-i_Notes
     restart: unless-stopped
 ```
 
@@ -201,21 +201,21 @@ events {
 }
 
 http {
-    upstream notebook {
-        server open-notebook:8502;
+    upstream i_Notes {
+        server open-i_Notes:8502;
     }
 
     # HTTP redirect
     server {
         listen 80;
-        server_name notebook.example.com;
+        server_name i_Notes.example.com;
         return 301 https://$server_name$request_uri;
     }
 
     # HTTPS server
     server {
         listen 443 ssl http2;
-        server_name notebook.example.com;
+        server_name i_Notes.example.com;
 
         ssl_certificate /etc/nginx/ssl/fullchain.pem;
         ssl_certificate_key /etc/nginx/ssl/privkey.pem;
@@ -233,7 +233,7 @@ http {
 
         # Proxy settings
         location / {
-            proxy_pass http://notebook;
+            proxy_pass http://i_Notes;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -262,7 +262,7 @@ If external scripts or integrations need direct API access, route `/api/*` direc
 ```nginx
 # Direct API access (for external integrations)
 location /api/ {
-    proxy_pass http://open-notebook:5055/api/;
+    proxy_pass http://open-i_Notes:5055/api/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -272,7 +272,7 @@ location /api/ {
 
 # Frontend (handles all other traffic)
 location / {
-    proxy_pass http://open-notebook:8502;
+    proxy_pass http://open-i_Notes:8502;
     # ... same headers as above
 }
 ```
@@ -285,11 +285,11 @@ location / {
 
 ### Remote Server Access (LAN/VPS)
 
-Accessing Open Notebook from a different machine on your network:
+Accessing Open i_Notes from a different machine on your network:
 
 **Step 1: Get your server IP**
 ```bash
-# On the server running Open Notebook:
+# On the server running Open i_Notes:
 hostname -I
 # or
 ifconfig | grep "inet "
@@ -305,8 +305,8 @@ API_URL=http://192.168.1.100:5055
 **Step 3: Expose ports**
 ```yaml
 services:
-  open-notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open-i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     environment:
       - API_URL=http://192.168.1.100:5055
@@ -335,12 +335,12 @@ Host the API and frontend on different subdomains:
 **docker-compose.yml:**
 ```yaml
 services:
-  open-notebook:
-    image: lfnovo/open_notebook:v1-latest-single
+  open-i_Notes:
+    image: lfnovo/open_i_Notes:v1-latest-single
     pull_policy: always
     environment:
-      - API_URL=https://api.notebook.example.com
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY}
+      - API_URL=https://api.i_Notes.example.com
+      - OPEN_i_Notes_ENCRYPTION_KEY=${OPEN_i_Notes_ENCRYPTION_KEY}
     # Don't expose ports (nginx handles routing)
 ```
 
@@ -349,13 +349,13 @@ services:
 # Frontend server
 server {
     listen 443 ssl http2;
-    server_name notebook.example.com;
+    server_name i_Notes.example.com;
 
     ssl_certificate /etc/nginx/ssl/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/privkey.pem;
 
     location / {
-        proxy_pass http://open-notebook:8502;
+        proxy_pass http://open-i_Notes:8502;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -370,13 +370,13 @@ server {
 # API server (separate subdomain)
 server {
     listen 443 ssl http2;
-    server_name api.notebook.example.com;
+    server_name api.i_Notes.example.com;
 
     ssl_certificate /etc/nginx/ssl/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/privkey.pem;
 
     location / {
-        proxy_pass http://open-notebook:5055;
+        proxy_pass http://open-i_Notes:5055;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -398,18 +398,18 @@ For complex deployments with separate frontend and API containers:
 ```yaml
 services:
   frontend:
-    image: lfnovo/open_notebook_frontend:v1-latest
+    image: lfnovo/open_i_Notes_frontend:v1-latest
     pull_policy: always
     environment:
-      - API_URL=https://notebook.example.com
+      - API_URL=https://i_Notes.example.com
     ports:
       - "8502:8502"
 
   api:
-    image: lfnovo/open_notebook_api:v1-latest
+    image: lfnovo/open_i_Notes_api:v1-latest
     pull_policy: always
     environment:
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=${OPEN_NOTEBOOK_ENCRYPTION_KEY}
+      - OPEN_i_Notes_ENCRYPTION_KEY=${OPEN_i_Notes_ENCRYPTION_KEY}
     ports:
       - "5055:5055"
     depends_on:
@@ -437,7 +437,7 @@ http {
 
     server {
         listen 443 ssl http2;
-        server_name notebook.example.com;
+        server_name i_Notes.example.com;
 
         # API routes
         location /api/ {
@@ -478,7 +478,7 @@ http {
 sudo apt install certbot python3-certbot-nginx
 
 # Get certificate
-sudo certbot --nginx -d notebook.example.com
+sudo certbot --nginx -d i_Notes.example.com
 
 # Auto-renewal (usually configured automatically)
 sudo certbot renew --dry-run
@@ -505,7 +505,7 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 
 1. **Check API_URL is set**:
    ```bash
-   docker exec open-notebook env | grep API_URL
+   docker exec open-i_Notes env | grep API_URL
    ```
 
 2. **Verify reverse proxy reaches container**:
@@ -523,7 +523,7 @@ Frontend using HTTPS but trying to reach HTTP API:
 
 ```bash
 # Ensure API_URL uses https://
-API_URL=https://notebook.example.com  # Not http://
+API_URL=https://i_Notes.example.com  # Not http://
 ```
 
 ### WebSocket Issues
@@ -539,7 +539,7 @@ proxy_set_header Connection 'upgrade';
 ### 502 Bad Gateway
 
 1. Check container is running: `docker ps`
-2. Check container logs: `docker logs open-notebook`
+2. Check container logs: `docker logs open-i_Notes`
 3. Verify nginx can reach container (same network)
 
 ### Timeout Errors
@@ -549,7 +549,7 @@ proxy_set_header Connection 'upgrade';
 - `Timeout after 30000ms` errors
 - Operations fail after exactly 30 seconds
 
-**Cause:** Your reverse proxy has a default timeout (often 30s) that's shorter than Open Notebook's operations.
+**Cause:** Your reverse proxy has a default timeout (often 30s) that's shorter than Open i_Notes's operations.
 
 **Solutions by proxy:**
 
@@ -561,7 +561,7 @@ proxy_send_timeout 600s;
 
 **Caddy:**
 ```caddy
-reverse_proxy open-notebook:8502 {
+reverse_proxy open-i_Notes:8502 {
     transport http {
         read_timeout 600s
         write_timeout 600s
@@ -621,7 +621,7 @@ curl https://your-domain.com/api/config
 
 **Step 3: Check Docker logs**
 ```bash
-docker logs open-notebook
+docker logs open-i_Notes
 
 # Look for:
 # - Frontend startup: "▲ Next.js ready on http://0.0.0.0:8502"
@@ -631,7 +631,7 @@ docker logs open-notebook
 
 **Step 4: Verify environment variable**
 ```bash
-docker exec open-notebook env | grep API_URL
+docker exec open-i_Notes env | grep API_URL
 
 # Should show:
 # API_URL=https://your-domain.com
@@ -659,7 +659,7 @@ Check browser console (F12) - should see: `✅ [Config] Runtime API URL from ser
 ```nginx
 # Only needed for versions ≤ 1.0.10
 location = /config {
-    proxy_pass http://open-notebook:8502;
+    proxy_pass http://open-i_Notes:8502;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -680,7 +680,7 @@ Error creating source. Please try again.
 When uploading files, your reverse proxy may reject the request due to body size limits *before* it reaches the application. Since the error happens at the proxy level, CORS headers are not included in the response.
 
 **Version Requirement:**
-- **Open Notebook v1.3.2+** is required for file uploads >10MB
+- **Open i_Notes v1.3.2+** is required for file uploads >10MB
 - Uses Next.js 16+ which supports the `proxyClientMaxBodySize` configuration option
 - Check your version: Settings → About (bottom of settings page)
 
@@ -721,7 +721,7 @@ When uploading files, your reverse proxy may reject the request due to body size
    Apply middleware to your router:
    ```yaml
    labels:
-     - "traefik.http.routers.notebook.middlewares=large-body"
+     - "traefik.http.routers.i_Notes.middlewares=large-body"
    ```
 
 3. **Kubernetes Ingress (nginx-ingress)**:
@@ -729,7 +729,7 @@ When uploading files, your reverse proxy may reject the request due to body size
    apiVersion: networking.k8s.io/v1
    kind: Ingress
    metadata:
-     name: open-notebook
+     name: open-i_Notes
      annotations:
        nginx.ingress.kubernetes.io/proxy-body-size: "100m"
        # Add CORS headers for error responses
@@ -739,11 +739,11 @@ When uploading files, your reverse proxy may reject the request due to body size
 
 4. **Caddy**:
    ```caddy
-   notebook.example.com {
+   i_Notes.example.com {
        request_body {
            max_size 100MB
        }
-       reverse_proxy open-notebook:8502 {
+       reverse_proxy open-i_Notes:8502 {
            transport http {
                read_timeout 600s
                write_timeout 600s
@@ -752,7 +752,7 @@ When uploading files, your reverse proxy may reject the request due to body size
    }
    ```
 
-**Note:** Open Notebook's API includes CORS headers in error responses, but this only works for errors that reach the application. Proxy-level errors (like 413 from nginx) need to be configured at the proxy level.
+**Note:** Open i_Notes's API includes CORS headers in error responses, but this only works for errors that reach the application. Proxy-level errors (like 413 from nginx) need to be configured at the proxy level.
 
 ---
 
@@ -778,15 +778,15 @@ Response to preflight request doesn't pass access control check
 2. **API_URL protocol mismatch**:
    ```bash
    # Frontend is HTTPS, but API_URL is HTTP:
-   API_URL=http://notebook.example.com  # ❌ Wrong
-   API_URL=https://notebook.example.com # ✅ Correct
+   API_URL=http://i_Notes.example.com  # ❌ Wrong
+   API_URL=https://i_Notes.example.com # ✅ Correct
    ```
 
 3. **Reverse proxy not forwarding `/api/*` correctly**:
    ```nginx
    # Make sure this works:
    location /api/ {
-       proxy_pass http://open-notebook:5055/api/;  # Note the trailing slash!
+       proxy_pass http://open-i_Notes:5055/api/;  # Note the trailing slash!
    }
    ```
 
@@ -800,7 +800,7 @@ Response to preflight request doesn't pass access control check
 ```
 
 This happens when:
-- You have set `OPEN_NOTEBOOK_PASSWORD` for authentication
+- You have set `OPEN_i_Notes_PASSWORD` for authentication
 - You're trying to access `/api/config` directly without logging in first
 
 **Solution:**
@@ -828,7 +828,7 @@ curl -H "Authorization: Bearer your-password-here" \
 
 1. **Use Let's Encrypt** (recommended):
    ```bash
-   sudo certbot --nginx -d notebook.example.com
+   sudo certbot --nginx -d i_Notes.example.com
    ```
 
 2. **Check certificate paths** in nginx:
@@ -865,18 +865,18 @@ curl -H "Authorization: Bearer your-password-here" \
    - Test API: `curl https://your-domain.com/api/config`
    - Verify authentication works
    - Check long-running operations (podcast generation)
-9. **Monitor logs** regularly: `docker logs open-notebook`
+9. **Monitor logs** regularly: `docker logs open-i_Notes`
 10. **Don't include `/api` in API_URL** - the system adds this automatically
 
 ---
 
 ## Legacy Configurations (Pre-v1.1)
 
-If you're running Open Notebook **version 1.0.x or earlier**, you may need to use the legacy two-port configuration where you explicitly route `/api/*` to port 5055.
+If you're running Open i_Notes **version 1.0.x or earlier**, you may need to use the legacy two-port configuration where you explicitly route `/api/*` to port 5055.
 
 **Check your version:**
 ```bash
-docker exec open-notebook cat /app/package.json | grep version
+docker exec open-i_Notes cat /app/package.json | grep version
 ```
 
 **If version < 1.1.0**, you may need:

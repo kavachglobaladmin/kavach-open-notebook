@@ -8,10 +8,10 @@ import { Input } from '@/components/ui/input'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import apiClient from '@/lib/api/client'
-import { notebooksApi } from '@/lib/api/notebooks'
+import { i_NotesApi } from '@/lib/api/i_Notes'
 import { sourcesApi } from '@/lib/api/sources'
 import { searchApi } from '@/lib/api/search'
-import type { NotebookResponse, SourceListResponse } from '@/lib/types/api'
+import type { i_NotesResponse, SourceListResponse } from '@/lib/types/api'
 import { NotificationCenter } from './NotificationCenter'
 import { cn } from '@/lib/utils'
 
@@ -74,7 +74,7 @@ type GlobalSearchResult = {
   id: string
   title: string
   subtitle?: string
-  type: 'page' | 'notebook' | 'source' | 'content'
+  type: 'page' | 'i_Notes' | 'source' | 'content'
   href: string
   matchKind?: string
 }
@@ -494,7 +494,7 @@ function highlightKeywordOnCurrentPage(query: string, shouldScroll = true): Curr
 function getResultLabel(type: GlobalSearchResult['type'], matchKind?: string): string {
   if (matchKind) return matchKind
   if (type === 'page') return 'Current page'
-  if (type === 'notebook') return 'Notebook / Case'
+  if (type === 'i_Notes') return 'i_Notes / Case'
   if (type === 'source') return 'File / Document'
   return 'Content match'
 }
@@ -513,59 +513,59 @@ function inferSemanticHref(
     String(result.documentId ?? ''),
     String(result.file_id ?? ''),
     String(result.fileId ?? ''),
-    String(result.notebook_id ?? ''),
-    String(result.notebookId ?? ''),
+    String(result.i_Notes_id ?? ''),
+    String(result.i_NotesId ?? ''),
     String(result.case_id ?? ''),
     String(result.caseId ?? ''),
     String(result.id ?? ''),
   ].filter(isMeaningfulId)
 
   const explicitHref = String(result.href ?? result.url ?? result.path ?? '')
-  if (explicitHref.startsWith('/sources/') || explicitHref.startsWith('/notebooks/')) {
+  if (explicitHref.startsWith('/sources/') || explicitHref.startsWith('/i_Notes/')) {
     return explicitHref
   }
 
   const sourceCandidate = idCandidates.find(id => id.toLowerCase().startsWith('source:'))
   if (sourceCandidate) return `/sources/${toShortId(sourceCandidate)}`
 
-  const notebookCandidate = idCandidates.find(id => id.toLowerCase().startsWith('notebook:'))
-  if (notebookCandidate) return `/notebooks/${toShortId(notebookCandidate)}`
+  const i_NotesCandidate = idCandidates.find(id => id.toLowerCase().startsWith('i_Notes:'))
+  if (i_NotesCandidate) return `/i_Notes/${toShortId(i_NotesCandidate)}`
 
   if (type.includes('source') || type.includes('document') || type.includes('file')) {
     const fallback = idCandidates[0]
     if (fallback) return `/sources/${toShortId(fallback)}`
   }
 
-  if (type.includes('notebook') || type.includes('case') || type.includes('note')) {
+  if (type.includes('i_Notes') || type.includes('case') || type.includes('note')) {
     const fallback = idCandidates[0]
-    if (fallback) return `/notebooks/${toShortId(fallback)}`
+    if (fallback) return `/i_Notes/${toShortId(fallback)}`
   }
 
   return `/search?q=${encodeURIComponent(normalizedSearch)}&mode=search`
 }
 
-function buildNotebookMatches(
-  notebooks: NotebookResponse[],
+function buildi_NotesMatches(
+  i_Notes: i_NotesResponse[],
   query: string
 ): RankedGlobalSearchResult[] {
-  return notebooks
-    .map(notebook => ({
-      notebook,
+  return i_Notes
+    .map(i_Notes => ({
+      i_Notes,
       rank: Math.max(
-        scoreMatch(query, notebook.name),
-        scoreMatch(query, notebook.description || '')
+        scoreMatch(query, i_Notes.name),
+        scoreMatch(query, i_Notes.description || '')
       ),
     }))
     .filter(item => item.rank > 0)
     .sort((a, b) => b.rank - a.rank)
     .slice(0, 6)
     .map(item => ({
-      id: item.notebook.id,
-      title: item.notebook.name,
-      subtitle: item.notebook.description || 'Notebook / Case',
-      type: 'notebook' as const,
-      matchKind: 'Notebook / Case',
-      href: `/notebooks/${toShortId(item.notebook.id)}`,
+      id: item.i_Notes.id,
+      title: item.i_Notes.name,
+      subtitle: item.i_Notes.description || 'i_Notes / Case',
+      type: 'i_Notes' as const,
+      matchKind: 'i_Notes / Case',
+      href: `/i_Notes/${toShortId(item.i_Notes.id)}`,
       rank: item.rank,
     }))
 }
@@ -613,13 +613,13 @@ function buildSemanticMatches(
       const rawType = String(result.type ?? result.source_type ?? result.kind ?? '')
       const lowerType = rawType.toLowerCase()
       const isSource = lowerType.includes('source') || lowerType.includes('document') || lowerType.includes('file')
-      const isNotebook = lowerType.includes('notebook') || lowerType.includes('case')
+      const isi_Notes = lowerType.includes('i_Notes') || lowerType.includes('case')
       const isNote = lowerType.includes('note')
       const rawTitle = String(
         result.title ??
         result.name ??
         result.source_title ??
-        result.notebook_title ??
+        result.i_Notes_title ??
         result.filename ??
         ''
       )
@@ -648,21 +648,21 @@ function buildSemanticMatches(
         rawTitle,
         isSource
           ? `File match: ${query}`
-          : isNotebook
-            ? `Notebook match: ${query}`
+          : isi_Notes
+            ? `i_Notes match: ${query}`
             : `Content match: ${query}`
       )
-      const type: GlobalSearchResult['type'] = isNotebook ? 'notebook' : isSource ? 'source' : 'content'
+      const type: GlobalSearchResult['type'] = isi_Notes ? 'i_Notes' : isSource ? 'source' : 'content'
       const matchKind = isSource
         ? 'File content'
-        : isNotebook
-          ? 'Notebook / Case'
+        : isi_Notes
+          ? 'i_Notes / Case'
           : isNote
             ? 'Note content'
             : 'Content match'
 
       return {
-        id: String(result.id ?? result.parent_id ?? result.source_id ?? result.notebook_id ?? `${displayTitle}-${snippet}`),
+        id: String(result.id ?? result.parent_id ?? result.source_id ?? result.i_Notes_id ?? `${displayTitle}-${snippet}`),
         title: displayTitle,
         subtitle: snippet || matchKind,
         type,
@@ -698,7 +698,7 @@ export function PageHeader({
   searchValue,
   onSearchChange,
   searchPlaceholder = 'Search cases, users, organizations...',
-  newLabel = 'NOTEBOOK',
+  newLabel = 'i_Notes',
   onNew,
   hideNew = false,
   hideSearch = false,
@@ -710,7 +710,7 @@ export function PageHeader({
   const { toggleCollapse, isCollapsed } = useSidebarStore()
   const searchWrapperRef = useRef<HTMLDivElement | null>(null)
   const searchRequestIdRef = useRef(0)
-  const notebooksCacheRef = useRef<NotebookResponse[]>([])
+  const i_NotesCacheRef = useRef<i_NotesResponse[]>([])
   const sourcesCacheRef = useRef<SourceListResponse[]>([])
 
   // User Profile State
@@ -735,10 +735,10 @@ export function PageHeader({
   const [activeGlobalIndex, setActiveGlobalIndex] = useState(-1)
   const [currentPageMatchCount, setCurrentPageMatchCount] = useState(0)
 
-  // New Notebook Modal State
+  // New i_Notes Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [notebookName, setNotebookName] = useState('')
-  const [notebookDesc, setNotebookDesc] = useState('')
+  const [i_NotesName, seti_NotesName] = useState('')
+  const [i_NotesDesc, seti_NotesDesc] = useState('')
   const [storageLimit, setStorageLimit] = useState<number>(5)
 
   useEffect(() => {
@@ -792,7 +792,7 @@ export function PageHeader({
     const currentPageResult: GlobalSearchResult = {
       id: `current-page:${pathname}:${normalizedSearch}`,
       title: `Locate "${normalizedSearch}" on this page`,
-      subtitle: `${currentPageMatchCount} ${currentPageMatchCount === 1 ? 'match' : 'matches'} found in the visible notebook/page`,
+      subtitle: `${currentPageMatchCount} ${currentPageMatchCount === 1 ? 'match' : 'matches'} found in the visible i_Notes/page`,
       type: 'page',
       href: '#current-page-match',
       matchKind: 'Current page',
@@ -861,11 +861,11 @@ export function PageHeader({
   useEffect(() => {
     // Warm caches once so first keystroke can show fast local matches.
     void Promise.allSettled([
-      notebooksApi.list({ archived: false, order_by: 'updated' }),
+      i_NotesApi.list({ archived: false, order_by: 'updated' }),
       sourcesApi.list({ limit: 100, sort_by: 'updated', sort_order: 'desc' }),
-    ]).then(([notebooksRes, sourcesRes]) => {
-      if (notebooksRes.status === 'fulfilled') {
-        notebooksCacheRef.current = normalizeListResponse<NotebookResponse>(notebooksRes.value, ['notebooks', 'items', 'results', 'data'])
+    ]).then(([i_NotesRes, sourcesRes]) => {
+      if (i_NotesRes.status === 'fulfilled') {
+        i_NotesCacheRef.current = normalizeListResponse<i_NotesResponse>(i_NotesRes.value, ['i_Notes', 'items', 'results', 'data'])
       }
       if (sourcesRes.status === 'fulfilled') {
         sourcesCacheRef.current = normalizeListResponse<SourceListResponse>(sourcesRes.value, ['sources', 'items', 'results', 'data'])
@@ -889,7 +889,7 @@ export function PageHeader({
 
     // Instant local/cached matches for responsive typing UX.
     const instantLocal = mergeRankedResults([
-      ...buildNotebookMatches(notebooksCacheRef.current, normalizedSearch),
+      ...buildi_NotesMatches(i_NotesCacheRef.current, normalizedSearch),
       ...buildSourceMatches(sourcesCacheRef.current, normalizedSearch),
     ])
     if (instantLocal.length > 0) {
@@ -899,7 +899,7 @@ export function PageHeader({
 
     const timeout = setTimeout(async () => {
       try {
-        const notebooksPromise = notebooksApi.list({ archived: false, order_by: 'updated' })
+        const i_NotesPromise = i_NotesApi.list({ archived: false, order_by: 'updated' })
         const sourcesPromise = sourcesApi.list({ limit: 100, sort_by: 'updated', sort_order: 'desc' })
         const textPromise = searchApi.search({
           query: normalizedSearch,
@@ -921,24 +921,24 @@ export function PageHeader({
           })
           : Promise.resolve({ results: [] as unknown[] })
 
-        const [notebooksRes, sourcesRes] = await Promise.allSettled([notebooksPromise, sourcesPromise])
+        const [i_NotesRes, sourcesRes] = await Promise.allSettled([i_NotesPromise, sourcesPromise])
         if (requestId !== searchRequestIdRef.current) return
 
-        const notebooks = notebooksRes.status === 'fulfilled'
-          ? normalizeListResponse<NotebookResponse>(notebooksRes.value, ['notebooks', 'items', 'results', 'data'])
-          : notebooksCacheRef.current
+        const i_Notes = i_NotesRes.status === 'fulfilled'
+          ? normalizeListResponse<i_NotesResponse>(i_NotesRes.value, ['i_Notes', 'items', 'results', 'data'])
+          : i_NotesCacheRef.current
         const sources = sourcesRes.status === 'fulfilled'
           ? normalizeListResponse<SourceListResponse>(sourcesRes.value, ['sources', 'items', 'results', 'data'])
           : sourcesCacheRef.current
-        if (notebooksRes.status === 'fulfilled') {
-          notebooksCacheRef.current = normalizeListResponse<NotebookResponse>(notebooksRes.value, ['notebooks', 'items', 'results', 'data'])
+        if (i_NotesRes.status === 'fulfilled') {
+          i_NotesCacheRef.current = normalizeListResponse<i_NotesResponse>(i_NotesRes.value, ['i_Notes', 'items', 'results', 'data'])
         }
         if (sourcesRes.status === 'fulfilled') {
           sourcesCacheRef.current = normalizeListResponse<SourceListResponse>(sourcesRes.value, ['sources', 'items', 'results', 'data'])
         }
 
         const localMerged = mergeRankedResults([
-          ...buildNotebookMatches(notebooks, normalizedSearch),
+          ...buildi_NotesMatches(i_Notes, normalizedSearch),
           ...buildSourceMatches(sources, normalizedSearch),
         ])
         if (requestId !== searchRequestIdRef.current) return
@@ -953,7 +953,7 @@ export function PageHeader({
         const semanticText = textRes.status === 'fulfilled' ? normalizeSearchResults(textRes.value) : []
         const semanticVector = vectorRes.status === 'fulfilled' ? normalizeSearchResults(vectorRes.value) : []
         const semanticMerged = mergeRankedResults([
-          ...buildNotebookMatches(notebooks, normalizedSearch),
+          ...buildi_NotesMatches(i_Notes, normalizedSearch),
           ...buildSourceMatches(sources, normalizedSearch),
           ...buildSemanticMatches([...semanticText, ...semanticVector], normalizedSearch),
         ])
@@ -993,7 +993,7 @@ export function PageHeader({
       return
     }
 
-    if (result.href.startsWith('/sources/') || result.href.startsWith('/notebooks/')) {
+    if (result.href.startsWith('/sources/') || result.href.startsWith('/i_Notes/')) {
       router.push(appendSearchParamsToHref(result.href, query, result))
       return
     }
@@ -1009,10 +1009,10 @@ export function PageHeader({
       return
     }
     // Internal modal fallback (used when no onNew prop is provided)
-    console.log("Creating:", { notebookName, notebookDesc, storageLimit })
+    console.log("Creating:", { i_NotesName, i_NotesDesc, storageLimit })
     setIsModalOpen(false)
-    setNotebookName('')
-    setNotebookDesc('')
+    seti_NotesName('')
+    seti_NotesDesc('')
     setStorageLimit(5)
   }
 
@@ -1097,7 +1097,7 @@ export function PageHeader({
             {showGlobalResults && normalizedSearch && (
               <div className="absolute left-0 right-0 top-[54px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
                 {isSearchingGlobal && displayGlobalResults.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-slate-500">Searching across notebooks, cases, files, notes, and content...</div>
+                  <div className="px-4 py-3 text-sm text-slate-500">Searching across i_Notes, cases, files, notes, and content...</div>
                 ) : displayGlobalResults.length === 0 ? (
                   <div>
                     <div className="px-4 py-3 text-sm text-slate-500">No direct matches found</div>
@@ -1169,7 +1169,7 @@ export function PageHeader({
         </div>
       </div>
 
-      {/* â”€â”€ Create New Notebook Modal Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â”€â”€ Create New i_Notes Modal Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 transition-all">
           <div className="bg-white w-full max-w-[480px] rounded-xl shadow-2xl relative p-6 md:p-7 animate-in fade-in zoom-in-95 duration-200">
@@ -1180,7 +1180,7 @@ export function PageHeader({
               <X className="h-5 w-5" />
             </button>
 
-            <h2 className="text-[20px] font-bold text-slate-900 mb-1.5">Create New Notebook</h2>
+            <h2 className="text-[20px] font-bold text-slate-900 mb-1.5">Create New i_Notes</h2>
             <p className="text-[14px] text-slate-500 mb-6">Enter a name and optional description to get started.</p>
 
             <div className="space-y-5">
@@ -1188,9 +1188,9 @@ export function PageHeader({
               <div>
                 <label className="block text-[14px] font-bold text-slate-900 mb-1.5">Name *</label>
                 <Input
-                  value={notebookName}
-                  onChange={e => setNotebookName(e.target.value)}
-                  placeholder="Notebook name"
+                  value={i_NotesName}
+                  onChange={e => seti_NotesName(e.target.value)}
+                  placeholder="i_Notes name"
                   className="h-[42px] text-[15px] border-slate-300 focus-visible:ring-[#82B4FF] focus-visible:border-[#82B4FF] placeholder:text-slate-400"
                   autoFocus
                 />
@@ -1200,9 +1200,9 @@ export function PageHeader({
               <div>
                 <label className="block text-[14px] font-bold text-slate-900 mb-1.5">Description</label>
                 <textarea
-                  value={notebookDesc}
-                  onChange={e => setNotebookDesc(e.target.value)}
-                  placeholder="Add more info about this notebook here..."
+                  value={i_NotesDesc}
+                  onChange={e => seti_NotesDesc(e.target.value)}
+                  placeholder="Add more info about this i_Notes here..."
                   className="w-full h-[100px] rounded-lg border border-slate-300 p-3 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#82B4FF] focus:border-[#82B4FF] resize-none placeholder:text-slate-400"
                 />
               </div>
@@ -1231,7 +1231,7 @@ export function PageHeader({
                     </button>
                   ))}
                 </div>
-                <p className="text-[12px] text-slate-500 mt-2">Select a storage limit to create the notebook.</p>
+                <p className="text-[12px] text-slate-500 mt-2">Select a storage limit to create the i_Notes.</p>
               </div>
             </div>
 
@@ -1247,9 +1247,9 @@ export function PageHeader({
               <Button
                 onClick={handleCreateNew}
                 className="bg-[#82B4FF] hover:bg-[#68A3FB] text-white h-10 px-5 text-[14px] font-semibold shadow-sm transition-colors"
-                disabled={!notebookName.trim()}
+                disabled={!i_NotesName.trim()}
               >
-                Create New Notebook
+                Create New i_Notes
               </Button>
             </div>
           </div>

@@ -164,7 +164,7 @@ export default function AdvancedPage() {
         <PageHeader
           searchValue={searchTerm}
           onSearchChange={(val) => setSearchTerm(val)}
-          newLabel="NOTEBOOK"
+          newLabel="i_Notes"
         />
 
         <div className="flex-1 overflow-y-auto relative z-10">

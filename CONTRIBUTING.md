@@ -1,4 +1,4 @@
-# Contributing to Open Notebook
+# Contributing to Open i_Notes
 
 **📍 This file has moved!**
 

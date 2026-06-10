@@ -36,7 +36,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { TranslationKeys } from '@/lib/locales'
 import { cn } from '@/lib/utils'
 import { ContextToggle } from '@/components/common/ContextToggle'
-import { ContextMode } from '@/app/(dashboard)/notebooks/[id]/page'
+import { ContextMode } from '@/app/(dashboard)/i_Notes/[id]/page'
 import { MindMapDialog } from '@/components/source/MindMapDialog'
 import { InfographicDialog } from '@/components/source/InfographicDialog'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -48,11 +48,11 @@ interface SourceCardProps {
   source: SourceListResponse
   onDelete?: (sourceId: string) => void
   onRetry?: (sourceId: string) => void
-  onRemoveFromNotebook?: (sourceId: string) => void
+  onRemoveFromi_Notes?: (sourceId: string) => void
   onClick?: (sourceId: string) => void
   onRefresh?: () => void
   className?: string
-  showRemoveFromNotebook?: boolean
+  showRemoveFromi_Notes?: boolean
   contextMode?: ContextMode
   onContextModeChange?: (mode: ContextMode) => void
   selectable?: boolean
@@ -128,10 +128,10 @@ export function SourceCard({
   onClick,
   onDelete,
   onRetry,
-  onRemoveFromNotebook,
+  onRemoveFromi_Notes,
   onRefresh,
   className,
-  showRemoveFromNotebook = false,
+  showRemoveFromi_Notes = false,
   contextMode,
   onContextModeChange,
   selectable = false,
@@ -276,9 +276,9 @@ export function SourceCard({
     }
   }
 
-  const handleRemoveFromNotebook = () => {
-    if (onRemoveFromNotebook) {
-      onRemoveFromNotebook(source.id)
+  const handleRemoveFromi_Notes = () => {
+    if (onRemoveFromi_Notes) {
+      onRemoveFromi_Notes(source.id)
     }
   }
 
@@ -470,17 +470,17 @@ export function SourceCard({
                 </Button>
               </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {showRemoveFromNotebook && (
+              {showRemoveFromi_Notes && (
                 <>
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleRemoveFromNotebook()
+                      handleRemoveFromi_Notes()
                     }}
-                    disabled={!onRemoveFromNotebook}
+                    disabled={!onRemoveFromi_Notes}
                   >
                     <Unlink className="h-4 w-4 mr-2" />
-                    {t.sources.removeFromNotebook}
+                    {t.sources.removeFromi_Notes}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

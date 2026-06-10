@@ -64,7 +64,7 @@ apiClient.interceptors.request.use(async (config) => {
       }
     } else if (storeState.token === 'not-required') {
       // Auth not required — still send user email for scoping if available.
-      // This ensures notebooks are always filtered by owner even when no
+      // This ensures i_Notes are always filtered by owner even when no
       // API password is configured.
       const userEmail = resolveUserEmail()
       if (userEmail) {

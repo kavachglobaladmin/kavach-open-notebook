@@ -75,7 +75,7 @@ services:
 
   #   restart: always
 
-  open_notebook:
+  open_i_Notes:
     build:
       context: .
       dockerfile: Dockerfile
@@ -89,19 +89,19 @@ services:
       - "host.docker.internal:host-gateway"
 
     environment:
-      OPEN_NOTEBOOK_ENCRYPTION_KEY: "change-me-to-a-secret-string"
+      OPEN_i_Notes_ENCRYPTION_KEY: "change-me-to-a-secret-string"
       SURREAL_URL: "ws://surrealdb:8000/rpc"
       SURREAL_USER: "root"
       SURREAL_PASSWORD: "root"
-      SURREAL_NAMESPACE: "open_notebook"
-      SURREAL_DATABASE: "open_notebook"
+      SURREAL_NAMESPACE: "open_i_Notes"
+      SURREAL_DATABASE: "open_i_Notes"
       OLLAMA_BASE_URL: "http://ollama:11434"
       OLLAMA_API_URL: "http://ollama:11434"
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9093"
       GIT_PYTHON_REFRESH: "quiet"
 
     volumes:
-      - ./notebook_data:/app/data
+      - ./i_Notes_data:/app/data
 
     depends_on:
       - surrealdb
