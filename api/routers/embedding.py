@@ -3,8 +3,8 @@ from loguru import logger
 
 from api.command_service import CommandService
 from api.models import EmbedRequest, EmbedResponse
-from i_Notes.ai.models import model_manager
-from i_Notes.domain.i_Notes import Note, Source
+from open_notebook.ai.models import model_manager
+from open_notebook.domain.notebook import Note, Source
 
 router = APIRouter()
 
@@ -47,7 +47,7 @@ async def embed_content(embed_request: EmbedRequest):
                     command_input = {"note_id": item_id}
 
                 command_id = await CommandService.submit_command_job(
-                    "open_i_Notes",
+                    "open_notebook",
                     command_name,
                     command_input,
                 )

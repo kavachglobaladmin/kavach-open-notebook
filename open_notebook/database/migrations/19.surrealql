@@ -1,0 +1,6 @@
+-- Migration 19: Fix kavach_user schema — add missing fields with OVERWRITE
+-- Migrations 17/18 used IF NOT EXISTS which silently skipped on SCHEMAFULL tables.
+-- OVERWRITE ensures the fields are defined regardless.
+
+DEFINE FIELD OVERWRITE password_encrypted ON TABLE kavach_user TYPE option<string>;
+DEFINE FIELD OVERWRITE created_at ON TABLE kavach_user TYPE option<datetime> DEFAULT time::now();

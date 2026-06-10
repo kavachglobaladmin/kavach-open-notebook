@@ -58,3 +58,8 @@ cls
 >>>>>>> Stashed changes
 info for db;
 select * from kavach_user;
+info for db;
+select * from role;
+select * from roles;
+select * from users;
+select * from kavach_user;

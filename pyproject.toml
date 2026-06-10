@@ -1,9 +1,9 @@
 [project]
-name = "open-i_Notes"
+name = "open-notebook"
 version = "1.0.0"
-description = "An open source implementation of a research assistant, inspired by Google i_Notes LM"
+description = "An open source implementation of a research assistant, inspired by Google Notebook LM"
 authors = [
-    {name = "Krunal Rawal", email = "krunal.rawal@kavachglobal.com"}
+    {name = "Luis Novo", email = "lfnovo@gmail.com"}
 ]
 readme = "README.md"
 classifiers = [
@@ -61,8 +61,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-# Map the distribution package name to the actual package directory
-package-dir = {"open_i_Notes" = "i_Notes"}
+package-dir = {"open_notebook" = "open_notebook"}
 
 
 [project.optional-dependencies]

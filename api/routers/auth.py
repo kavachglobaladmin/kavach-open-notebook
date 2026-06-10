@@ -1,5 +1,5 @@
 """
-Authentication router for Open i_Notes API.
+Authentication router for Open Notebook API.
 
 Endpoints:
   GET  /api/auth/status  – public, check if auth is enabled
@@ -9,8 +9,8 @@ The JWT returned by /login must be sent on every subsequent request as:
     Authorization: Bearer <access_token>
 
 All original logic (DB lookup, password verification) is preserved.
-The only change is that api_token is now a real signed JWT instead of
-the raw OPEN_i_Notes_PASSWORD string.
+The role stored in kavach_user is embedded into the JWT payload and
+returned in the login response so the frontend can use it immediately.
 """
 
 import hashlib
@@ -22,35 +22,27 @@ from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import create_access_token
-from api.roles import ensure_user_role
-from i_Notes.database.repository import repo_query
+from open_notebook.database.repository import repo_query
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 # ── Status ────────────────────────────────────────────────────────────────────
-
 @router.get("/status")
 async def get_auth_status():
     """
     Report whether authentication is required by the current backend.
 
-    The API now uses JWTAuthMiddleware globally (see api/main.py), so protected
-    endpoints always require a Bearer token. This endpoint must reflect that
-    runtime behavior; otherwise the frontend may incorrectly assume auth is off
-    and call protected endpoints without a token.
+    The API uses JWTAuthMiddleware globally (see api/main.py), so protected
+    endpoints always require a Bearer token.
     """
-    auth_enabled = True
     return {
-        "auth_enabled": auth_enabled,
-        "message": (
-            "Authentication is required" if auth_enabled else "Authentication is disabled"
-        ),
+        "auth_enabled": True,
+        "message": "Authentication is required",
     }
 
 
 # ── Login ─────────────────────────────────────────────────────────────────────
-
 class UserLoginRequest(BaseModel):
     email: str = Field(..., min_length=3)
     password: str = Field(..., min_length=1)
@@ -93,14 +85,26 @@ def _verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def _verify_user_password(password: str, user: dict) -> bool:
+    """Support both hashed passwords and legacy plain-text passwords."""
+    stored_hash = user.get("password_hash", "")
+    if isinstance(stored_hash, str) and stored_hash and _verify_password(password, stored_hash):
+        return True
+    legacy_password = user.get("password")
+    if isinstance(legacy_password, str) and legacy_password == password:
+        return True
+    return False
+
+
 @router.post("/login", response_model=LoginResponse)
 async def user_login(data: UserLoginRequest):
     """
     Unified login — excluded from JWTAuthMiddleware (see main.py excluded_paths).
 
     Flow:
-      1. Validate email + password against kavach_user table (unchanged).
-      2. On success, generate and return a signed JWT access token.
+      1. Validate email + password against kavach_user table.
+      2. Read the user's role from the DB record.
+      3. Embed role into the signed JWT and return it in the response.
 
     The frontend stores the token and sends it as:
         Authorization: Bearer <access_token>
@@ -114,17 +118,17 @@ async def user_login(data: UserLoginRequest):
     )
     user = result[0] if result else None
 
-    if not user or not _verify_password(data.password, user.get("password_hash", "")):
+    if not user or not _verify_user_password(data.password, user):
         # Intentionally vague — prevents user enumeration
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     name = user.get("name", "")
-    role = await ensure_user_role(email, user.get("role"))
+    role: str = user.get("role") or "user"
 
-    # Generate a signed JWT containing the user's email as the 'sub' claim
+    # Generate a signed JWT containing the user's email, name, and role
     token = create_access_token(email=email, name=name, role=role)
 
-    logger.info(f"[auth] Successful login, JWT issued for: {email}")
+    logger.info(f"[auth] Successful login for: {email} (role={role})")
     return LoginResponse(
         email=email,
         name=name,

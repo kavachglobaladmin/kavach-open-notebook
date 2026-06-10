@@ -13,14 +13,14 @@ from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.auth import JWTAuthMiddleware
-from i_Notes.exceptions import (
+from open_notebook.exceptions import (
     AuthenticationError,
     ConfigurationError,
     ExternalServiceError,
     InvalidInputError,
     NetworkError,
     NotFoundError,
-    i_NotesError,
+    OpenNotebookError,
     RateLimitError,
 )
 from api.routers import (
@@ -35,14 +35,13 @@ from api.routers import (
     insights,
     languages,
     models,
-    i_Notes,
+    notebooks,
     notes,
     podcasts,
     search,
     settings,
     source_chat,
     sources,
-    super_chat,
     speaker_profiles,
     transformations,
 )
@@ -53,8 +52,8 @@ from api.routers import otp as otp_router
 from api.routers import users as users_router
 from api.routers import bank_analysis as bank_analysis_router
 from api.routers import mobile_data_analysis as mobile_data_analysis_router
-from i_Notes.database.async_migrate import AsyncMigrationManager
-from i_Notes.utils.encryption import get_secret_from_env
+from open_notebook.database.async_migrate import AsyncMigrationManager
+from open_notebook.utils.encryption import get_secret_from_env
 
 # Import commands to register them in the API process
 try:
@@ -75,11 +74,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting API initialization...")
 
     # Security check: Encryption key
-    if not get_secret_from_env("i_NOTES_ENCRYPTION_KEY"):
+    if not get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY"):
         logger.warning(
-            "i_NOTES_ENCRYPTION_KEY not set. "
+            "OPEN_NOTEBOOK_ENCRYPTION_KEY not set. "
             "API key encryption will fail until this is configured. "
-            "Set i_NOTES_ENCRYPTION_KEY to any secret string."
+            "Set OPEN_NOTEBOOK_ENCRYPTION_KEY to any secret string."
         )
 
     # Run database migrations
@@ -108,7 +107,7 @@ async def lifespan(app: FastAPI):
 
     # Run podcast profile data migration (legacy strings -> Model registry)
     try:
-        from i_Notes.podcasts.migration import migrate_podcast_profiles
+        from open_notebook.podcasts.migration import migrate_podcast_profiles
 
         await migrate_podcast_profiles()
     except Exception as e:
@@ -121,7 +120,7 @@ async def lifespan(app: FastAPI):
     # When the worker crashes or restarts, commands stay in 'running' state
     # and get re-executed on next startup — causing duplicate insights.
     try:
-        from i_Notes.database.repository import repo_query as _rq, ensure_record_id as _eid
+        from open_notebook.database.repository import repo_query as _rq, ensure_record_id as _eid
         stuck = await _rq(
             "SELECT id, result FROM command WHERE status = 'running'"
         )
@@ -172,8 +171,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="i_Notes API",
-    description="API for i_Notes - Research Assistant",
+    title="Open Notebook API",
+    description="API for Open Notebook - Research Assistant",
     lifespan=lifespan,
 )
 
@@ -328,8 +327,8 @@ async def external_service_error_handler(request: Request, exc: ExternalServiceE
     )
 
 
-@app.exception_handler(i_NotesError)
-async def i_Notes_error_handler(request: Request, exc: i_NotesError):
+@app.exception_handler(OpenNotebookError)
+async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
@@ -340,7 +339,7 @@ async def i_Notes_error_handler(request: Request, exc: i_NotesError):
 # Include routers
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(config.router, prefix="/api", tags=["config"])
-app.include_router(i_Notes.router, prefix="/api", tags=["i_Notes"])
+app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
 app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(models.router, prefix="/api", tags=["models"])
 app.include_router(transformations.router, prefix="/api", tags=["transformations"])
@@ -359,7 +358,6 @@ app.include_router(episode_profiles.router, prefix="/api", tags=["episode-profil
 app.include_router(speaker_profiles.router, prefix="/api", tags=["speaker-profiles"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
-app.include_router(super_chat.router, prefix="/api", tags=["super-chat"])
 app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(languages.router, prefix="/api", tags=["languages"])
 app.include_router(mindmap_router.router, prefix="/api", tags=["mindmap"])
@@ -372,7 +370,7 @@ app.include_router(mobile_data_analysis_router.router, prefix="/api", tags=["mob
 
 @app.get("/")
 async def root():
-    return {"message": "i_Notes API is running"}
+    return {"message": "Open Notebook API is running"}
 
 
 @app.get("/health")

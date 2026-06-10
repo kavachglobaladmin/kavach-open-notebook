@@ -5,14 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from api.auth import get_current_user, get_current_user_role
+from api.auth import get_current_user
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
-from api.roles import has_elevated_data_access
-from i_Notes.ai.models import Model, model_manager
-from i_Notes.database.repository import repo_query
-from i_Notes.domain.i_Notes import text_search, vector_search
-from i_Notes.exceptions import DatabaseOperationError, InvalidInputError
-from i_Notes.graphs.ask import graph as ask_graph
+from open_notebook.ai.models import Model, model_manager
+from open_notebook.database.repository import repo_query
+from open_notebook.domain.notebook import text_search, vector_search
+from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
+from open_notebook.graphs.ask import graph as ask_graph
 
 router = APIRouter()
 
@@ -43,14 +42,15 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
     """
     Build allowed source and note IDs for the current user.
 
-    Source visibility is determined via i_Notes references.
-    Note visibility supports both note.owner and i_Notes artifact links.
+    Source visibility is determined via notebook references.
+    Note visibility supports both note.owner and notebook artifact links.
     """
-    i_Notes_ids = list(
-        await get_accessible_i_Notes_ids(current_user, "user") or []
+    notebook_ids = await repo_query(
+        "SELECT VALUE id FROM notebook WHERE owner = $owner",
+        {"owner": current_user},
     )
-    if not i_Notes_ids:
-        # No owned i_Notes => no visible sources/notes via i_Notes links.
+    if not notebook_ids:
+        # No owned notebooks => no visible sources/notes via notebook links.
         direct_notes = await repo_query(
             "SELECT VALUE id FROM note WHERE owner = $owner",
             {"owner": current_user},
@@ -61,18 +61,18 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
         """
         SELECT VALUE in
         FROM reference
-        WHERE out IN $i_Notes_ids
+        WHERE out IN $notebook_ids
         """,
-        {"i_Notes_ids": i_Notes_ids},
+        {"notebook_ids": notebook_ids},
     )
 
-    i_Notes_note_ids = await repo_query(
+    notebook_note_ids = await repo_query(
         """
         SELECT VALUE in
         FROM artifact
-        WHERE out IN $i_Notes_ids
+        WHERE out IN $notebook_ids
         """,
-        {"i_Notes_ids": i_Notes_ids},
+        {"notebook_ids": notebook_ids},
     )
     direct_note_ids = await repo_query(
         "SELECT VALUE id FROM note WHERE owner = $owner",
@@ -82,19 +82,19 @@ async def _get_accessible_ids_for_user(current_user: str) -> tuple[Set[str], Set
     allowed_sources = {_id_to_str(sid) for sid in source_ids if _id_to_str(sid)}
     allowed_notes = {
         _id_to_str(nid)
-        for nid in (i_Notes_note_ids + direct_note_ids)
+        for nid in (notebook_note_ids + direct_note_ids)
         if _id_to_str(nid)
     }
     return allowed_sources, allowed_notes
 
 
 async def _filter_results_by_owner(
-    results: List[Dict[str, Any]], current_user: Optional[str], current_role: str
+    results: List[Dict[str, Any]], current_user: Optional[str]
 ) -> List[Dict[str, Any]]:
     """
     Restrict search results to records visible to current authenticated user.
     """
-    if not current_user or has_elevated_data_access(current_role):
+    if not current_user:
         return results
 
     allowed_sources, allowed_notes = await _get_accessible_ids_for_user(current_user)
@@ -123,7 +123,6 @@ async def _filter_results_by_owner(
 async def search_knowledge_base(
     search_request: SearchRequest,
     current_user: Optional[str] = Depends(get_current_user),
-    current_role: str = Depends(get_current_user_role),
 ):
     """Search the knowledge base using text or vector search."""
     try:
@@ -151,7 +150,7 @@ async def search_knowledge_base(
                 note=search_request.search_notes,
             )
 
-        scoped_results = await _filter_results_by_owner(results or [], current_user, current_role)
+        scoped_results = await _filter_results_by_owner(results or [], current_user)
 
         return SearchResponse(
             results=scoped_results,
@@ -213,7 +212,7 @@ async def stream_ask_response(
         yield f"data: {json.dumps(completion_data)}\n\n"
 
     except Exception as e:
-        from i_Notes.utils.error_classifier import classify_error
+        from open_notebook.utils.error_classifier import classify_error
 
         _, user_message = classify_error(e)
         logger.error(f"Error in ask streaming: {str(e)}")

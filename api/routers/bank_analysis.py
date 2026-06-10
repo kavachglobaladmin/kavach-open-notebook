@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 
-from i_Notes.domain.i_Notes import Source
+from open_notebook.domain.notebook import Source
 
 router = APIRouter()
 
@@ -22,7 +22,7 @@ router = APIRouter()
 async def _load_cached_analysis(source_id: str, analysis_type: str) -> Optional[dict]:
     """Load cached analysis result from DB. Returns None if not found."""
     try:
-        from i_Notes.database.repository import repo_query
+        from open_notebook.database.repository import repo_query
         result = await repo_query(
             """
             SELECT result FROM analysis_cache
@@ -46,7 +46,7 @@ async def _load_cached_analysis(source_id: str, analysis_type: str) -> Optional[
 async def _save_cached_analysis(source_id: str, analysis_type: str, data: dict) -> None:
     """Save analysis result to DB cache."""
     try:
-        from i_Notes.database.repository import repo_query
+        from open_notebook.database.repository import repo_query
         sid = str(source_id)
         # Delete existing then create fresh
         await repo_query(
@@ -81,7 +81,7 @@ class ConfigUpdateRequest(BaseModel):
 async def get_bank_config():
     """Get all bank statement configuration values (DB overrides + defaults)."""
     try:
-        from i_Notes.bank_statement.settings import get_all_settings, get_schema
+        from open_notebook.bank_statement.settings import get_all_settings, get_schema
         settings = await get_all_settings()
         schema = get_schema()
         return {
@@ -97,7 +97,7 @@ async def get_bank_config():
 async def get_bank_config_key(key: str):
     """Get a single bank statement config value."""
     try:
-        from i_Notes.bank_statement.settings import get_setting, get_schema
+        from open_notebook.bank_statement.settings import get_setting, get_schema
         schema = get_schema()
         if key not in schema:
             raise HTTPException(status_code=404, detail=f"Unknown config key: '{key}'")
@@ -113,7 +113,7 @@ async def get_bank_config_key(key: str):
 async def set_bank_config_key(key: str, request: ConfigUpdateRequest):
     """Override a bank statement config value in the database."""
     try:
-        from i_Notes.bank_statement.settings import set_setting
+        from open_notebook.bank_statement.settings import set_setting
         await set_setting(key, request.value)
         return {"key": key, "value": request.value, "status": "saved"}
     except KeyError as e:
@@ -126,7 +126,7 @@ async def set_bank_config_key(key: str, request: ConfigUpdateRequest):
 async def reset_bank_config_key(key: str):
     """Reset a bank statement config value to its default."""
     try:
-        from i_Notes.bank_statement.settings import reset_setting, get_schema
+        from open_notebook.bank_statement.settings import reset_setting, get_schema
         schema = get_schema()
         if key not in schema:
             raise HTTPException(status_code=404, detail=f"Unknown config key: '{key}'")
@@ -184,7 +184,7 @@ async def analyze_bank_statement(source_id: str, force_refresh: bool = False):
 
         logger.info(f"Running bank statement analysis for source {source_id}, file: {file_path}")
 
-        from i_Notes.bank_statement.pipeline import run_pipeline_async
+        from open_notebook.bank_statement.pipeline import run_pipeline_async
 
         full_text = source.full_text if source.full_text else None
         logger.info(f"source.full_text length: {len(full_text) if full_text else 0}")

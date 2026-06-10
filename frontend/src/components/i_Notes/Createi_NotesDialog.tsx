@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,7 +9,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -18,18 +17,20 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useCreatei_Notes } from '@/lib/hooks/use-i_Notes'
-import { useTranslation } from '@/lib/hooks/use-translation'
-import { HardDrive, BookOpen } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { FileText, Calendar, Tag, ChevronDown, Info } from 'lucide-react'
 
 const createi_Noteschema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  description: z.string().optional(),
+  name: z.string().min(1, 'Case name is required'),
+  description: z.string().min(1, 'Description is required'),
+  caseType: z.string().optional(),
+  priority: z.string().optional(),
+  assignee: z.string().optional(),
+  team: z.string().optional(),
+  dueDate: z.string().optional(),
+  tags: z.string().optional(),
 })
 
 type Createi_NotesFormData = z.infer<typeof createi_Noteschema>
-
-const STORAGE_OPTIONS = [5, 10, 50] as const
 
 interface Createi_NotesDialogProps {
   open: boolean
@@ -37,10 +38,7 @@ interface Createi_NotesDialogProps {
 }
 
 export function Createi_NotesDialog({ open, onOpenChange }: Createi_NotesDialogProps) {
-  const { t } = useTranslation()
   const createi_Notes = useCreatei_Notes()
-  const [storageLimitMb, setStorageLimitMb] = useState<number | null>(5) // Defaulted to first option
-  const [storageLimitError, setStorageLimitError] = useState<string | null>(null)
 
   const {
     register,
@@ -50,144 +48,261 @@ export function Createi_NotesDialog({ open, onOpenChange }: Createi_NotesDialogP
   } = useForm<Createi_NotesFormData>({
     resolver: zodResolver(createi_Noteschema),
     mode: 'onChange',
-    defaultValues: { name: '', description: '' },
+    defaultValues: {
+      name: '',
+      description: '',
+      caseType: '',
+      priority: '',
+      assignee: '',
+      team: '',
+      dueDate: '',
+      tags: '',
+    },
   })
 
   const closeDialog = () => onOpenChange(false)
 
   const onSubmit = async (data: Createi_NotesFormData) => {
-    if (storageLimitMb == null) {
-      setStorageLimitError(t.i_Notes.storageLimitRequired)
-      return
-    }
     await createi_Notes.mutateAsync({
       name: data.name,
       description: data.description,
-      storage_limit_mb: storageLimitMb,
+      storage_limit_mb: 5, // Default storage limit
       content: ''
     })
     closeDialog()
     reset()
-    setStorageLimitMb(5)
-    setStorageLimitError(null)
   }
 
   useEffect(() => {
     if (!open) {
       reset()
-      setStorageLimitMb(5)
-      setStorageLimitError(null)
     }
   }, [open, reset])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] rounded-[32px] p-8 border-none shadow-2xl">
-        <DialogHeader className="flex flex-row items-start gap-4 space-y-0 text-left">
-          {/* Icon with Gradient Background matching reference */}
-          <div className="w-14 h-14 rounded-[18px] bg-gradient-to-br from-[#7B3AED] to-[#9333EA] flex items-center justify-center shadow-lg shrink-0">
-            <BookOpen className="h-7 w-7 text-white" />
-          </div>
-          <div className="flex-1">
-            <DialogTitle className="text-2xl font-bold text-slate-900 leading-tight">
-              {t.i_Notes.createNew}
-            </DialogTitle>
-            <DialogDescription className="text-slate-500 text-[15px] mt-1">
-              {t.i_Notes.createNewDesc}
-            </DialogDescription>
-          </div>
+      <DialogContent className="sm:max-w-[760px] rounded-xl p-6 md:p-8 border-none shadow-2xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="text-left space-y-1">
+          <DialogTitle className="text-[22px] font-bold text-slate-900 leading-tight">
+            Create New Case
+          </DialogTitle>
+          <DialogDescription className="text-slate-400 text-[13px] font-medium">
+            Fill in the details to create a new investigation case
+          </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 mt-4">
-          <div className="space-y-2">
-            <Label htmlFor="i_Notes-name" className="text-[14px] font-bold text-slate-700">
-              {t.common.name} <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="i_Notes-name"
-              {...register('name')}
-              placeholder={t.i_Notes.namePlaceholder}
-              className="h-12 rounded-[14px] border-slate-200 bg-white px-4 focus-visible:ring-[#7B3AED]"
-              autoComplete="off"
-            />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 mt-6">
+          {/* ── Case Information Section ── */}
+          <div className="space-y-4">
+            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              Case Information
+            </h3>
 
-          <div className="space-y-2">
-            <Label htmlFor="i_Notes-description" className="text-[14px] font-bold text-slate-700">
-              {t.common.description}
-            </Label>
-            <Textarea
-              id="i_Notes-description"
-              {...register('description')}
-              placeholder={t.i_Notes.descPlaceholder}
-              rows={4}
-              className="rounded-[14px] border-slate-200 bg-white p-4 focus-visible:ring-[#7B3AED] resize-none"
-            />
-          </div>
-
-          {/* Storage Selection Grid matching the Image UI */}
-          <div className="space-y-2">
-            <Label className="text-[14px] font-bold text-slate-700 flex items-center gap-1.5">
-              <HardDrive className="h-3.5 w-3.5 text-[#7B3AED]" />
-              {t.i_Notes.storageLimitLabel} <span className="text-red-500">*</span>
-            </Label>
-            
-            <div className="grid grid-cols-3 gap-3">
-              {STORAGE_OPTIONS.map((mb) => {
-                const selected = storageLimitMb === mb
-                return (
-                  <button
-                    key={mb}
-                    type="button"
-                    onClick={() => {
-                      setStorageLimitMb(selected ? null : mb)
-                      setStorageLimitError(null)
-                    }}
-                    className={cn(
-                      'flex flex-col items-center justify-center rounded-[18px] border-2 h-24 transition-all duration-200',
-                      selected
-                        ? 'border-[#7B3AED] bg-[#F5F3FF] text-[#7B3AED]'
-                        : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200 hover:bg-slate-50'
-                    )}
-                  >
-                    <span className="text-2xl font-bold">{mb}</span>
-                    <span className="text-[13px] font-medium opacity-80 uppercase">MB</span>
-                  </button>
-                )
-              })}
+            {/* Case Name */}
+            <div className="space-y-1.5 text-left">
+              <Label htmlFor="case-name" className="text-[13px] font-semibold text-slate-800">
+                Case Name <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <Input
+                  id="case-name"
+                  {...register('name')}
+                  placeholder="Enter case name"
+                  className="pl-10 h-11 rounded-md border border-slate-200 bg-[#F8FAFC] focus-visible:bg-white focus-visible:ring-[#00B074]/20 focus-visible:border-[#00B074] transition-all"
+                  autoComplete="off"
+                />
+              </div>
+              {errors.name && (
+                <p className="text-xs text-destructive mt-1">{errors.name.message}</p>
+              )}
             </div>
-            
-            {storageLimitError ? (
-              <p className="text-xs text-destructive mt-2">{storageLimitError}</p>
-            ) : (
-              <p className="text-[12px] text-slate-400 mt-2">
-                {storageLimitMb != null
-                  ? t.i_Notes.storageLimitHelperSelected.replace('{mb}', String(storageLimitMb))
-                  : t.i_Notes.storageLimitHelper}
-              </p>
-            )}
+
+            {/* Case Type & Priority Level */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+              <div className="space-y-1.5">
+                <Label htmlFor="case-type" className="text-[13px] font-semibold text-slate-800">
+                  Case Type <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    id="case-type"
+                    {...register('caseType')}
+                    className="h-11 w-full rounded-md border border-slate-200 bg-[#F8FAFC] pl-3.5 pr-10 text-[14px] text-slate-700 outline-none focus:bg-white focus:border-[#00B074] focus:ring-1 focus:ring-[#00B074] transition-all cursor-pointer appearance-none"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Select case type</option>
+                    <option value="Fraud Investigation">Fraud Investigation</option>
+                    <option value="Data Breach">Data Breach</option>
+                    <option value="Compliance Audit">Compliance Audit</option>
+                    <option value="Internal Investigation">Internal Investigation</option>
+                    <option value="Employee Background Check">Employee Background Check</option>
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="priority" className="text-[13px] font-semibold text-slate-800">
+                  Priority Level <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    id="priority"
+                    {...register('priority')}
+                    className="h-11 w-full rounded-md border border-slate-200 bg-[#F8FAFC] pl-3.5 pr-10 text-[14px] text-slate-700 outline-none focus:bg-white focus:border-[#00B074] focus:ring-1 focus:ring-[#00B074] transition-all cursor-pointer appearance-none"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Select priority</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5 text-left">
+              <Label htmlFor="description" className="text-[13px] font-semibold text-slate-800">
+                Description <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="description"
+                {...register('description')}
+                placeholder="Enter detailed case description"
+                rows={3}
+                className="rounded-md border border-slate-200 bg-[#F8FAFC] p-3.5 focus-visible:bg-white focus-visible:ring-[#00B074]/20 focus-visible:border-[#00B074] transition-all resize-none text-[14px]"
+              />
+              {errors.description && (
+                <p className="text-xs text-destructive mt-1">{errors.description.message}</p>
+              )}
+            </div>
           </div>
 
-          <DialogFooter className="flex-row gap-3 pt-4">
+          {/* ── Assignment & Timeline Section ── */}
+          <div className="space-y-4">
+            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              Assignment & Timeline
+            </h3>
+
+            {/* Assignee & Team */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+              <div className="space-y-1.5">
+                <Label htmlFor="assignee" className="text-[13px] font-semibold text-slate-800">
+                  Assignee <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    id="assignee"
+                    {...register('assignee')}
+                    className="h-11 w-full rounded-md border border-slate-200 bg-[#F8FAFC] pl-3.5 pr-10 text-[14px] text-slate-700 outline-none focus:bg-white focus:border-[#00B074] focus:ring-1 focus:ring-[#00B074] transition-all cursor-pointer appearance-none"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Select assignee</option>
+                    <option value="Sarah Johnson">Sarah Johnson</option>
+                    <option value="Mike Chen">Mike Chen</option>
+                    <option value="Emily Rodriguez">Emily Rodriguez</option>
+                    <option value="David Kim">David Kim</option>
+                    <option value="Lisa Thompson">Lisa Thompson</option>
+                    <option value="James Wilson">James Wilson</option>
+                    <option value="Maria Garcia">Maria Garcia</option>
+                    <option value="Robert Brown">Robert Brown</option>
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="team" className="text-[13px] font-semibold text-slate-800">
+                  Team <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    id="team"
+                    {...register('team')}
+                    className="h-11 w-full rounded-md border border-slate-200 bg-[#F8FAFC] pl-3.5 pr-10 text-[14px] text-slate-700 outline-none focus:bg-white focus:border-[#00B074] focus:ring-1 focus:ring-[#00B074] transition-all cursor-pointer appearance-none"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Select team</option>
+                    <option value="Finance Team">Finance Team</option>
+                    <option value="Cyber Crime">Cyber Crime</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Investigation">Investigation</option>
+                    <option value="HR Team">HR Team</option>
+                    <option value="Legal">Legal</option>
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Due Date & Tags */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+              <div className="space-y-1.5">
+                <Label htmlFor="due-date" className="text-[13px] font-semibold text-slate-800">
+                  Due Date <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <Input
+                    id="due-date"
+                    type="date"
+                    {...register('dueDate')}
+                    className="pl-10 h-11 rounded-md border border-slate-200 bg-[#F8FAFC] focus-visible:bg-white focus-visible:ring-[#00B074]/20 focus-visible:border-[#00B074] transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tags" className="text-[13px] font-semibold text-slate-800">
+                  Tags
+                </Label>
+                <div className="relative">
+                  <Tag className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <Input
+                    id="tags"
+                    {...register('tags')}
+                    placeholder="Add tags (comma separated)"
+                    className="pl-10 h-11 rounded-md border border-slate-200 bg-[#F8FAFC] focus-visible:bg-white focus-visible:ring-[#00B074]/20 focus-visible:border-[#00B074] transition-all"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Alert Box Info Banner */}
+          <div className="bg-[#EAFBF3] border border-[#00B074]/20 rounded-md p-4 flex gap-3 text-left items-start">
+            <Info className="w-5 h-5 text-[#00B074] shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-[13px] font-bold text-slate-800 leading-none">Case Creation</h4>
+              <p className="text-[12px] text-slate-500 mt-1.5 leading-relaxed">
+                The assigned user will be notified via email and the case will appear in their dashboard immediately.
+              </p>
+            </div>
+          </div>
+
+          {/* Dialog Footer Actions */}
+          <div className="flex justify-end gap-3 pt-2">
             <Button 
               type="button" 
-              variant="ghost" 
+              variant="outline" 
               onClick={closeDialog}
-              className="flex-1 h-12 rounded-[16px] bg-[#F8FAFC] text-slate-600 hover:bg-slate-100 font-bold"
+              className="px-5 h-11 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-[14px]"
             >
-              {t.common.cancel}
+              Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!isValid || storageLimitMb == null || createi_Notes.isPending}
-              className="flex-1 h-12 rounded-[16px] bg-gradient-to-r from-[#A78BFA] to-[#C084FC] hover:opacity-90 text-white font-bold shadow-md transition-all border-none"
+              disabled={!isValid || createi_Notes.isPending}
+              className="px-6 h-11 rounded-md bg-[#00B074] hover:bg-[#009662] text-white font-bold text-[14px] shadow-sm transition-all border-none"
             >
-              {createi_Notes.isPending ? t.common.creating : t.i_Notes.createNew}
+              {createi_Notes.isPending ? 'Creating...' : 'Create Case'}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

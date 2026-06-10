@@ -18,7 +18,7 @@ from typing import Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, field_validator
 from loguru import logger
-from i_Notes.database.repository import repo_query
+from open_notebook.database.repository import repo_query
 
 router = APIRouter(prefix="/otp", tags=["otp"])
 

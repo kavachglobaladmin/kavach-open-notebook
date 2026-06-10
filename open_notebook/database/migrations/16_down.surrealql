@@ -1,0 +1,4 @@
+-- Rollback Migration 16: Restore common_graph status and metadata fields
+
+DEFINE FIELD OVERWRITE status ON TABLE common_graph TYPE option<string> DEFAULT "started" VALUE $before OR "started";
+DEFINE FIELD OVERWRITE metadata ON TABLE common_graph TYPE option<object>;

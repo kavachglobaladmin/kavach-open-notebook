@@ -1,5 +1,5 @@
 """
-Authentication helpers for Open i-notes API.
+Authentication helpers for Open Notebook API.
 
 JWT-based authentication:
   - Login  → POST /api/auth/login  → returns a signed JWT (access_token)
@@ -10,7 +10,7 @@ JWT-based authentication:
     via get_current_user() for ownership-scoped queries.
 
 JWT secret is read from the JWT_SECRET_KEY environment variable.
-Falls back to i-notes_ENCRYPTION_KEY if JWT_SECRET_KEY is not set.
+Falls back to OPEN_NOTEBOOK_ENCRYPTION_KEY if JWT_SECRET_KEY is not set.
 """
 
 import os
@@ -24,11 +24,9 @@ from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from api.roles import UserRole, normalize_user_role, role_in
-from i_Notes.utils.encryption import get_secret_from_env
+from open_notebook.utils.encryption import get_secret_from_env
 
-# ── JWT configuration ─────────────────────────────────────────────────────────
-
+# ── JWT configuration ──────────────────────────────────────────────────────────
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
@@ -36,23 +34,24 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 def _jwt_secret() -> str:
     """
     Return the secret key used to sign/verify JWTs.
-    Priority: JWT_SECRET_KEY env var → i_Notes_ENCRYPTION_KEY → hard fallback.
+    Priority: JWT_SECRET_KEY env var → OPEN_NOTEBOOK_ENCRYPTION_KEY → hard fallback.
     """
     secret = (
         os.environ.get("JWT_SECRET_KEY")
-        or get_secret_from_env("i_Notes_ENCRYPTION_KEY")
-        or "i_Notes-jwt-secret-change-me"
+        or get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY")
+        or "open-notebook-jwt-secret-change-me"
     )
     return secret
 
 
-def create_access_token(email: str, name: str = "", role: UserRole = "user") -> str:
+def create_access_token(email: str, name: str = "", role: str = "user") -> str:
     """
     Create a signed JWT access token.
 
     Payload:
       sub   – user email (used as identity throughout the app)
       name  – display name (convenience, not used for auth)
+      role  – user role: 'user', 'admin', or 'super_admin'
       iat   – issued-at timestamp
       exp   – expiry timestamp (24 h from now)
     """
@@ -60,7 +59,7 @@ def create_access_token(email: str, name: str = "", role: UserRole = "user") -> 
     payload = {
         "sub": email,
         "name": name,
-        "role": normalize_user_role(role),
+        "role": role,
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
@@ -76,7 +75,6 @@ def decode_access_token(token: str) -> dict:
 
 
 # ── Per-request user identity ─────────────────────────────────────────────────
-
 def get_current_user(request: Request) -> Optional[str]:
     """
     Extract the current user's email from the validated JWT stored in
@@ -95,30 +93,17 @@ def get_current_user(request: Request) -> Optional[str]:
     return request.headers.get("X-User-Email") or None
 
 
-def get_current_user_role(request: Request) -> UserRole:
-    role = getattr(request.state, "jwt_role", None)
-    if role:
-        return normalize_user_role(role)
-    return normalize_user_role(request.headers.get("X-User-Role"))
+def get_current_user_role(request: Request) -> Optional[str]:
+    """
+    Extract the current user's role from the validated JWT stored in
+    request.state.jwt_role (set by JWTAuthMiddleware).
+
+    Returns None when no role is available.
+    """
+    return getattr(request.state, "jwt_role", None)
 
 
-def require_roles(*allowed_roles: UserRole):
-    async def dependency(request: Request) -> str:
-        current_user = get_current_user(request)
-        if not current_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
-        current_role = get_current_user_role(request)
-        if not role_in(current_role, allowed_roles):
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-        return current_user
-
-    return dependency
-
-
-# ── JWT Auth Middleware ───────────────────────────────────────────────────────
-
+# ── JWT Auth Middleware ────────────────────────────────────────────────────────
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware that validates JWT Bearer tokens on every protected request.
@@ -150,21 +135,13 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.excluded_paths:
             return await call_next(request)
 
-        # Build CORS headers for error responses so browsers don't show "Network Error"
-        origin = request.headers.get("origin", "")
-        cors_headers = {
-            "Access-Control-Allow-Origin": origin or "*",
-            "Access-Control-Allow-Credentials": "true",
-            "WWW-Authenticate": "Bearer",
-        }
-
         # Extract Bearer token from Authorization header
         auth_header = request.headers.get("Authorization", "")
         if not auth_header:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing authorization header"},
-                headers=cors_headers,
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
         parts = auth_header.split(" ", 1)
@@ -172,7 +149,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authorization header format. Expected: Bearer <token>"},
-                headers=cors_headers,
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
         token = parts[1].strip()
@@ -184,24 +161,23 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Token has expired. Please log in again."},
-                headers=cors_headers,
+                headers={"WWW-Authenticate": "Bearer"},
             )
         except jwt.InvalidTokenError as exc:
             return JSONResponse(
                 status_code=401,
                 content={"detail": f"Invalid token: {str(exc)}"},
-                headers=cors_headers,
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Inject email into request state so get_current_user() can read it
+        # Inject email and role into request state so handlers can read them
         request.state.jwt_email = payload.get("sub", "")
-        request.state.jwt_role = normalize_user_role(payload.get("role"))
+        request.state.jwt_role = payload.get("role", "user")
 
         return await call_next(request)
 
 
-# ── Legacy helper kept for route-level dependency injection ───────────────────
-
+# ── Legacy helper kept for route-level dependency injection ──────────────────
 security = HTTPBearer(auto_error=False)
 
 

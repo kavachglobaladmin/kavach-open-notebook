@@ -6,14 +6,14 @@ from loguru import logger
 from pydantic import BaseModel
 from surreal_commands import CommandInput, CommandOutput, command
 
-from i_Notes.database.repository import ensure_record_id, repo_query
-from i_Notes.domain.i_Notes import Source
-from i_Notes.domain.transformation import Transformation
-from i_Notes.exceptions import ConfigurationError, NotFoundError
+from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.domain.notebook import Source
+from open_notebook.domain.transformation import Transformation
+from open_notebook.exceptions import ConfigurationError, NotFoundError
 
 try:
-    from i_Notes.graphs.source import source_graph
-    from i_Notes.graphs.transformation import graph as transform_graph
+    from open_notebook.graphs.source import source_graph
+    from open_notebook.graphs.transformation import graph as transform_graph
 except ImportError as e:
     logger.error(f"Failed to import graphs: {e}")
     raise ValueError("graphs not available")
@@ -39,7 +39,7 @@ def full_model_dump(model):
 class SourceProcessingInput(CommandInput):
     source_id: str
     content_state: Dict[str, Any]
-    i_Notes_ids: List[str]
+    notebook_ids: List[str]
     transformations: List[str]
     embed: bool
 
@@ -55,7 +55,7 @@ class SourceProcessingOutput(CommandOutput):
 
 @command(
     "process_source",
-    app="open_i_Notes",
+    app="open_notebook",
     retry={
         "max_attempts": 15,  # Handle deep queues (workaround for SurrealDB v2 transaction conflicts)
         "wait_strategy": "exponential_jitter",
@@ -75,7 +75,7 @@ async def process_source_command(
 
     try:
         logger.info(f"Starting source processing for source: {input_data.source_id}")
-        logger.info(f"i_Notes IDs: {input_data.i_Notes_ids}")
+        logger.info(f"Notebook IDs: {input_data.notebook_ids}")
         logger.info(f"Transformations: {input_data.transformations}")
         logger.info(f"Embed: {input_data.embed}")
 
@@ -122,14 +122,14 @@ async def process_source_command(
 
         logger.info(f"Updated source {source.id} with command reference")
 
-        # 3. Process source with all i_Notes
-        logger.info(f"Processing source with {len(input_data.i_Notes_ids)} i_Notes")
+        # 3. Process source with all notebooks
+        logger.info(f"Processing source with {len(input_data.notebook_ids)} notebooks")
 
-        # Execute source_graph with all i_Notes
+        # Execute source_graph with all notebooks
         result = await source_graph.ainvoke(
             {  # type: ignore[arg-type]
                 "content_state": input_data.content_state,
-                "i_Notes_ids": input_data.i_Notes_ids,  # Use i_Notes_ids (plural) as expected by SourceState
+                "notebook_ids": input_data.notebook_ids,  # Use notebook_ids (plural) as expected by SourceState
                 "apply_transformations": transformations,
                 "embed": input_data.embed,
                 "source_id": input_data.source_id,  # Add the source_id to the state
@@ -138,7 +138,7 @@ async def process_source_command(
 
         processed_source = result["source"]
 
-        # 4. Gather processing results (i_Notes associations handled by source_graph)
+        # 4. Gather processing results (notebook associations handled by source_graph)
         # Note: embedding is fire-and-forget (async job), so we can't query the
         # count here — it hasn't completed yet. The embed_source_command logs
         # the actual count when it finishes.
@@ -207,7 +207,7 @@ class RunTransformationOutput(CommandOutput):
 
 @command(
     "run_transformation",
-    app="open_i_Notes",
+    app="open_notebook",
     retry=None,
 )
 async def run_transformation_command(
@@ -223,7 +223,7 @@ async def run_transformation_command(
         model_name = "default"
         if input_data.model_id:
             try:
-                from i_Notes.ai.models import Model
+                from open_notebook.ai.models import Model
                 model = await Model.get(input_data.model_id)
                 if model and hasattr(model, 'name') and hasattr(model, 'provider'):
                     model_name = f"{model.name} ({model.provider})"
@@ -241,7 +241,7 @@ async def run_transformation_command(
         # Dedup check via generation_id (table may not exist — skip if so)
         if input_data.generation_id:
             try:
-                from i_Notes.database.repository import repo_query, ensure_record_id
+                from open_notebook.database.repository import repo_query, ensure_record_id
                 claimed = await repo_query(
                     """
                     DELETE source_insight_generation

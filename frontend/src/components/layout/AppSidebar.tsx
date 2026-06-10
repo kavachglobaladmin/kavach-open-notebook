@@ -20,6 +20,8 @@ import Image from 'next/image'
 import logoImg from '@/assets/inotes.png'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { LanguageToggle } from '@/components/common/LanguageToggle'
+import { getConfig } from '@/lib/config'
+import { useTranslation } from '@/lib/hooks/use-translation'
 import {
   Search,
   LogOut,
@@ -62,14 +64,30 @@ export function AppSidebar() {
   const { isCollapsed, toggleCollapse, setCollapsed } = useSidebarStore()
   const currentUserEmail = useAuthStore(s => s.currentUserEmail)
   const currentUserRole = useAuthStore(s => s.currentUserRole)
+  const { t } = useTranslation()
 
   const [displayName, setDisplayName] = useState('')
   const [initials, setInitials] = useState('')
+  const [versionInfo, setVersionInfo] = useState<{ version: string; latestVersion: string | null; hasUpdate: boolean } | null>(null)
   
   const [mindMapPickerOpen, setMindMapPickerOpen] = useState(false)
   const [infographicPickerOpen, setInfographicPickerOpen] = useState(false)
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false)
   const visibleNavigation = navigation.filter((item) => hasRoleAccess(currentUserRole, item.minimumRole))
+
+  useEffect(() => {
+    getConfig()
+      .then(cfg => {
+        setVersionInfo({
+          version: cfg.version,
+          latestVersion: cfg.latestVersion || null,
+          hasUpdate: !!cfg.hasUpdate,
+        })
+      })
+      .catch(() => {
+        // Silently fail to avoid breaking sidebar
+      })
+  }, [])
 
   useEffect(() => {
     if (!currentUserEmail) {
@@ -282,6 +300,16 @@ export function AppSidebar() {
             <LogOut className="h-[22px] w-[22px] shrink-0 text-[#EF4444]" />
             {!isCollapsed && <span className="whitespace-nowrap">Logout</span>}
           </Button>
+
+          {/* Version Info Section */}
+          {versionInfo && (
+            <div className="pt-2 border-t border-slate-100 flex justify-center select-none">
+              <div className="relative w-24 flex items-center justify-center py-1 text-[11px] font-bold text-slate-400">
+                <span className="absolute left-4 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="leading-none">v{versionInfo.version}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       

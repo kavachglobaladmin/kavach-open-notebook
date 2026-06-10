@@ -1,7 +1,7 @@
 import os
 from typing import Literal, Sequence
 
-from i_Notes.database.repository import repo_query
+from i_Notes.database.repository import repo_query # pyright: ignore[reportMissingImports]
 
 UserRole = Literal["user", "admin", "super_admin"]
 

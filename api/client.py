@@ -1,6 +1,6 @@
 """
-API client for Open i_Notes API.
-This module provides a client interface to interact with the Open i_Notes API.
+API client for Open Notebook API.
+This module provides a client interface to interact with the Open Notebook API.
 """
 
 import os
@@ -11,7 +11,7 @@ from loguru import logger
 
 
 class APIClient:
-    """Client for Open i_Notes API."""
+    """Client for Open Notebook API."""
 
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = base_url or os.getenv("API_BASE_URL", "http://127.0.0.1:5055")
@@ -41,7 +41,7 @@ class APIClient:
 
         # Add authentication header if password is set
         self.headers = {}
-        password = os.getenv("OPEN_i_Notes_PASSWORD")
+        password = os.getenv("OPEN_NOTEBOOK_PASSWORD")
         if password:
             self.headers["Authorization"] = f"Bearer {password}"
 
@@ -76,42 +76,42 @@ class APIClient:
             logger.error(f"Unexpected error for {method} {url}: {str(e)}")
             raise
 
-    # i_Notess API methods
-    def get_i_Notess(
+    # Notebooks API methods
+    def get_notebooks(
         self, archived: Optional[bool] = None, order_by: str = "updated desc"
     ) -> List[Dict[Any, Any]]:
-        """Get all i_Notess."""
+        """Get all notebooks."""
         params: Dict[str, Any] = {"order_by": order_by}
         if archived is not None:
             params["archived"] = str(archived).lower()
 
-        result = self._make_request("GET", "/api/i_Notess", params=params)
+        result = self._make_request("GET", "/api/notebooks", params=params)
         return result if isinstance(result, list) else [result]
 
-    def create_i_Notes(
+    def create_notebook(
         self, name: str, description: str = ""
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
-        """Create a new i_Notes."""
+        """Create a new notebook."""
         data = {"name": name, "description": description}
-        return self._make_request("POST", "/api/i_Notess", json=data)
+        return self._make_request("POST", "/api/notebooks", json=data)
 
-    def get_i_Notes(
-        self, i_Notes_id: str
+    def get_notebook(
+        self, notebook_id: str
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
-        """Get a specific i_Notes."""
-        return self._make_request("GET", f"/api/i_Notess/{i_Notes_id}")
+        """Get a specific notebook."""
+        return self._make_request("GET", f"/api/notebooks/{notebook_id}")
 
-    def update_i_Notes(
-        self, i_Notes_id: str, **updates
+    def update_notebook(
+        self, notebook_id: str, **updates
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
-        """Update a i_Notes."""
-        return self._make_request("PUT", f"/api/i_Notess/{i_Notes_id}", json=updates)
+        """Update a notebook."""
+        return self._make_request("PUT", f"/api/notebooks/{notebook_id}", json=updates)
 
-    def delete_i_Notes(
-        self, i_Notes_id: str
+    def delete_notebook(
+        self, notebook_id: str
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
-        """Delete a i_Notes."""
-        return self._make_request("DELETE", f"/api/i_Notess/{i_Notes_id}")
+        """Delete a notebook."""
+        return self._make_request("DELETE", f"/api/notebooks/{notebook_id}")
 
     # Search API methods
     def search(
@@ -248,11 +248,11 @@ class APIClient:
         )
 
     # Notes API methods
-    def get_notes(self, i_Notes_id: Optional[str] = None) -> List[Dict[Any, Any]]:
-        """Get all notes with optional i_Notes filtering."""
+    def get_notes(self, notebook_id: Optional[str] = None) -> List[Dict[Any, Any]]:
+        """Get all notes with optional notebook filtering."""
         params = {}
-        if i_Notes_id:
-            params["i_Notes_id"] = i_Notes_id
+        if notebook_id:
+            params["notebook_id"] = notebook_id
         result = self._make_request("GET", "/api/notes", params=params)
         return result if isinstance(result, list) else [result]
 
@@ -261,7 +261,7 @@ class APIClient:
         content: str,
         title: Optional[str] = None,
         note_type: str = "human",
-        i_Notes_id: Optional[str] = None,
+        notebook_id: Optional[str] = None,
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
         """Create a new note."""
         data = {
@@ -270,8 +270,8 @@ class APIClient:
         }
         if title:
             data["title"] = title
-        if i_Notes_id:
-            data["i_Notes_id"] = i_Notes_id
+        if notebook_id:
+            data["notebook_id"] = notebook_id
         return self._make_request("POST", "/api/notes", json=data)
 
     def get_note(self, note_id: str) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
@@ -343,31 +343,31 @@ class APIClient:
         return self._make_request("PUT", "/api/settings", json=settings)
 
     # Context API methods
-    def get_i_Notes_context(
-        self, i_Notes_id: str, context_config: Optional[Dict] = None
+    def get_notebook_context(
+        self, notebook_id: str, context_config: Optional[Dict] = None
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
-        """Get context for a i_Notes."""
-        data: Dict[str, Any] = {"i_Notes_id": i_Notes_id}
+        """Get context for a notebook."""
+        data: Dict[str, Any] = {"notebook_id": notebook_id}
         if context_config:
             data["context_config"] = context_config
         result = self._make_request(
-            "POST", f"/api/i_Notess/{i_Notes_id}/context", json=data
+            "POST", f"/api/notebooks/{notebook_id}/context", json=data
         )
         return result if isinstance(result, dict) else {}
 
     # Sources API methods
-    def get_sources(self, i_Notes_id: Optional[str] = None) -> List[Dict[Any, Any]]:
-        """Get all sources with optional i_Notes filtering."""
+    def get_sources(self, notebook_id: Optional[str] = None) -> List[Dict[Any, Any]]:
+        """Get all sources with optional notebook filtering."""
         params = {}
-        if i_Notes_id:
-            params["i_Notes_id"] = i_Notes_id
+        if notebook_id:
+            params["notebook_id"] = notebook_id
         result = self._make_request("GET", "/api/sources", params=params)
         return result if isinstance(result, list) else [result]
 
     def create_source(
         self,
-        i_Notes_id: Optional[str] = None,
-        i_Notess: Optional[List[str]] = None,
+        notebook_id: Optional[str] = None,
+        notebooks: Optional[List[str]] = None,
         source_type: str = "text",
         url: Optional[str] = None,
         file_path: Optional[str] = None,
@@ -386,13 +386,13 @@ class APIClient:
             "async_processing": async_processing,
         }
 
-        # Handle backward compatibility for i_Notes_id vs i_Notess
-        if i_Notess:
-            data["i_Notess"] = i_Notess
-        elif i_Notes_id:
-            data["i_Notes_id"] = i_Notes_id
+        # Handle backward compatibility for notebook_id vs notebooks
+        if notebooks:
+            data["notebooks"] = notebooks
+        elif notebook_id:
+            data["notebook_id"] = notebook_id
         else:
-            raise ValueError("Either i_Notes_id or i_Notess must be provided")
+            raise ValueError("Either notebook_id or notebooks must be provided")
 
         if url:
             data["url"] = url
@@ -451,12 +451,12 @@ class APIClient:
         return self._make_request("DELETE", f"/api/insights/{insight_id}")
 
     def save_insight_as_note(
-        self, insight_id: str, i_Notes_id: Optional[str] = None
+        self, insight_id: str, notebook_id: Optional[str] = None
     ) -> Union[Dict[Any, Any], List[Dict[Any, Any]]]:
         """Convert an insight to a note."""
         data = {}
-        if i_Notes_id:
-            data["i_Notes_id"] = i_Notes_id
+        if notebook_id:
+            data["notebook_id"] = notebook_id
         return self._make_request(
             "POST", f"/api/insights/{insight_id}/save-as-note", json=data
         )

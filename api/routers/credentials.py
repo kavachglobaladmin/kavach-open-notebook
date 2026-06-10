@@ -48,7 +48,7 @@ from api.models import (
     RegisterModelsResponse,
     UpdateCredentialRequest,
 )
-from i_Notes.domain.credential import Credential
+from open_notebook.domain.credential import Credential
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 

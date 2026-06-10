@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Union
 from loguru import logger
 
 from api.client import api_client
-from i_Notes.domain.i_Notes import Asset, Source
+from open_notebook.domain.notebook import Asset, Source
 
 
 @dataclass
@@ -70,10 +70,10 @@ class SourcesService:
         logger.info("Using API for sources operations")
 
     def get_all_sources(
-        self, i_Notes_id: Optional[str] = None
+        self, notebook_id: Optional[str] = None
     ) -> List[SourceWithMetadata]:
-        """Get all sources with optional i_Notes filtering."""
-        sources_data = api_client.get_sources(i_Notes_id=i_Notes_id)
+        """Get all sources with optional notebook filtering."""
+        sources_data = api_client.get_sources(notebook_id=notebook_id)
         # Convert API response to SourceWithMetadata objects
         sources = []
         for source_data in sources_data:
@@ -127,7 +127,7 @@ class SourcesService:
 
     def create_source(
         self,
-        i_Notes_id: Optional[str] = None,
+        notebook_id: Optional[str] = None,
         source_type: str = "text",
         url: Optional[str] = None,
         file_path: Optional[str] = None,
@@ -136,14 +136,14 @@ class SourcesService:
         transformations: Optional[List[str]] = None,
         embed: bool = False,
         delete_source: bool = False,
-        i_Notes: Optional[List[str]] = None,
+        notebooks: Optional[List[str]] = None,
         async_processing: bool = False,
     ) -> Union[Source, SourceProcessingResult]:
         """
         Create a new source with support for async processing.
 
         Args:
-            i_Notes_id: Single i_Notes ID (deprecated, use i_Notes parameter)
+            notebook_id: Single notebook ID (deprecated, use notebooks parameter)
             source_type: Type of source (link, upload, text)
             url: URL for link sources
             file_path: File path for upload sources
@@ -152,7 +152,7 @@ class SourcesService:
             transformations: List of transformation IDs to apply
             embed: Whether to embed content for vector search
             delete_source: Whether to delete uploaded file after processing
-            i_Notes: List of i_Notes IDs to add source to (preferred over i_Notes_id)
+            notebooks: List of notebook IDs to add source to (preferred over notebook_id)
             async_processing: Whether to process source asynchronously
 
         Returns:
@@ -160,8 +160,8 @@ class SourcesService:
             SourceProcessingResult for async processing (contains additional metadata)
         """
         source_data = api_client.create_source(
-            i_Notes_id=i_Notes_id,
-            i_Notes=i_Notes,
+            notebook_id=notebook_id,
+            notebooks=notebooks,
             source_type=source_type,
             url=url,
             file_path=file_path,
@@ -223,7 +223,7 @@ class SourcesService:
 
     def create_source_async(
         self,
-        i_Notes_id: Optional[str] = None,
+        notebook_id: Optional[str] = None,
         source_type: str = "text",
         url: Optional[str] = None,
         file_path: Optional[str] = None,
@@ -232,7 +232,7 @@ class SourcesService:
         transformations: Optional[List[str]] = None,
         embed: bool = False,
         delete_source: bool = False,
-        i_Notes: Optional[List[str]] = None,
+        notebooks: Optional[List[str]] = None,
     ) -> SourceProcessingResult:
         """
         Create a new source with async processing enabled.
@@ -241,8 +241,8 @@ class SourcesService:
         Returns a SourceProcessingResult with processing status information.
         """
         result = self.create_source(
-            i_Notes_id=i_Notes_id,
-            i_Notes=i_Notes,
+            notebook_id=notebook_id,
+            notebooks=notebooks,
             source_type=source_type,
             url=url,
             file_path=file_path,

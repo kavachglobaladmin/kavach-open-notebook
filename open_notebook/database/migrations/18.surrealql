@@ -1,0 +1,5 @@
+-- Migration 18: Add missing fields to kavach_user table
+-- Migration 17 created the table without password_encrypted and created_at fields
+
+DEFINE FIELD OVERWRITE password_encrypted ON TABLE kavach_user TYPE option<string>;
+DEFINE FIELD OVERWRITE created_at ON TABLE kavach_user TYPE option<datetime> DEFAULT time::now();

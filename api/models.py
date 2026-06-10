@@ -3,22 +3,22 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-# i_Notes models
-class i_NotesCreate(BaseModel):
-    name: str = Field(..., description="Name of the i_Notes")
-    description: str = Field(default="", description="Description of the i_Notes")
-    storage_limit_mb: Optional[int] = Field(default=None, description="Storage limit in MB for this i_Notes")
+# Notebook models
+class NotebookCreate(BaseModel):
+    name: str = Field(..., description="Name of the notebook")
+    description: str = Field(default="", description="Description of the notebook")
+    storage_limit_mb: Optional[int] = Field(default=None, description="Storage limit in MB for this notebook")
 
 
-class i_NotesUpdate(BaseModel):
-    name: Optional[str] = Field(None, description="Name of the i_Notes")
-    description: Optional[str] = Field(None, description="Description of the i_Notes")
+class NotebookUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="Name of the notebook")
+    description: Optional[str] = Field(None, description="Description of the notebook")
     archived: Optional[bool] = Field(
-        None, description="Whether the i_Notes is archived"
+        None, description="Whether the notebook is archived"
     )
 
 
-class i_NotesResponse(BaseModel):
+class NotebookResponse(BaseModel):
     id: str
     name: str
     description: str
@@ -29,22 +29,6 @@ class i_NotesResponse(BaseModel):
     updated: str
     source_count: int
     note_count: int
-
-
-# i_Notes access models
-class i_NotesAccessGrant(BaseModel):
-    user_email: str = Field(..., description="Email of user to grant access to")
-
-
-class i_NotesAccessRecord(BaseModel):
-    user_email: str
-    granted_by: str
-    granted_at: str
-
-
-class i_NotesAccessListResponse(BaseModel):
-    i_Notes_id: str
-    granted_users: List[str]
 
 
 # Search models
@@ -201,8 +185,8 @@ class NoteCreate(BaseModel):
     title: Optional[str] = Field(None, description="Note title")
     content: str = Field(..., description="Note content")
     note_type: Optional[str] = Field("human", description="Type of note (human, ai)")
-    i_Notes_id: Optional[str] = Field(
-        None, description="i_Notes ID to add the note to"
+    notebook_id: Optional[str] = Field(
+        None, description="Notebook ID to add the note to"
     )
 
 
@@ -305,13 +289,13 @@ class AssetModel(BaseModel):
 
 
 class SourceCreate(BaseModel):
-    # Backward compatibility: support old single i_Notes_id
-    i_Notes_id: Optional[str] = Field(
-        None, description="i_Notes ID to add the source to (deprecated, use i_Notes)"
+    # Backward compatibility: support old single notebook_id
+    notebook_id: Optional[str] = Field(
+        None, description="Notebook ID to add the source to (deprecated, use notebooks)"
     )
-    # New multi-i_Notes support
-    i_Notes: Optional[List[str]] = Field(
-        None, description="List of i_Notes IDs to add the source to"
+    # New multi-notebook support
+    notebooks: Optional[List[str]] = Field(
+        None, description="List of notebook IDs to add the source to"
     )
     # Required fields
     type: str = Field(..., description="Source type: link, upload, or text")
@@ -332,21 +316,21 @@ class SourceCreate(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_i_Notes_fields(self):
-        # Ensure only one of i_Notes_id or i_Notes is provided
-        if self.i_Notes_id is not None and self.i_Notes is not None:
+    def validate_notebook_fields(self):
+        # Ensure only one of notebook_id or notebooks is provided
+        if self.notebook_id is not None and self.notebooks is not None:
             raise ValueError(
-                "Cannot specify both 'i_Notes_id' and 'i_Notes'. Use 'i_Notes' for multi-i_Notes support."
+                "Cannot specify both 'notebook_id' and 'notebooks'. Use 'notebooks' for multi-notebook support."
             )
 
-        # Convert single i_Notes_id to i_Notes array for internal processing
-        if self.i_Notes_id is not None:
-            self.i_Notes = [self.i_Notes_id]
-            # Keep i_Notes_id for backward compatibility in response
+        # Convert single notebook_id to notebooks array for internal processing
+        if self.notebook_id is not None:
+            self.notebooks = [self.notebook_id]
+            # Keep notebook_id for backward compatibility in response
 
-        # Set empty array if no i_Notes specified (allow sources without i_Notes)
-        if self.i_Notes is None:
-            self.i_Notes = []
+        # Set empty array if no notebooks specified (allow sources without notebooks)
+        if self.notebooks is None:
+            self.notebooks = []
 
         return self
 
@@ -392,8 +376,8 @@ class SourceResponse(BaseModel):
     command_id: Optional[str] = None
     status: Optional[str] = None
     processing_info: Optional[Dict] = None
-    # i_Notes associations
-    i_Notes: Optional[List[str]] = None
+    # Notebook associations
+    notebooks: Optional[List[str]] = None
 
 
 class SourceListResponse(BaseModel):
@@ -424,14 +408,14 @@ class ContextConfig(BaseModel):
 
 
 class ContextRequest(BaseModel):
-    i_Notes_id: str = Field(..., description="i_Notes ID to get context for")
+    notebook_id: str = Field(..., description="Notebook ID to get context for")
     context_config: Optional[ContextConfig] = Field(
         None, description="Context configuration"
     )
 
 
 class ContextResponse(BaseModel):
-    i_Notes_id: str
+    notebook_id: str
     sources: List[Dict[str, Any]] = Field(..., description="Source context data")
     notes: List[Dict[str, Any]] = Field(..., description="Note context data")
     total_tokens: Optional[int] = Field(None, description="Estimated token count")
@@ -458,7 +442,7 @@ class InsightCreationResponse(BaseModel):
 
 
 class SaveAsNoteRequest(BaseModel):
-    i_Notes_id: Optional[str] = Field(None, description="i_Notes ID to add note to")
+    notebook_id: Optional[str] = Field(None, description="Notebook ID to add note to")
 
 
 class CreateSourceInsightRequest(BaseModel):
@@ -564,7 +548,7 @@ class ApiKeyStatusResponse(BaseModel):
     )
     encryption_configured: bool = Field(
         ...,
-        description="Whether i_Notes_ENCRYPTION_KEY is set (required to store keys in database)",
+        description="Whether OPEN_NOTEBOOK_ENCRYPTION_KEY is set (required to store keys in database)",
     )
 
 
@@ -599,7 +583,7 @@ class MigrationResult(BaseModel):
     )
 
 
-# i_Notes delete cascade models
+# Notebook delete cascade models
 # Credential models
 class CreateCredentialRequest(BaseModel):
     """Request to create a new credential."""
@@ -711,22 +695,22 @@ class RegisterModelsResponse(BaseModel):
     existing: int
 
 
-class i_NotesDeletePreview(BaseModel):
-    i_Notes_id: str = Field(..., description="ID of the i_Notes")
-    i_Notes_name: str = Field(..., description="Name of the i_Notes")
+class NotebookDeletePreview(BaseModel):
+    notebook_id: str = Field(..., description="ID of the notebook")
+    notebook_name: str = Field(..., description="Name of the notebook")
     note_count: int = Field(..., description="Number of notes that will be deleted")
     exclusive_source_count: int = Field(
-        ..., description="Number of sources only in this i_Notes"
+        ..., description="Number of sources only in this notebook"
     )
     shared_source_count: int = Field(
-        ..., description="Number of sources shared with other i_Notes"
+        ..., description="Number of sources shared with other notebooks"
     )
 
 
-class i_NotesDeleteResponse(BaseModel):
+class NotebookDeleteResponse(BaseModel):
     message: str = Field(..., description="Success message")
     deleted_notes: int = Field(..., description="Number of notes deleted")
     deleted_sources: int = Field(..., description="Number of exclusive sources deleted")
     unlinked_sources: int = Field(
-        ..., description="Number of sources unlinked from i_Notes"
+        ..., description="Number of sources unlinked from notebook"
     )

@@ -11,7 +11,7 @@
 # from loguru import logger
 # from pydantic import BaseModel
 
-# from open_i_Notes.domain.i_Notes import Source
+# from open_notebook.domain.notebook import Source
 
 # router = APIRouter()
 
@@ -29,7 +29,7 @@
 # def _build_orchestrator():
 #     """Build and return a KafkaMindMapOrchestrator with a fully wired MindMapPipeline."""
 #     from langchain_ollama import ChatOllama
-#     from open_i_Notes.graphs.mind_map import (
+#     from open_notebook.graphs.mind_map import (
 #         EasyOCRService,
 #         IntelligenceLLMService,
 #         KafkaMindMapOrchestrator,
@@ -258,7 +258,7 @@
 #         logger.info(f"Source summary request: source_id={source_id!r}")
 
 #         from langchain_ollama import ChatOllama
-#         from open_i_Notes.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
+#         from open_notebook.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
 
 #         ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 #         llm = ChatOllama(model="qwen3", temperature=0.3, base_url=ollama_url)
@@ -446,7 +446,7 @@
 # from loguru import logger
 # from pydantic import BaseModel
 
-# from open_i_Notes.domain.i_Notes import Source
+# from open_notebook.domain.notebook import Source
 
 # router = APIRouter()
 
@@ -578,7 +578,7 @@
 # def _build_orchestrator():
 #     """Build and return a KafkaMindMapOrchestrator with a fully wired MindMapPipeline."""
 #     from langchain_ollama import ChatOllama
-#     from open_i_Notes.graphs.mind_map import (
+#     from open_notebook.graphs.mind_map import (
 #         EasyOCRService,
 #         IntelligenceLLMService,
 #         KafkaMindMapOrchestrator,
@@ -957,7 +957,7 @@
 #         if not source or not source.full_text or not source.full_text.strip():
 #             raise HTTPException(status_code=400, detail="Source has no text content")
 
-#         from open_i_Notes.ai.provision import provision_langchain_model
+#         from open_notebook.ai.provision import provision_langchain_model
 #         from langchain_core.messages import HumanMessage, SystemMessage
 
 #         context_text = source.full_text[:12000]
@@ -1031,8 +1031,8 @@
 #         source_id = _decode_source_id(source_id)
 #         logger.info(f"Source summary request: source_id={source_id!r}")
 
-#         from open_i_Notes.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
-#         from open_i_Notes.ai.provision import provision_langchain_model
+#         from open_notebook.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
+#         from open_notebook.ai.provision import provision_langchain_model
 
 #         llm = await provision_langchain_model("", None, "chat", max_tokens=4096, temperature=0.3)
 
@@ -1207,7 +1207,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 
-from i_Notes.domain.i_Notes import Source
+from open_notebook.domain.notebook import Source
 
 router = APIRouter()
 
@@ -1746,7 +1746,7 @@ _orchestrator: Optional[Any] = None
 
 def _build_orchestrator():
     from langchain_ollama import ChatOllama
-    from i_Notes.graphs.mind_map import (
+    from open_notebook.graphs.mind_map import (
         EasyOCRService,
         IntelligenceLLMService,
         KafkaMindMapOrchestrator,
@@ -1941,7 +1941,7 @@ async def get_node_summary(source_id: str, request: NodeSummaryRequest):
         if not source or not source.full_text or not source.full_text.strip():
             raise HTTPException(status_code=400, detail="Source has no text content")
 
-        from i_Notes.ai.provision import provision_langchain_model
+        from open_notebook.ai.provision import provision_langchain_model
         from langchain_core.messages import HumanMessage, SystemMessage
 
         context_text = source.full_text[:12000]
@@ -2013,8 +2013,8 @@ async def get_source_summary(source_id: str):
         source_id = _decode_source_id(source_id)
         logger.info(f"Source summary request: source_id={source_id!r}")
 
-        from i_Notes.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
-        from i_Notes.ai.provision import provision_langchain_model
+        from open_notebook.graphs.summary import SummaryPipeline, SummaryTextProcessor, SummaryLLMService
+        from open_notebook.ai.provision import provision_langchain_model
 
         llm = await provision_langchain_model("", None, "chat", max_tokens=4096, temperature=0.3)
 

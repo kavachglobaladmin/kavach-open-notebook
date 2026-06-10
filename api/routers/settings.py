@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from api.models import SettingsResponse, SettingsUpdate
-from i_Notes.domain.content_settings import ContentSettings
-from i_Notes.exceptions import InvalidInputError
+from open_notebook.domain.content_settings import ContentSettings
+from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
 

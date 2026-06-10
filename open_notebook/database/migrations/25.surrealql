@@ -1,0 +1,10 @@
+-- Migration 25: Bank statement configuration table
+-- Stores all configurable values for the bank statement pipeline
+-- Values here override the defaults in config.py
+
+DEFINE TABLE bank_statement_config SCHEMAFULL;
+DEFINE FIELD config_key   ON TABLE bank_statement_config TYPE string;
+DEFINE FIELD config_value ON TABLE bank_statement_config TYPE any;
+DEFINE FIELD description  ON TABLE bank_statement_config TYPE option<string>;
+DEFINE FIELD updated      ON TABLE bank_statement_config TYPE datetime DEFAULT time::now();
+DEFINE INDEX idx_bsc_key ON TABLE bank_statement_config COLUMNS config_key UNIQUE;

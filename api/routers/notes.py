@@ -3,74 +3,40 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 
-from api.auth import get_current_user, get_current_user_role
-from api.i_Notes_access import (
-    can_access_i_Notes,
-    get_accessible_i_Notes_ids,
-    normalize_i_Notes_id,
-)
+from api.auth import get_current_user
 from api.models import NoteCreate, NoteResponse, NoteUpdate
-from api.roles import has_elevated_data_access
-from i_Notes.domain.i_Notes import Note
-from i_Notes.exceptions import InvalidInputError
+from open_notebook.domain.notebook import Note
+from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
-
-
-def _can_access_owner(
-    current_user: Optional[str],
-    current_role: str,
-    owner: Optional[str],
-) -> bool:
-    if has_elevated_data_access(current_role):
-        return True
-    if not current_user or not owner:
-        return True
-    return owner == current_user
 
 
 @router.get("/notes", response_model=List[NoteResponse])
 async def get_notes(
     request: Request,
-    i_Notes_id: Optional[str] = Query(None, description="Filter by i_Notes ID"),
+    notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
     current_user: Optional[str] = Depends(get_current_user),
-    current_role: str = Depends(get_current_user_role),
 ):
-    """Get all notes with optional i_Notes filtering."""
+    """Get all notes with optional notebook filtering."""
     try:
-        if i_Notes_id:
-            # Get notes for a specific i_Notes — verify ownership first
-            from i_Notes.domain.i_Notes import i_Notes
+        if notebook_id:
+            # Get notes for a specific notebook — verify ownership first
+            from open_notebook.domain.notebook import Notebook
 
-            i_Notes = await i_Notes.get(normalize_i_Notes_id(i_Notes_id))
-            if not i_Notes:
-                raise HTTPException(status_code=404, detail="i_Notes not found")
-            if not await can_access_i_Notes(current_user, current_role, i_Notes_id):
+            notebook = await Notebook.get(notebook_id)
+            if not notebook:
+                raise HTTPException(status_code=404, detail="Notebook not found")
+            # Block access if notebook belongs to a different user
+            if current_user and notebook.owner and notebook.owner != current_user:
                 raise HTTPException(status_code=403, detail="Access denied")
-            notes = await i_Notes.get_notes()
-        elif current_user and not has_elevated_data_access(current_role):
-            from i_Notes.database.repository import repo_query
-            accessible_i_Notes_ids = await get_accessible_i_Notes_ids(
-                current_user, current_role
-            )
-            i_Notes_note_ids = []
-            if accessible_i_Notes_ids:
-                i_Notes_note_ids = await repo_query(
-                    "SELECT VALUE in FROM artifact WHERE out IN $i_Notes_ids",
-                    {"i_Notes_ids": list(accessible_i_Notes_ids)},
-                )
-            direct_note_ids = await repo_query(
-                "SELECT VALUE id FROM note WHERE owner = $owner",
+            notes = await notebook.get_notes()
+        elif current_user:
+            # Get notes owned by this user
+            from open_notebook.database.repository import repo_query
+            result = await repo_query(
+                "SELECT * FROM note WHERE owner = $owner ORDER BY updated DESC",
                 {"owner": current_user},
             )
-            note_ids = list({str(note_id) for note_id in i_Notes_note_ids + direct_note_ids})
-            if note_ids:
-                result = await repo_query(
-                    "SELECT * FROM note WHERE id IN $note_ids ORDER BY updated DESC",
-                    {"note_ids": note_ids},
-                )
-            else:
-                result = []
             notes = [Note(**n) for n in result]
         else:
             # No user context — return all notes (auth disabled / legacy)
@@ -98,14 +64,13 @@ async def get_notes(
 async def create_note(
     note_data: NoteCreate,
     current_user: Optional[str] = Depends(get_current_user),
-    current_role: str = Depends(get_current_user_role),
 ):
     """Create a new note."""
     try:
         # Auto-generate title if not provided and it's an AI note
         title = note_data.title
         if not title and note_data.note_type == "ai" and note_data.content:
-            from i_Notes.graphs.prompt import graph as prompt_graph
+            from open_notebook.graphs.prompt import graph as prompt_graph
 
             prompt = "Based on the Note below, please provide a Title for this content, with max 15 words"
             result = await prompt_graph.ainvoke(
@@ -133,18 +98,14 @@ async def create_note(
         )
         command_id = await new_note.save()
 
-        # Add to i_Notes if specified
-        if note_data.i_Notes_id:
-            from i_Notes.domain.i_Notes import i_Notes
+        # Add to notebook if specified
+        if note_data.notebook_id:
+            from open_notebook.domain.notebook import Notebook
 
-            i_Notes = await i_Notes.get(normalize_i_Notes_id(note_data.i_Notes_id))
-            if not i_Notes:
-                raise HTTPException(status_code=404, detail="i_Notes not found")
-            if not await can_access_i_Notes(
-                current_user, current_role, note_data.i_Notes_id
-            ):
-                raise HTTPException(status_code=403, detail="Access denied")
-            await new_note.add_to_i_Notes(note_data.i_Notes_id)
+            notebook = await Notebook.get(note_data.notebook_id)
+            if not notebook:
+                raise HTTPException(status_code=404, detail="Notebook not found")
+            await new_note.add_to_notebook(note_data.notebook_id)
 
         return NoteResponse(
             id=new_note.id or "",
@@ -165,18 +126,12 @@ async def create_note(
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
-async def get_note(
-    note_id: str,
-    current_user: Optional[str] = Depends(get_current_user),
-    current_role: str = Depends(get_current_user_role),
-):
+async def get_note(note_id: str):
     """Get a specific note by ID."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
-        if not _can_access_owner(current_user, current_role, getattr(note, "owner", None)):
-            raise HTTPException(status_code=403, detail="Access denied")
 
         return NoteResponse(
             id=note.id or "",
@@ -194,19 +149,12 @@ async def get_note(
 
 
 @router.put("/notes/{note_id}", response_model=NoteResponse)
-async def update_note(
-    note_id: str,
-    note_update: NoteUpdate,
-    current_user: Optional[str] = Depends(get_current_user),
-    current_role: str = Depends(get_current_user_role),
-):
+async def update_note(note_id: str, note_update: NoteUpdate):
     """Update a note."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
-        if not _can_access_owner(current_user, current_role, getattr(note, "owner", None)):
-            raise HTTPException(status_code=403, detail="Access denied")
 
         # Update only provided fields
         if note_update.title is not None:
@@ -242,18 +190,12 @@ async def update_note(
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(
-    note_id: str,
-    current_user: Optional[str] = Depends(get_current_user),
-    current_role: str = Depends(get_current_user_role),
-):
+async def delete_note(note_id: str):
     """Delete a note."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
-        if not _can_access_owner(current_user, current_role, getattr(note, "owner", None)):
-            raise HTTPException(status_code=403, detail="Access denied")
 
         await note.delete()
 

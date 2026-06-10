@@ -18,8 +18,8 @@ from loguru import logger
 from pydantic import SecretStr
 
 from api.models import CredentialResponse
-from i_Notes.domain.credential import Credential
-from i_Notes.utils.encryption import get_secret_from_env
+from open_notebook.domain.credential import Credential
+from open_notebook.utils.encryption import get_secret_from_env
 
 # =============================================================================
 # Constants
@@ -40,7 +40,7 @@ PROVIDER_ENV_CONFIG: Dict[str, dict] = {
     "openrouter": {"required": ["OPENROUTER_API_KEY"]},
     "voyage": {"required": ["VOYAGE_API_KEY"]},
     "elevenlabs": {"required": ["ELEVENLABS_API_KEY"]},
-    "ollama": {"required_any": ["OLLAMA_API_BASE", "OLLAMA_BASE_URL"]},
+    "ollama": {"required": ["OLLAMA_API_BASE"]},
     "vertex": {
         "required": ["VERTEX_PROJECT", "VERTEX_LOCATION"],
         "optional": ["GOOGLE_APPLICATION_CREDENTIALS"],
@@ -191,10 +191,10 @@ def validate_url(url: str, provider: str) -> None:
 
 def require_encryption_key() -> None:
     """Raise ValueError if encryption key is not configured."""
-    if not get_secret_from_env("i_Notes_ENCRYPTION_KEY"):
+    if not get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY"):
         raise ValueError(
             "Encryption key not configured. "
-            "Set i_Notes_ENCRYPTION_KEY to enable storing API keys."
+            "Set OPEN_NOTEBOOK_ENCRYPTION_KEY to enable storing API keys."
         )
 
 
@@ -250,8 +250,7 @@ def create_credential_from_env(provider: str) -> Credential:
             name=name,
             provider=provider,
             modalities=modalities,
-            base_url=os.environ.get("OLLAMA_API_BASE")
-            or os.environ.get("OLLAMA_BASE_URL"),
+            base_url=os.environ.get("OLLAMA_API_BASE"),
         )
     elif provider == "vertex":
         return Credential(
@@ -317,7 +316,7 @@ async def get_provider_status() -> dict:
     Get configuration status: encryption key status, and per-provider
     configured/source information.
     """
-    encryption_configured = bool(get_secret_from_env("i_Notes_ENCRYPTION_KEY"))
+    encryption_configured = bool(get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY"))
 
     configured: Dict[str, bool] = {}
     source: Dict[str, str] = {}
@@ -365,7 +364,7 @@ async def test_credential(credential_id: str) -> dict:
         cred = await Credential.get(credential_id)
         config = cred.to_esperanto_config()
 
-        from i_Notes.ai.connection_tester import (
+        from open_notebook.ai.connection_tester import (
             _test_azure_connection,
             _test_ollama_connection,
             _test_openai_compatible_connection,
@@ -404,7 +403,7 @@ async def test_credential(credential_id: str) -> dict:
         # Standard provider: use Esperanto to create and test
         from esperanto.factory import AIFactory
 
-        from i_Notes.ai.connection_tester import TEST_MODELS
+        from open_notebook.ai.connection_tester import TEST_MODELS
 
         if provider not in TEST_MODELS:
             return {
@@ -652,8 +651,8 @@ async def register_models(credential_id: str, models_data: list) -> dict:
     """
     cred = await Credential.get(credential_id)
 
-    from i_Notes.ai.models import Model
-    from i_Notes.database.repository import repo_query
+    from open_notebook.ai.models import Model
+    from open_notebook.database.repository import repo_query
 
     # Batch fetch existing models for this provider
     existing_models = await repo_query(
@@ -695,7 +694,7 @@ async def migrate_from_provider_config() -> dict:
     require_encryption_key()
     logger.info("Encryption key verified")
 
-    from i_Notes.domain.provider_config import ProviderConfig
+    from open_notebook.domain.provider_config import ProviderConfig
 
     config = await ProviderConfig.get_instance()
     logger.info(
@@ -746,8 +745,8 @@ async def migrate_from_provider_config() -> dict:
                 )
 
                 # Link existing models for this provider to the new credential
-                from i_Notes.ai.models import Model
-                from i_Notes.database.repository import repo_query
+                from open_notebook.ai.models import Model
+                from open_notebook.database.repository import repo_query
 
                 provider_models = await repo_query(
                     "SELECT * FROM model WHERE string::lowercase(provider) = $provider AND credential IS NONE",
@@ -807,8 +806,8 @@ async def migrate_from_env() -> dict:
     require_encryption_key()
     logger.info("Encryption key verified")
 
-    from i_Notes.ai.models import Model
-    from i_Notes.database.repository import repo_query
+    from open_notebook.ai.models import Model
+    from open_notebook.database.repository import repo_query
 
     migrated = []
     skipped = []
